@@ -1,0 +1,13 @@
+<resources>
+    <!--
+        Тема окна задаёт только фон и статус-бар: весь интерфейс рисует Compose
+        (MaterialTheme в AzraelTheme), поэтому наследовать MaterialComponents ради
+        одного окна незачем - это тянуло бы лишнюю зависимость в APK.
+    -->
+    <style name="Theme.ZAPP" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/zapp_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

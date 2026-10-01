@@ -1,0 +1,13 @@
+<resources>
+    <!--
+        Светлая схема окна. Реальную светлую палитру интерфейса задаёт Compose
+        (AzraelLightScheme), здесь только фон запуска, чтобы между появлением окна
+        и первым кадром не мигало чёрное.
+    -->
+    <style name="Theme.ZAPP" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FFFAFAFA</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

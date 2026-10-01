@@ -1,0 +1,73 @@
+### Gradle / build output ###
+.gradle/
+**/build/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+**/.cxx/
+local.defaults.properties
+.kotlin/
+
+### Local machine config ###
+local.properties
+*.local
+*.hprof
+*.jfr
+
+### IDE ###
+*.iml
+.idea/
+**/.idea/
+*.ipr
+*.iws
+.vscode/
+*.code-workspace
+.navigation/
+
+### OS ###
+.DS_Store
+Thumbs.db
+desktop.ini
+
+### Logs and temp ###
+*.log
+**/logs/
+*.tmp
+*.bak
+*~
+\#*\#
+.\#*
+
+### Secrets and credentials ###
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+keystore.properties
+key.properties
+signing.properties
+signingConfigs.*
+google-services.json
+FirebaseService-Account.json
+*service-account*.json
+secrets.properties
+secrets.xml
+.netrc
+.npmrc
+.env
+.env.*
+!.env.example
+!.env.template
+
+### Release artifacts ###
+*.apk
+*.aab
+*.ap_
+*.dex
+output.json
+
+### Docs with local data ###
+*.local.md

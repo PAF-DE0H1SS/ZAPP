@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Палитра ZAPP: акцент #4ADE80 на почти чёрном #0A0A0A. -->
+    <color name="zapp_accent">#FF4ADE80</color>
+    <color name="zapp_on_accent">#FF07170C</color>
+    <color name="zapp_bg">#FF0A0A0A</color>
+    <color name="zapp_danger">#FFF43F5E</color>
+    <color name="zapp_warning">#FFF59E0B</color>
+    <color name="zapp_info">#FF38BDF8</color>
+</resources>

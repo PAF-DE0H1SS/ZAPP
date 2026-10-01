@@ -1,196 +1,141 @@
-ZAPP - DUAL LICENSING TERMS
+ZAPP - LICENSE TERMS
 
 Software: ZAPP (the "Software"), a Compose Multiplatform network toolkit, together with all source code, binaries, documentation, build files and associated material.
 
-Licensor / Rights Holder: azrael (PAF-DE0H1SS) · <typ.onepatop@gmail.com> (the "Licensor")
+Author / Copyright Holder: azrael (PAF-DE0H1SS) <typ.onepatop@gmail.com> (the "Author")
 
 Effective date of these terms: the date on which the Software is first released publicly.
 
-PART 0. OVERVIEW - HYBRID DUAL LICENSING
+PART 0. OVERVIEW - FREE AND OPEN FOR EVERYONE
 
-The Software is distributed under a hybrid dual-licensing scheme. Licensees are bound by both parts set out below, depending on the nature of their use:
+ZAPP is free software. It costs nothing to obtain, nothing to run, and nothing to
+distribute. There is no paid tier, no subscription, no feature behind a paywall, no
+donation requirement, no telemetry, and no account. The source code is public and the
+terms below grant the rights to use, study, change and redistribute it to anybody,
+for any purpose, commercial or not.
 
-1. Noncommercial use by the general public, the community, developers, researchers and noncommercial organizations is governed by the international license PolyForm Noncommercial 1.0.0, the full canonical text of which is set out in Part 4. Parts 1-3 supplement and, where there is any interaction with commercial activity, prevail over Part 4.
-2. Commercial use, and any use by forks or derivative works seeking financial benefit, is additionally governed by the Licensor's commercial terms in Parts 1-3, which require a written agreement with the Licensor.
+The Software is distributed under the terms of this document. Anyone may use it
+without paying anyone, including in commercial products and services, and including
+in forks and derivative works sold or given away.
 
-By copying, downloading, compiling, modifying, distributing or otherwise using the Software, each Licensee accepts these terms in full, without reservation.
+By copying, downloading, compiling, modifying, redistributing or otherwise using the
+Software, each person accepts these terms in full, without reservation.
 
-PART 1. LICENSE STRUCTURE AND MONETIZATION RIGHTS
+1. Grant of use. The Author grants a perpetual, worldwide, royalty-free, irrevocable,
+   non-exclusive, transferable license to use, study, run, modify and redistribute the
+   Software, and to create derivative works of it, for any purpose whatsoever,
+   including commercial purposes, with or without charge.
 
-1.1 Noncommercial use
+2. No restriction on redistribution. Copies may be distributed in source or binary
+   form, with or without modifications, provided that this license and the copyright
+   notice are retained. Selling a copy, charging for support, or including the
+   Software in a paid product requires no permission from the Author and no
+   agreement of any kind.
 
-Subject to Parts 1.2, 2 and 3, the Licensor grants each Licensee a non-exclusive, worldwide, non-transferable, royalty-free license to use, study, modify and run the Software for noncommercial purposes only, on the terms of the PolyForm Noncommercial 1.0.0 license, the full text of which is set out in Part 4.
+3. Attribution. Attribution is appreciated but not required. Where attribution is
+   given, the form "ZAPP, by azrael (PAF-DE0H1SS)" is sufficient.
 
-1.2 Exclusive commercial rights of the Licensor
+4. No warranty on fitness for a particular purpose. See Part 3.
 
-The Licensor retains, in perpetuity and to the exclusion of all others, the exclusive right to:
+PART 1. NO MONETIZATION CLAIMS BY THE AUTHOR
 
-(a) commercialize, sell, license or monetize the Software, in whole or in part, by any means and through any channel, including paid features, subscription modules, SaaS offerings, sponsorship, advertising, data and analytics, and consulting;
+1.1 The Author makes no claim of exclusivity over any use of the Software. There is
+no reserved field of commercial use, and no use of the Software, its forks or its
+derivative works is prohibited on the grounds of profit, revenue, market share or
+any other commercial consideration.
 
-(b) grant commercial licenses to third parties, on such terms as the Licensor alone determines.
+1.2 No revenue share, royalty, commission or percentage of any kind is payable to
+the Author, by anyone, under any circumstance, in connection with the Software.
 
-No Licensee or third party may engage in any commercial use of the Software or any part of it - directly or indirectly, structurally or materially - without a prior written commercial agreement with the Licensor. This prohibition is absolute and admits no implied exceptions, including any use "not substantial in relation to the whole", internal corporate use, or use in the course of paid employment.
+1.3 No written commercial agreement with the Author is required for any use of the
+Software. Any person who states otherwise is acting outside these terms and does not
+speak for the Author.
 
-"Commercial use" means any use intended for, directed toward, or reasonably capable of producing, directly or indirectly, a financial or commercial benefit, including but not limited to: sale or licensing of the Software or derivative works; paid software-as-a-service; hosting for third parties for consideration; advertising or monetized traffic; use in a commercial organization's internal operations where the result confers an economic advantage; and the incorporation of the Software into any product or service offered for compensation.
+1.4 Distribution in app stores, package repositories, container images, firmware
+images and enterprise environments is expressly permitted, including where such
+distribution is paid for by the distributor or a third party.
 
-1.3 No implied grants
+PART 2. CONTRIBUTION AND COPYRIGHT
 
-Nothing in these terms shall be construed as granting any Licensee any right, title, interest or license other than the explicit, limited grants set out herein. The Licensor reserves all rights not expressly granted.
+2.1 Contributions are welcome and no contribution is required. The Author is not
+obliged to accept, review or merge any contribution, and may decline any for any
+reason or no reason.
 
-PART 2. FORKS AND DERIVATIVE WORKS - REVENUE SHARE
+2.2 Each contributor retains the copyright in their own contribution. The
+contributor grants the same broad license set out in Part 0 to everyone else, so that
+contributions remain freely usable on the same terms as the rest of the Software.
 
-Any Licensee who creates a fork, derivative work, modification, port, wrapper, or substantially derived product (each a "Derivative") of the Software agrees, by the act of doing so, to the terms of this Part 2.
+2.3 No clause in this document requires any contributor to assign copyright away,
+to dedicate work to the public domain, or to accept a share of any revenue. The
+Author does not claim copyright in contributions they did not write.
 
-2.1 Prohibition on unauthorized monetization
+2.4 Attribution in source comments and commit history must be factual. Presenting
+someone else's work as one's own is dishonest regardless of what the license
+permits, and is the one thing this document cannot grant.
 
-No person may derive any direct or indirect financial benefit from a Derivative without a written commercial agreement with the Licensor. Authorization may not be presumed, implied, or obtained by conduct; it exists only upon a signed agreement.
+PART 3. NO WARRANTY; LIMITING LIABILITY
 
-2.2 Notification and agreement
+3.1 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR
+A PARTICULAR PURPOSE AND NONINFRINGEMENT. THE ENTIRE RISK AS TO THE QUALITY AND
+PERFORMANCE OF THE SOFTWARE LIES WITH THE USER.
 
-Before any monetization of a Derivative, the Licensee must contact the Licensor at <typ.onepatop@gmail.com> and conclude a formal commercial agreement in writing. The Licensor may accept, reject, or condition any such request in its sole discretion.
+3.2 The Software manipulates network settings, routing tables, packet filters and
+location data. It is provided without warranty of any kind as to whether a given
+operation will work, will be permitted by the operating system, will not break other
+software, or will not leave the machine in an unusable state.
 
-2.3 Revenue share (minimum royalty)
+3.3 IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-The base royalty payable to the Licensor shall be no less than 50% (fifty percent) of the Derivative's Gross Revenue, unless a different rate is set by the written agreement. The Licensor may, at its sole discretion, permit a lower rate or waive the royalty for a specific licensee; such waiver binds the Licensor only in writing and only for the specific Derivative identified in the waiver. The minimum rate of 50% may not be altered by course of dealing, industry custom, or unilateral determination by the Licensee.
+3.4 Users are responsible for compliance with the laws and regulations applicable to
+them. The Author does not provide legal advice and makes no representation about the
+lawfulness of any particular use of the Software in any jurisdiction.
 
-"Gross Revenue" means all revenue, income, payments, fees, subscriptions, commissions, advertising receipts, licensing fees, sponsorship, donations in exchange for features, and any other consideration of any kind, in cash or in kind, received by or accruing to the Licensee (and any affiliate, associate, or entity acting in concert with the Licensee) from or in connection with the Derivative, before any deductions whatsoever, including before taxes, expenses, costs, refunds, chargebacks and partner fees.
+PART 4. SECURITY AND PRIVACY
 
-2.4 Accounting, payment and audit
+4.1 The Software is designed to run locally. It does not require an account, does
+not require a server operated by the Author, and does not phone home. There is no
+telemetry, no usage analytics and no advertising infrastructure.
 
-(a) The Licensee shall account to the Licensor for Gross Revenue on a calendar-quarterly basis, in legible written form, within thirty (30) days of the end of each quarter.
+4.2 The Author cannot see, collect, store or control data handled by a user's copy of
+the Software. Local data, such as stored preferences and configuration, stays on the
+machine where the Software runs.
 
-(b) The royalty shall be paid within fourteen (14) days of each accounting statement, to the bank account or payment method designated by the Licensor.
-
-(c) The Licensor, or its duly authorized agent, shall have the right, upon reasonable notice, to inspect, copy and audit the Licensee's books, records and accounts relating to the Derivative for a period of up to three (3) years after the end of each relevant accounting period. Any audit showing an underpayment of more than 5% (five percent) shall be at the Licensee's sole cost, and the shortfall plus interest shall be paid immediately.
-
-2.5 Survival
-
-The obligations of this Part 2 survive the termination of any license, the discontinuation of the Software, and the transfer or assignment of any rights or obligations by the Licensee, including through bankruptcy, liquidation or dissolution of the Licensee.
-
-PART 3. BACK-FEED CLAUSE - AUTOMATIC ASSIGNMENT OF IMPROVEMENTS AND CONTRIBUTIONS (CLA)
-
-To protect the integrity of the Software and prevent fragmentation of the codebase, this Part 3 imposes a mandatory, non-waivable back-feed of rights to the Licensor.
-
-3.1 Automatic assignment of Improvements
-
-All Improvements - meaning any and all modifications, enhancements, corrections, fixes, patches, optimizations, new features, modules, adaptations, translations, ports, and derivative works of any kind created by any Licensee based on, derived from, or in connection with the Software - are hereby automatically, irrevocably and without any payment or other compensation assigned to the Licensor as of the moment of their creation, to the fullest extent permitted by law. This assignment includes all copyright, database rights, and any other intellectual property rights capable of assignment, together with the exclusive right to sublicense, commercialize, register and enforce such rights in every territory.
-
-3.2 Right of integration
-
-The Licensor shall have the unconditional, perpetual and worldwide right to copy, import, merge, adapt and incorporate any Improvement published in any public repository (including forks hosted on GitHub or any other platform), and any code embodied therein, into the main development line of the Software and into any commercial or closed editions thereof, without any payment, attribution, notice or obligation of any kind to the creator of the Improvement.
-
-3.3 Contributions - express assignment (CLA)
-
-By submitting code to the Software's main repository through a pull request, patch, issue-fix, mailing list, forum or any other channel (a "Contribution"), the contributor represents, warrants and confirms that:
-
-(a) the contributor is the sole author of the Contribution and owns all rights necessary to grant the rights herein;
-
-(b) the Contribution was not obtained in violation of any third-party rights;
-
-(c) to the fullest extent permitted by law, the contributor irrevocably and unconditionally assigns to the Licensor all present and future rights, title and interest in and to the Contribution, including all copyright and all rights of a similar nature, for use in any territory and by any means, with or without modification, in any form, in commercial and noncommercial contexts alike, and the right to sublicense these rights to any person. The contributor acknowledges that from the moment of submission the Licensor may use the Contribution without restriction, acknowledgment or compensation.
-
-(d) to the extent that any moral rights in the Contribution cannot be assigned, the contributor irrevocably waives their enforcement against the Licensor and its licensees, to the maximum extent permitted by law.
-
-3.4 Irrevocability and perpetuity
-
-The assignments and waivers in this Part 3 are irrevocable, perpetual, worldwide and survive the termination of any license, the death or winding-up of a natural or legal Licensee, and any transfer of the Software to a successor in title.
-
-PART 4. FULL TEXT - POLYFORM NONCOMMERCIAL LICENSE 1.0.0
-
-PolyForm Noncommercial License 1.0.0
-
-https://polyformproject.org/licenses/noncommercial/1.0.0
-
-Acceptance
-
-In order to get any license under these terms, you must agree to them as both strict obligations and conditions to all your licenses.
-
-Copyright License
-
-The licensor grants you a copyright license for the software to do everything you might do with the software that would otherwise infringe the licensor's copyright in it for any permitted purpose. However, you may only distribute the software according to Distribution License and make changes or new works based on the software according to Changes and New Works License.
-
-Distribution License
-
-The licensor grants you an additional copyright license to distribute copies of the software. Your license to distribute covers distributing the software with changes and new works permitted by Changes and New Works License.
-
-Notices
-
-You must ensure that anyone who gets a copy of any part of the software from you also gets a copy of these terms or the URL for them above, as well as copies of any plain-text lines beginning with Required Notice: that the licensor provided with the software. For example:
-
-Required Notice: Copyright azrael (PAF-DE0H1SS) <typ.onepatop@gmail.com>
-
-Changes and New Works License
-
-The licensor grants you an additional copyright license to make changes and new works based on the software for any permitted purpose.
-
-Patent License
-
-The licensor grants you a patent license for the software that covers patent claims the licensor can license, or becomes able to license, that you would infringe by using the software.
-
-Noncommercial Purposes
-
-Any noncommercial purpose is a permitted purpose.
-
-Personal Uses
-
-Personal use for research, experiment, and testing for the benefit of public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, or religious observance, without any anticipated commercial application, is use for a permitted purpose.
-
-Noncommercial Organizations
-
-Use by any charitable organization, educational institution, public research organization, public safety or health organization, environmental protection organization, or government institution is use for a permitted purpose regardless of the source of funding or obligations resulting from the funding.
-
-Fair Use
-
-You may have "fair use" rights for the software under the law. These terms do not limit them.
-
-No Other Rights
-
-These terms do not allow you to sublicense or transfer any of your licenses to anyone else, or prevent the licensor from granting licenses to anyone else. These terms do not imply any other licenses.
-
-Patent Defense
-
-If you make any written claim that the software infringes or contributes to infringement of any patent, your patent license for the software granted under these terms ends immediately. If your company makes such a claim, your patent license ends immediately for work on behalf of your company.
-
-Violations
-
-The first time you are notified in writing that you have violated any of these terms, or done anything with the software not covered by your licenses, your licenses can nonetheless continue if you come into full compliance with these terms, and take practical steps to correct past violations, within 32 days of receiving notice. Otherwise, all your licenses end immediately.
-
-No Liability
-
-As far as the law allows, the software comes as is, without any warranty or condition, and the licensor will not be liable to you for any damages arising out of these terms or the use or nature of the software, under any kind of legal claim.
-
-Definitions
-
-The licensor is the individual or entity offering these terms, and the software is the software the licensor makes available under these terms.
-
-You refers to the individual or entity agreeing to these terms.
-
-Your company is any legal entity, sole proprietorship, or other kind of organization that you work for, plus all organizations that have control over, are under the control of, or are under common control with that organization. Control means ownership of substantially all the assets of an entity, or the power to direct its management and policies by vote, contract, or otherwise. Control can be direct or indirect.
-
-Your licenses are all the licenses granted to you for the software under these terms.
-
-Use means anything you do with the software requiring one of your licenses.
+4.3 Cryptographic and network security are the user's responsibility. The Software
+may be modified, redistributed or repackaged by anyone, and a user who obtains it
+from a third party rather than from the Author is relying on that third party for
+its integrity. Verify what you run.
 
 PART 5. GENERAL PROVISIONS
 
-5.1 Hierarchy and conflict
+5.1 Entire agreement. These terms constitute the entire agreement between the Author
+and each person who uses the Software, and supersede any earlier or later
+statements on the subject.
 
-The PolyForm Noncommercial 1.0.0 license (Part 4) governs noncommercial use. Parts 1-3 govern all commercial activity, forks and contributions and, to the extent of any conflict between these parts and Part 4, the provisions most protective of the Licensor's rights shall prevail.
+5.2 No waiver. A failure by the Author to enforce any provision on one occasion
+shall not constitute a waiver of that provision or of any other provision.
 
-5.2 Termination
+5.3 Severability. If any provision is held invalid or unenforceable, the remainder
+continues in full force and effect, and the invalid provision shall be applied as
+far as is consistent with the intent of these terms.
 
-Any breach of these terms by a Licensee automatically terminates all licenses granted to that Licensee under these terms, without prejudice to the survival of Parts 2, 3, and 5.
+5.4 Termination. These terms do not expire. They survive the discontinuation of the
+Software, the transfer of the Software to a successor in title, and any assignment
+of rights or obligations by any user.
 
-5.3 Severability
+5.5 Governing language. This document is written in English. In case of any
+inconsistency, the English text prevails.
 
-If any provision of these terms is held invalid or unenforceable, the remainder shall continue in full force and effect, and the invalid provision shall be construed, insofar as possible, to effectuate the parties' intent while preserving the Licensor's rights to the greatest extent permitted by law.
+5.6 Responsibility for use. The user is solely responsible for how the Software is
+used and for any consequences of that use. Nothing in these terms transfers
+responsibility for the operation of the Software to the Author.
 
-5.4 Entire agreement; no waiver
+© 2026 azrael (PAF-DE0H1SS). ZAPP is free software, available to everyone, for any
+purpose, at no cost.
 
-These terms constitute the entire understanding governing the Software. A failure by the Licensor to enforce any provision on one occasion shall not constitute a waiver of that provision or of any other provision.
-
-5.5 No warranty / limiting liability
-
-The Software is provided "AS IS", without warranty of any kind. In no event shall the Licensor be liable for any damages arising from use, distribution or modification of the Software. Nothing in these terms limits the Licensor's rights to enforce them.
-
-© PolyForm Project, Inc. "Polyform" is a trademark of PolyForm Project, Inc. The PolyForm Noncommercial 1.0.0 text (Part 4) is reproduced under the terms published at polyformproject.org. Parts 0-3 and 5 of these Dual Licensing Terms are © azrael (PAF-DE0H1SS).
+The original development of the Software may have relied on third-party components
+under their own licenses, including the Kotlin standard library, Jetpack Compose
+(Apache License 2.0) and Compose Multiplatform (Apache License 2.0). Those licenses
+apply to those components and are not modified by this document.

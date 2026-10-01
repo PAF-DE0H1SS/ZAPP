@@ -1,0 +1,14 @@
+# Сборка
+build/
+*/build/
+.gradle/
+local.properties
+
+# Подпись APK: keystore и пароли не в репозитории
+signing/
+*.jks
+*.keystore
+
+# Служебное окружение
+.idea/
+ldpath

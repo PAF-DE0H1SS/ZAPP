@@ -27,9 +27,42 @@ class I18nTest {
     fun cisLanguagesGetRussian() {
         // Правило из требований: язык СНГ -> русский интерфейс.
         for (code in listOf("ru", "ru-RU", "be-BY", "uk-UA", "kk-KZ", "ky-KG",
-            "tg", "tk-TM", "uz-UZ", "az-AZ", "hy-AM", "ka-GE", "mo-MD")) {
+            "tg", "tk-TM", "uz-UZ", "az-AZ", "hy-AM", "ka-GE")) {
             assertEquals(AppLang.RU, resolveLang(null, code), "язык системы $code")
         }
+    }
+
+    @Test
+    fun cisCountryGetsRussianEvenWithForeignLanguage() {
+        // В Молдове язык системы -- `ro`, отдельного кода "молдавский" нет
+        // (ISO 639-1 `mo` deprecated), поэтому русский там ставится по региону.
+        // Без этого язык из СНГ молча уезжал в английский.
+        for (code in listOf("ro-MD", "ro_MD")) {
+            assertEquals(AppLang.RU, resolveLang(null, code), "язык системы $code")
+        }
+        // Регион важнее языка: немецкий в Казахстане -- это Казахстан.
+        for (code in listOf("de-KZ", "en-UA", "fr-BY", "tr-GE")) {
+            assertEquals(AppLang.RU, resolveLang(null, code), "язык системы $code")
+        }
+    }
+
+    @Test
+    fun romanianWithoutRegionIsNotCis() {
+        // Румыния не в СНГ, и `ro` без региона -- это просто румынский, то есть
+        // английский интерфейс. Русским Молдова становится по `ro-MD`, и именно
+        // поэтому проверка региона обязана быть отдельной от проверки языка.
+        assertEquals(AppLang.EN, resolveLang(null, "ro"))
+        assertEquals(AppLang.EN, resolveLang(null, "ro-RO"))
+    }
+
+    @Test
+    fun chineseRegionDoesNotTriggerCisRule() {
+        // `zh-Hans-CN`: последний компонент -- регион, но он не из СНГ, и
+        // `zh-TW` -- Тайвань, тоже не СНГ. Китайский должен остаться китайским.
+        assertEquals(AppLang.ZH, resolveLang(null, "zh-TW"))
+        assertEquals(AppLang.ZH, resolveLang(null, "zh-Hans-CN"))
+        // Гонконг и Макао -- не СНГ, китайский.
+        assertEquals(AppLang.ZH, resolveLang(null, "zh-HK"))
     }
 
     @Test

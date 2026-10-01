@@ -122,11 +122,19 @@ DESKTOP_JAR=$(ls desktopApp/build/compose/jars/*.jar 2>/dev/null | head -1 || tr
 # нет .desktop и иконки. Дополняем scripts/finish-deb.sh, в dist кладём
 # только результат. Именно *_zapp.deb: общий *.deb подхватывает уже
 # дополненный, и повторный прогон дал бы *_zapp_zapp.deb.
+#
+# Сам скрипт в репозиторий не входит (scripts/ в .gitignore), поэтому на чистой
+# машине его нет. Без него .deb не доводится, и кладём сырой, честно помечая
+# это в выводе, -- молча спутать два пакета хуже.
 DEB_DIR=desktopApp/build/compose/binaries/main/deb
 if [ -d "$DEB_DIR" ]; then
   mapfile -t RAWS < <(find "$DEB_DIR" -maxdepth 1 -type f -name '*_amd64.deb' ! -name '*_zapp.deb')
   if [ "${#RAWS[@]}" -eq 1 ]; then
-    if ../scripts/finish-deb.sh "${RAWS[0]}"; then
+    if [ ! -x ../scripts/finish-deb.sh ]; then
+      echo "[ZAPP] ВНИМАНИЕ: scripts/finish-deb.sh не найден, .deb останется сырым" >&2
+      echo "[ZAPP] Сырой пакет без Depends, .desktop и иконки непригоден" >&2
+      cp "${RAWS[0]}" "$DIST/zapp_UNFINISHED_amd64.deb"
+    elif ../scripts/finish-deb.sh "${RAWS[0]}"; then
       cp "${RAWS[0]%.deb}_zapp.deb" "$DIST/"
       rm -f "${RAWS[0]%.deb}_zapp_zapp.deb"
     else

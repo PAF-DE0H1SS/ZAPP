@@ -55,7 +55,7 @@ Nothing functional yet -- this is the foundation stage. What is in place:
 | 🎨 **Design system** | colour schemes (dark/light), typography, shapes, spacing scale, ripples, starfield/glass background |
 | 🌗 **Theme persistence** | system / light / dark choice survives restart -- `SharedPreferences` on Android, `~/.config/zapp/theme` on desktop |
 | 📦 **Packaging** | APK, MSI, `.deb`, AppImage and a cross-platform uber-JAR |
-| 🧪 **Tests** | 16 cases in `desktopTest`: 8 palette contrast + 8 language resolution |
+| 🧪 **Tests** | 20 cases in `desktopTest`: 8 palette contrast + 12 locale resolution |
 
 ### 🧭 Architecture
 
@@ -68,7 +68,9 @@ ZAPP/
 │   │   └── desktopMain/     actual implementations (filesystem)
 │   ├── app/                 Android application: manifest, MainActivity, resources
 │   └── desktopApp/          desktop launcher, jpackage packaging
-├── docs/                    working notes
+├── ABOUT.md                 what the app does, in plain words
+├── DOC.md                   technical documentation
+├── DOCX.docx                the same documentation as a Word file
 └── LICENSE                  free and open for everyone
 ```
 
@@ -140,10 +142,10 @@ take the desktop packages from CI, which builds them on `ubuntu` and `windows`.
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-16 test cases, all green: `ThemeTest` checks every colour pair in both schemes against the
-WCAG contrast ratios, `I18nTest` checks that the system locale maps to the right language.
-`--rerun-tasks` matters: without it an unchanged task reports `UP-TO-DATE` and the test
-count is not recomputed.
+20 test cases, all green: `ThemeTest` (8) checks every colour pair in both schemes against
+the WCAG contrast ratios, `I18nTest` (12) checks that the system locale maps to the right
+language, including the country part of a locale tag. `--rerun-tasks` matters: without it
+an unchanged task reports `UP-TO-DATE` and the test count is not recomputed.
 
 The palette tests are not decoration. Replace `outline` with `#D4D4D8` and `ThemeTest`
 fails, which is the point: a colour that reads as a visible border on a dark surface
@@ -178,7 +180,8 @@ for a short, abstract description.
 ### 📚 Docs
 
 - [ABOUT.md](ABOUT.md) - what the app does, in plain words
-- [DOCX.docx](DOCX.docx) - full technical documentation: stack, modules, build
+- [DOC.md](DOC.md) - full technical documentation: stack, modules, build pitfalls, tests
+- [DOCX.docx](DOCX.docx) - the same document as a Word file (GitHub does not preview `.docx`, download it)
 
 ### 📄 License
 
@@ -222,7 +225,7 @@ compliance with the laws that apply to you.
 | 🎨 **Дизайн-система** | цветовые схемы (тёмная/светлая), типографика, формы, шкала отступов, ripple, фон «звёздное небо» со стеклом |
 | 🌗 **Хранение темы** | выбор system / light / dark переживает перезапуск -- `SharedPreferences` на Android, `~/.config/zapp/theme` на десктопе |
 | 📦 **Упаковка** | APK, MSI, `.deb`, AppImage и кроссплатформенный uber-JAR |
-| 🧪 **Тесты** | 16 кейсов в `desktopTest`: 8 на контраст палитры + 8 на язык системы |
+| 🧪 **Тесты** | 20 кейсов в `desktopTest`: 8 на контраст палитры + 12 на разбор локали |
 
 ### 🧭 Архитектура
 
@@ -235,7 +238,9 @@ ZAPP/
 │   │   └── desktopMain/     actual-реализации (файловая система)
 │   ├── app/                 Android-приложение: манифест, MainActivity, ресурсы
 │   └── desktopApp/          десктопная точка входа, упаковка jpackage
-├── docs/                    рабочие заметки
+├── ABOUT.md                 что делает приложение, простыми словами
+├── DOC.md                   техническая документация
+├── DOCX.docx                та же документация в формате Word
 └── LICENSE                  бесплатно и открыто для всех
 ```
 
@@ -308,10 +313,10 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-16 тестовых кейсов, все зелёные: `ThemeTest` проверяет каждую пару цветов в обеих схемах
-на контраст по WCAG, `I18nTest` -- что язык системы отображается в правильный язык
-приложения. `--rerun-tasks` обязателен: без него неизменившаяся задача отдаёт
-`UP-TO-DATE`, и счётчик тестов не пересчитывается.
+20 тестовых кейсов, все зелёные: `ThemeTest` (8) проверяет каждую пару цветов в обеих
+схемах на контраст по WCAG, `I18nTest` (12) -- что локаль системы, включая страну
+в теге, отображается в правильный язык приложения. `--rerun-tasks` обязателен: без него
+неизменившаяся задача отдаёт `UP-TO-DATE`, и счётчик тестов не пересчитывается.
 
 Тесты палитры -- не для галочки. Подставьте вместо `outline` цвет `#D4D4D8`, и `ThemeTest`
 упадёт, и это правильное поведение: цвет, который на тёмном фоне читается как видимая
@@ -346,7 +351,8 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ### 📚 Документы
 
 - [ABOUT.md](ABOUT.md) - что делает приложение, простыми словами
-- [DOCX.docx](DOCX.docx) - подробная техническая документация: стек, модули, сборка
+- [DOC.md](DOC.md) - подробная техническая документация: стек, модули, грабли сборки, тесты
+- [DOCX.docx](DOCX.docx) - тот же документ в формате Word (GitHub не показывает `.docx` в браузере, файл нужно скачать)
 
 ### 📄 Лицензия
 
@@ -391,7 +397,7 @@ ZAPP предоставляется «КАК ЕСТЬ», без гарантий
 | 🎨 **设计系统** | 配色方案（深色/浅色）、字体、形状、间距刻度、ripple、星点玻璃背景 |
 | 🌗 **主题持久化** | system / light / dark 的选择可跨重启保留 -- Android 用 `SharedPreferences`，桌面端用 `~/.config/zapp/theme` |
 | 📦 **打包** | APK、MSI、`.deb`、AppImage 以及跨平台 uber-JAR |
-| 🧪 **测试** | `desktopTest` 共 16 个用例：8 个调色板对比度 + 8 个语言映射 |
+| 🧪 **测试** | `desktopTest` 共 20 个用例：8 个调色板对比度 + 12 个语言环境解析 |
 | 🌐 **语言** | 英文、俄文、中文 |
 
 ### 🧭 架构
@@ -405,7 +411,9 @@ ZAPP/
 │   │   └── desktopMain/     actual 实现（文件系统）
 │   ├── app/                 Android 应用：清单、MainActivity、资源
 │   └── desktopApp/          桌面端入口，jpackage 打包
-├── docs/                    工作笔记
+├── ABOUT.md                 应用做什么，通俗说明
+├── DOC.md                   技术文档
+├── DOCX.docx                同一份文档的 Word 版本
 └── LICENSE                  免费且对所有人开放
 ```
 
@@ -476,9 +484,9 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-16 个测试用例，全部通过：`ThemeTest` 按 WCAG 对比度检查两套配色里每一对颜色，
-`I18nTest` 检查系统语言是否映射到正确的界面语言。`--rerun-tasks` 很关键：没有它，
-未变更的任务会报 `UP-TO-DATE`，测试计数不会重新统计。
+20 个测试用例，全部通过：`ThemeTest`（8 个）按 WCAG 对比度检查两套配色里每一对颜色，
+`I18nTest`（12 个）检查系统语言环境（含地区部分）是否映射到正确的界面语言。
+`--rerun-tasks` 很关键：没有它，未变更的任务会报 `UP-TO-DATE`，测试计数不会重新统计。
 
 调色板测试不是摆设。把 `outline` 换成 `#D4D4D8`，`ThemeTest` 会失败，这正是它该做的：
 在深色背景上看起来像可见边框的颜色，不该悄悄通过。
@@ -512,7 +520,8 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ### 📚 文档
 
 - [ABOUT.md](ABOUT.md) - 应用做什么，通俗说明
-- [DOCX.docx](DOCX.docx) - 完整技术文档：技术栈、模块、构建
+- [DOC.md](DOC.md) - 完整技术文档：技术栈、模块、构建坑、测试
+- [DOCX.docx](DOCX.docx) - 同一份文档的 Word 版本（GitHub 不在浏览器里预览 `.docx`，需要下载）
 
 ### 📄 许可证
 

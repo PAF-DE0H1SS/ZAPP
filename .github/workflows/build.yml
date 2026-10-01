@@ -1,0 +1,201 @@
+name: ZAPP auto-build (Android + Windows/Linux desktop)
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Проект лежит в APP/, потому что в корне репозитория ещё лежат docs/ и
+  # служебные файлы. Все gradle-задачи отсюда.
+  PROJECT_DIR: APP
+
+jobs:
+  android:
+    name: Android APK (debug + release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # JDK 21: его требует gradle-daemon-jvm.properties, и в нём же есть
+      # jpackage, который нужен десктопным джобам ниже.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6.3.0
+
+      - name: Unit tests
+        working-directory: APP
+        run: ./gradlew :composeApp:desktopTest
+
+      - name: Build Android
+        working-directory: APP
+        run: ./gradlew :app:assembleDebug :app:assembleRelease
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: zapp-android-apks
+          path: |
+            APP/app/build/outputs/apk/debug/app-debug.apk
+            APP/app/build/outputs/apk/release/app-release-unsigned.apk
+
+  windows:
+    name: Windows 10/11 MSI installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6.3.0
+
+      - name: Build Windows MSI
+        working-directory: APP
+        run: ./gradlew :desktopApp:packageMsi
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: zapp-windows-msi
+          path: APP/desktopApp/build/compose/binaries/main/msi/*.msi
+
+  linux:
+    name: Linux (AppImage + deb)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6.3.0
+
+      - name: Build Linux packages
+        working-directory: APP
+        run: ./gradlew :desktopApp:packageAppImage :desktopApp:packageDeb
+
+      # Сырой jpackage-пакет публиковать нельзя: jdeps на CI тоже не находит
+      # библиотеки вне /usr/lib, в control остаётся одинокий xdg-utils, и на
+      # реальной Debian-машине пакет падает с libGL.so.1. Скрипт заменяет
+      # Depends и кладёт .desktop, иконку и лаунчер.
+      - name: Finish deb (Depends + .desktop + icon)
+        run: |
+          set -euxo pipefail
+          # Кандидат выбирается явно: `ls *.deb | head -1` сортировал по имени и
+          # при наличии дополненного пакета от прошлого прогона мог выбрать его.
+          mapfile -t DEBS < <(find APP/desktopApp/build/compose/binaries/main/deb -maxdepth 1 \
+            -type f -name '*_amd64.deb' ! -name '*_zapp.deb')
+          if [ "${#DEBS[@]}" -ne 1 ]; then
+            echo "ожидался ровно один сырой jpackage .deb, найдено ${#DEBS[@]}: ${DEBS[*]}" >&2
+            ls -la APP/desktopApp/build/compose/binaries/main/deb/ >&2
+            exit 1
+          fi
+          RAW="${DEBS[0]}"
+          ./scripts/finish-deb.sh "$RAW"
+          # Сырой больше не нужен: в артефакт идёт только дополненный пакет,
+          # а glob `*_zapp.deb` не должен захватить исходник.
+          rm -f "$RAW"
+          ls -la APP/desktopApp/build/compose/binaries/main/deb/
+
+      - name: Package real AppImage (appimagetool)
+        run: |
+          set -euxo pipefail
+          curl -fsSL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+
+          APP_DIR=APP/desktopApp/build/compose/binaries/main/app
+          SRC=$APP_DIR/zapp
+          AD=/tmp/zapp-appdir
+          rm -rf "$AD"
+          mkdir -p "$AD"
+          cp -r "$SRC/bin" "$AD/bin"
+          cp -r "$SRC/lib" "$AD/lib"
+          cp "$SRC/lib/zapp.png" "$AD/zapp.png"
+          cat > "$AD/zapp.desktop" <<'EOF'
+          [Desktop Entry]
+          Name=ZAPP
+          Comment=Local network toolkit (Compose Multiplatform)
+          Exec=zapp
+          Icon=zapp
+          Type=Application
+          Categories=Network;
+          Terminal=false
+          EOF
+          cat > "$AD/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          exec "$HERE/bin/zapp" "$@"
+          EOF
+          chmod +x "$AD/AppRun" "$AD/bin/zapp"
+          APP_VERSION=$(sed -n 's/.*<app-version>\([^<]*\)<\/app-version>.*/\1/p' "$SRC/lib/app/.jpackage.xml")
+          export ARCH=x86_64
+          /tmp/appimagetool --appimage-extract-and-run "$AD" "$APP_DIR/zapp-$APP_VERSION.AppImage"
+          ls -la "$APP_DIR"
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: zapp-linux-packages
+          path: |
+            APP/desktopApp/build/compose/binaries/main/app/*.AppImage
+            APP/desktopApp/build/compose/binaries/main/deb/*_zapp.deb
+
+  release:
+    name: GitHub Release (tags v*)
+    runs-on: ubuntu-latest
+    needs: [android, windows, linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Install gh
+        run: |
+          command -v gh || (sudo apt-get update && sudo apt-get install -y gh)
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # APK сюда НЕ попадает: в CI keystore нет (signing/ в .gitignore,
+          # подпись -- только локально через signing/keystore.properties),
+          # поэтому android-джоб отдаёт неподписанные debug/unsigned. Публикуется
+          # только production-сборка, загруженная владельцем через
+          # `gh release upload`. Неподписанный APK в релиз не выкладываем.
+          mapfile -d '' files < <(find artifacts -type f \( -name '*.msi' -o -name '*.AppImage' -o -name '*_zapp.deb' \) -print0)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "Нет ни одного production-артефакта - релиз не создаём" >&2
+            exit 1
+          fi
+          gh release create "$TAG_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "ZAPP $TAG_NAME" \
+            --notes "Autogenerated by CI. Desktop artifacts: Windows MSI, Linux AppImage/deb. Android APK прикладывается отдельно - подписанная production-сборка."

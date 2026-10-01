@@ -7,6 +7,7 @@
 [![Platform: Android 13+](https://img.shields.io/badge/Android-13%2B-3DDC84?style=flat&logo=android&logoColor=white)](https://github.com/PAF-DE0H1SS/ZAPP/releases)
 [![Platform: Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D6?style=flat&logo=windows&logoColor=white)](https://github.com/PAF-DE0H1SS/ZAPP/releases)
 [![Platform: Linux](https://img.shields.io/badge/Linux-deb%20%7C%20AppImage-FCC624?style=flat&logo=linux&logoColor=black)](https://github.com/PAF-DE0H1SS/ZAPP/releases)
+[![CI](https://github.com/PAF-DE0H1SS/ZAPP/actions/workflows/build.yml/badge.svg)](https://github.com/PAF-DE0H1SS/ZAPP/actions/workflows/build.yml)
 [![Made with Kotlin](https://img.shields.io/badge/Made%20with-Kotlin-7F52FF?style=flat&logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Compose Multiplatform](https://img.shields.io/badge/UI-Compose%20Multiplatform-4285F4?style=flat&logo=jetpackcompose&logoColor=white)](https://www.jetbrains.com/lp/compose-multiplatform/)
 [![License: Free for everyone](https://img.shields.io/badge/License-free%20for%20everyone-2EA44F?style=flat)](LICENSE)
@@ -54,7 +55,7 @@ Nothing functional yet -- this is the foundation stage. What is in place:
 | 🎨 **Design system** | colour schemes (dark/light), typography, shapes, spacing scale, ripples, starfield/glass background |
 | 🌗 **Theme persistence** | system / light / dark choice survives restart -- `SharedPreferences` on Android, `~/.config/zapp/theme` on desktop |
 | 📦 **Packaging** | APK, MSI, `.deb`, AppImage and a cross-platform uber-JAR |
-| 🧪 **Tests** | `desktopTest` source set wired up with `kotlin("test")` |
+| 🧪 **Tests** | 16 cases in `desktopTest`: 8 palette contrast + 8 language resolution |
 
 ### 🧭 Architecture
 
@@ -117,6 +118,20 @@ On NixOS, `jlink` and `jpackage` need `objcopy`, which is not in `PATH` by defau
 export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew autoBuild
 ```
+
+Or use the build script, which finds a full JDK and `objcopy` on its own:
+
+```bash
+./build-all.sh dev     # debug APK + uber-JAR
+./build-all.sh linux   # AppImage + .deb
+```
+
+**NixOS artifacts are not publishable.** A NixOS build bakes `/nix/store` paths into the
+launcher interpreter and the jlink runtime, so an AppImage or `.deb` produced here will
+not start on Debian, Ubuntu or Windows. `build-all.sh` therefore unpacks each artifact
+and writes `build/dist/PUBLISHABLE` and `build/dist/UNPUBLISHABLE` -- the APK and the
+uber-JAR pass, AppImage and `.deb` do not. Publish only what is in `PUBLISHABLE`, or
+take the desktop packages from CI, which builds them on `ubuntu` and `windows`.
 </details>
 
 ### 🧪 Tests
@@ -125,9 +140,14 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-The `desktopTest` source set is configured, but no test cases exist yet -- the counter is
-currently zero. `--rerun-tasks` matters: without it an unchanged task reports `UP-TO-DATE`
-and the test count is not recomputed.
+16 test cases, all green: `ThemeTest` checks every colour pair in both schemes against the
+WCAG contrast ratios, `I18nTest` checks that the system locale maps to the right language.
+`--rerun-tasks` matters: without it an unchanged task reports `UP-TO-DATE` and the test
+count is not recomputed.
+
+The palette tests are not decoration. Replace `outline` with `#D4D4D8` and `ThemeTest`
+fails, which is the point: a colour that reads as a visible border on a dark surface
+must not be able to pass unnoticed.
 
 ### ✅ Roadmap
 
@@ -202,7 +222,7 @@ compliance with the laws that apply to you.
 | 🎨 **Дизайн-система** | цветовые схемы (тёмная/светлая), типографика, формы, шкала отступов, ripple, фон «звёздное небо» со стеклом |
 | 🌗 **Хранение темы** | выбор system / light / dark переживает перезапуск -- `SharedPreferences` на Android, `~/.config/zapp/theme` на десктопе |
 | 📦 **Упаковка** | APK, MSI, `.deb`, AppImage и кроссплатформенный uber-JAR |
-| 🧪 **Тесты** | source set `desktopTest` подключён с `kotlin("test")` |
+| 🧪 **Тесты** | 16 кейсов в `desktopTest`: 8 на контраст палитры + 8 на язык системы |
 
 ### 🧭 Архитектура
 
@@ -265,6 +285,21 @@ namespace Android-библиотеки `xyz.azraellab.zapp.shared`. Namespace --
 export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew autoBuild
 ```
+
+Либо скриптом сборки, который сам найдёт полный JDK и `objcopy`:
+
+```bash
+./build-all.sh dev     # debug APK + uber-JAR
+./build-all.sh linux   # AppImage + .deb
+```
+
+**Артефакты с NixOS публиковать нельзя.** Сборка на NixOS вписывает пути `/nix/store` в
+интерпретатор launcher'а и в runtime jlink, поэтому собранный здесь AppImage или `.deb`
+не запустится на Debian, Ubuntu или Windows. Поэтому `build-all.sh` распаковывает каждый
+артефакт и раскладывает их по спискам `build/dist/PUBLISHABLE` и
+`build/dist/UNPUBLISHABLE`: APK и uber-JAR проходят, AppImage и `.deb` -- нет.
+Публикуйте только то, что в `PUBLISHABLE`, либо берите десктопные пакеты из CI, который
+собирает их на `ubuntu` и `windows`.
 </details>
 
 ### 🧪 Тесты
@@ -273,9 +308,14 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-Source set `desktopTest` настроен, но тестовых кейсов пока нет -- счётчик равен нулю.
-`--rerun-tasks` обязателен: без него неизменившаяся задача отдаёт `UP-TO-DATE`, и счётчик
-тестов не пересчитывается.
+16 тестовых кейсов, все зелёные: `ThemeTest` проверяет каждую пару цветов в обеих схемах
+на контраст по WCAG, `I18nTest` -- что язык системы отображается в правильный язык
+приложения. `--rerun-tasks` обязателен: без него неизменившаяся задача отдаёт
+`UP-TO-DATE`, и счётчик тестов не пересчитывается.
+
+Тесты палитры -- не для галочки. Подставьте вместо `outline` цвет `#D4D4D8`, и `ThemeTest`
+упадёт, и это правильное поведение: цвет, который на тёмном фоне читается как видимая
+рамка, не должен проходить незамеченным.
 
 ### ✅ План развития
 
@@ -351,7 +391,7 @@ ZAPP предоставляется «КАК ЕСТЬ», без гарантий
 | 🎨 **设计系统** | 配色方案（深色/浅色）、字体、形状、间距刻度、ripple、星点玻璃背景 |
 | 🌗 **主题持久化** | system / light / dark 的选择可跨重启保留 -- Android 用 `SharedPreferences`，桌面端用 `~/.config/zapp/theme` |
 | 📦 **打包** | APK、MSI、`.deb`、AppImage 以及跨平台 uber-JAR |
-| 🧪 **测试** | `desktopTest` source set 已配置 `kotlin("test")` |
+| 🧪 **测试** | `desktopTest` 共 16 个用例：8 个调色板对比度 + 8 个语言映射 |
 | 🌐 **语言** | 英文、俄文、中文 |
 
 ### 🧭 架构
@@ -415,6 +455,19 @@ release 签名仅限本地：创建 keystore 并让 `signing/keystore.properties
 export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew autoBuild
 ```
+
+或者用构建脚本，它会自己找到完整 JDK 和 `objcopy`：
+
+```bash
+./build-all.sh dev     # debug APK + uber-JAR
+./build-all.sh linux   # AppImage + .deb
+```
+
+**NixOS 上构建的产物不能发布。** NixOS 构建会把 `/nix/store` 路径写进 launcher 的
+解释器和 jlink runtime，所以在 NixOS 上打出来的 AppImage 或 `.deb` 在 Debian、Ubuntu
+或 Windows 上起不来。因此 `build-all.sh` 会解包每个产物，分成 `build/dist/PUBLISHABLE`
+和 `build/dist/UNPUBLISHABLE` 两份清单：APK 和 uber-JAR 通过，AppImage 和 `.deb` 不通过。
+只发布 `PUBLISHABLE` 里的文件，或者直接取 CI 的桌面包 -- CI 在 `ubuntu` 和 `windows` 上构建。
 </details>
 
 ### 🧪 测试
@@ -423,8 +476,12 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-`desktopTest` source set 已配置好，但目前还没有测试用例，计数为零。`--rerun-tasks`
-很关键：没有它，未变更的任务会报 `UP-TO-DATE`，测试计数不会重新统计。
+16 个测试用例，全部通过：`ThemeTest` 按 WCAG 对比度检查两套配色里每一对颜色，
+`I18nTest` 检查系统语言是否映射到正确的界面语言。`--rerun-tasks` 很关键：没有它，
+未变更的任务会报 `UP-TO-DATE`，测试计数不会重新统计。
+
+调色板测试不是摆设。把 `outline` 换成 `#D4D4D8`，`ThemeTest` 会失败，这正是它该做的：
+在深色背景上看起来像可见边框的颜色，不该悄悄通过。
 
 ### ✅ 路线图
 

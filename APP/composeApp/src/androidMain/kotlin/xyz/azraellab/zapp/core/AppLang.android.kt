@@ -28,9 +28,12 @@ actual object AppLangStore {
             @Suppress("DEPRECATION")
             AndroidCtx.require().resources.configuration.locale
         } ?: return null
-        // На старых прошивках locale может оказаться пустым, и getLanguage() тогда
-        // отдаёт пустую строку, а не исключение.
-        return locale.language.takeIf { it.isNotBlank() }
+        // Именно toLanguageTag(), а не getLanguage(): регион нужен для разбора.
+        // В Молдове язык системы -- `ro`, а русский интерфейс там всё равно нужен,
+        // и без `ro-MD` правило «СНГ -> русский» не срабатывает.
+        // На старых прошивках locale может оказаться пустым, и toLanguageTag()
+        // тогда отдаёт "und", а не исключение.
+        return locale.toLanguageTag().takeIf { it.isNotBlank() && it != "und" }
     }
 }
 

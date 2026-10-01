@@ -112,7 +112,7 @@ On NixOS, `jlink` and `jpackage` need `objcopy`, which is not in `PATH` by defau
 <details>
 <summary><b>🐧 NixOS</b></summary>
 
-`flake.nix` arrives at stage P12. Until then, build by hand with `objcopy` in `PATH`:
+`flake.nix` arrives at stage 12. Until then, build by hand with `objcopy` in `PATH`:
 
 ```bash
 export PATH=/nix/store/*binutils-*/bin:$PATH
@@ -151,23 +151,23 @@ must not be able to pass unnoticed.
 
 ### ✅ Roadmap
 
-Staged as P0-P13, one stage per PR, build and tests green in between. Full detail in
-[docs/PLAN.md](docs/PLAN.md).
+Staged as 0-13, one stage at a time, build and tests green in between. See [ABOUT.md](ABOUT.md)
+for a short, abstract description.
 
-- [x] **P0** KMP skeleton, `ui/theme/`, background, ripple
-- [ ] **P1** `ui/components/` -- design-system components with contrast tests
-- [ ] **P2** `ui/nav/` + `NavScaffold` -- back-stack, rail on wide screens, two panes
-- [ ] **P3** `data/` -- DTO, repositories, `UiState`, ViewModel
-- [ ] **P4** onboarding: `DeviceProfile`, capability probe, root/DIVERT/loopback requests
-- [ ] **P5** `core/` parsers: vless / vmess / trojan / ss / hysteria2 / wireguard
-- [ ] **P6** config collection: sources, cache, background polling, deduplication
-- [ ] **P7** liveness check by handshake, 10-minute cache
-- [ ] **P8** connect: WireGuard/AmneziaWG + Xray/sing-box
-- [ ] **P9** Zapret: strategies, presets, root path, WinDivert, fallback
-- [ ] **P10** GoodbyeDPI: TLS splitter, root daemon, Windows without rights, VpnService
-- [ ] **P11** GPS: test provider, scenarios, map (Android)
-- [ ] **P12** packaging: APK/AAB, MSI/exe, `.deb`, Nix, PKGBUILD
-- [ ] **P13** contrast, polish, i18n EN/RU/ZH, signed APK
+- [x] **0** KMP skeleton, `ui/theme/`, background, ripple
+- [ ] **1** `ui/components/` -- design-system components with contrast tests
+- [ ] **2** `ui/nav/` + `NavScaffold` -- back-stack, rail on wide screens, two panes
+- [ ] **3** `data/` -- DTO, repositories, `UiState`, ViewModel
+- [ ] **4** onboarding: `DeviceProfile`, capability probe, root/DIVERT/loopback requests
+- [ ] **5** `core/` parsers: vless / vmess / trojan / ss / hysteria2 / wireguard
+- [ ] **6** config collection: sources, cache, background polling, deduplication
+- [ ] **7** liveness check by handshake, 10-minute cache
+- [ ] **8** connect: WireGuard/AmneziaWG + Xray/sing-box
+- [ ] **9** Zapret: strategies, presets, root path, WinDivert, fallback
+- [ ] **10** GoodbyeDPI: TLS splitter, root daemon, Windows without rights, VpnService
+- [ ] **11** GPS: test provider, scenarios, map (Android)
+- [ ] **12** packaging: APK/AAB, MSI/exe, `.deb`, Nix, PKGBUILD
+- [ ] **13** contrast, polish, i18n EN/RU/ZH, signed APK
 
 ### 🌿 Branches
 
@@ -177,8 +177,8 @@ Staged as P0-P13, one stage per PR, build and tests green in between. Full detai
 
 ### 📚 Docs
 
-- [docs/PLAN.md](docs/PLAN.md) - product plan, design system, stages P0-P13
-- `AGENTS.md` in a local checkout - build environment, emulator setup, known pitfalls
+- [ABOUT.md](ABOUT.md) - what the app does, in plain words
+- [DOCX.docx](DOCX.docx) - full technical documentation: stack, modules, build
 
 ### 📄 License
 
@@ -279,7 +279,7 @@ namespace Android-библиотеки `xyz.azraellab.zapp.shared`. Namespace --
 <details>
 <summary><b>🐧 NixOS</b></summary>
 
-`flake.nix` появится на этапе P12. До этого сборка вручную, с `objcopy` в `PATH`:
+`flake.nix` появится на этапе 12. До этого сборка вручную, с `objcopy` в `PATH`:
 
 ```bash
 export PATH=/nix/store/*binutils-*/bin:$PATH
@@ -319,23 +319,23 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 
 ### ✅ План развития
 
-Разбит на этапы P0-P13, по одному PR на этап, между этапами сборка и тесты зелёные.
-Подробности -- в [docs/PLAN.md](docs/PLAN.md).
+Разбит на этапы 0-13, по одному этапу за раз, между этапами сборка и тесты зелёные.
+Короткое и абстрактное описание -- в [ABOUT.md](ABOUT.md).
 
-- [x] **P0** каркас KMP, `ui/theme/`, фон, ripple
-- [ ] **P1** `ui/components/` -- компоненты дизайн-системы с тестами контраста
-- [ ] **P2** `ui/nav/` + `NavScaffold` -- back-stack, рельс на широком экране, две панели
-- [ ] **P3** `data/` -- DTO, репозитории, `UiState`, ViewModel
-- [ ] **P4** онбординг: `DeviceProfile`, разведка, запрос прав (root / DIVERT / loopback)
-- [ ] **P5** `core/` парсеры: vless / vmess / trojan / ss / hysteria2 / wireguard
-- [ ] **P6** сбор конфигов: источники, кэш, фоновый опрос, дедупликация
-- [ ] **P7** проверка живости рукопожатием, кэш 10 минут
-- [ ] **P8** подключение: WireGuard/AmneziaWG + Xray/sing-box
-- [ ] **P9** Zapret: стратегии, пресеты, root-путь, WinDivert, fallback
-- [ ] **P10** GoodbyeDPI: TLS-сплиттер, root-демон, Windows-без-прав, VpnService
-- [ ] **P11** GPS: test-provider, сценарии, карта (Android)
-- [ ] **P12** упаковка: APK/AAB, MSI/exe, `.deb`, Nix, PKGBUILD
-- [ ] **P13** контрасты, полировка, i18n EN/RU/ZH, подписанный APK
+- [x] **0** каркас KMP, `ui/theme/`, фон, ripple
+- [ ] **1** `ui/components/` -- компоненты дизайн-системы с тестами контраста
+- [ ] **2** `ui/nav/` + `NavScaffold` -- back-stack, рельс на широком экране, две панели
+- [ ] **3** `data/` -- DTO, репозитории, `UiState`, ViewModel
+- [ ] **4** онбординг: `DeviceProfile`, разведка, запрос прав (root / DIVERT / loopback)
+- [ ] **5** `core/` парсеры: vless / vmess / trojan / ss / hysteria2 / wireguard
+- [ ] **6** сбор конфигов: источники, кэш, фоновый опрос, дедупликация
+- [ ] **7** проверка живости рукопожатием, кэш 10 минут
+- [ ] **8** подключение: WireGuard/AmneziaWG + Xray/sing-box
+- [ ] **9** Zapret: стратегии, пресеты, root-путь, WinDivert, fallback
+- [ ] **10** GoodbyeDPI: TLS-сплиттер, root-демон, Windows-без-прав, VpnService
+- [ ] **11** GPS: test-provider, сценарии, карта (Android)
+- [ ] **12** упаковка: APK/AAB, MSI/exe, `.deb`, Nix, PKGBUILD
+- [ ] **13** контрасты, полировка, i18n EN/RU/ZH, подписанный APK
 
 ### 🌿 Ветки
 
@@ -345,8 +345,8 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 
 ### 📚 Документы
 
-- [docs/PLAN.md](docs/PLAN.md) - план продукта, дизайн-система, этапы P0-P13
-- `AGENTS.md` в локальном клоне - окружение сборки, эмулятор, известные грабли
+- [ABOUT.md](ABOUT.md) - что делает приложение, простыми словами
+- [DOCX.docx](DOCX.docx) - подробная техническая документация: стек, модули, сборка
 
 ### 📄 Лицензия
 
@@ -449,7 +449,7 @@ release 签名仅限本地：创建 keystore 并让 `signing/keystore.properties
 <details>
 <summary><b>🐧 NixOS</b></summary>
 
-`flake.nix` 会在 P12 阶段加入。在那之前手动构建，并确保 `objcopy` 在 `PATH` 中：
+`flake.nix` 会在第 12 阶段加入。在那之前手动构建，并确保 `objcopy` 在 `PATH` 中：
 
 ```bash
 export PATH=/nix/store/*binutils-*/bin:$PATH
@@ -485,23 +485,23 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 
 ### ✅ 路线图
 
-分为 P0-P13，每个阶段一个 PR，阶段之间保持构建和测试全绿。详见
-[docs/PLAN.md](docs/PLAN.md)。
+分为 0-13，每次推进一个阶段，阶段之间保持构建和测试全绿。简短而抽象的说明见
+[ABOUT.md](ABOUT.md)。
 
-- [x] **P0** KMP 骨架、`ui/theme/`、背景、ripple
-- [ ] **P1** `ui/components/` -- 设计系统组件及其对比度测试
-- [ ] **P2** `ui/nav/` + `NavScaffold` -- 返回栈、宽屏侧栏、双面板
-- [ ] **P3** `data/` -- DTO、仓储、`UiState`、ViewModel
-- [ ] **P4** 引导流程：`DeviceProfile`、能力探测、root/DIVERT/loopback 权限申请
-- [ ] **P5** `core/` 解析器：vless / vmess / trojan / ss / hysteria2 / wireguard
-- [ ] **P6** 配置收集：来源、缓存、后台轮询、去重
-- [ ] **P7** 握手存活检查，10 分钟缓存
-- [ ] **P8** 连接：WireGuard/AmneziaWG + Xray/sing-box
-- [ ] **P9** Zapret：策略、预设、root 路径、WinDivert、降级
-- [ ] **P10** GoodbyeDPI：TLS 分流器、root 守护进程、Windows 免提权、VpnService
-- [ ] **P11** GPS：测试提供者、场景、地图（Android）
-- [ ] **P12** 打包：APK/AAB、MSI/exe、`.deb`、Nix、PKGBUILD
-- [ ] **P13** 对比度、打磨、多语言 EN/RU/ZH、已签名 APK
+- [x] **0** KMP 骨架、`ui/theme/`、背景、ripple
+- [ ] **1** `ui/components/` -- 设计系统组件及其对比度测试
+- [ ] **2** `ui/nav/` + `NavScaffold` -- 返回栈、宽屏侧栏、双面板
+- [ ] **3** `data/` -- DTO、仓储、`UiState`、ViewModel
+- [ ] **4** 引导流程：`DeviceProfile`、能力探测、root/DIVERT/loopback 权限申请
+- [ ] **5** `core/` 解析器：vless / vmess / trojan / ss / hysteria2 / wireguard
+- [ ] **6** 配置收集：来源、缓存、后台轮询、去重
+- [ ] **7** 握手存活检查，10 分钟缓存
+- [ ] **8** 连接：WireGuard/AmneziaWG + Xray/sing-box
+- [ ] **9** Zapret：策略、预设、root 路径、WinDivert、降级
+- [ ] **10** GoodbyeDPI：TLS 分流器、root 守护进程、Windows 免提权、VpnService
+- [ ] **11** GPS：测试提供者、场景、地图（Android）
+- [ ] **12** 打包：APK/AAB、MSI/exe、`.deb`、Nix、PKGBUILD
+- [ ] **13** 对比度、打磨、多语言 EN/RU/ZH、已签名 APK
 
 ### 🌿 分支
 
@@ -511,8 +511,8 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 
 ### 📚 文档
 
-- [docs/PLAN.md](docs/PLAN.md) -- 产品计划、设计系统、阶段 P0-P13
-- 本地检出中的 `AGENTS.md` -- 构建环境、模拟器、已知坑
+- [ABOUT.md](ABOUT.md) - 应用做什么，通俗说明
+- [DOCX.docx](DOCX.docx) - 完整技术文档：技术栈、模块、构建
 
 ### 📄 许可证
 

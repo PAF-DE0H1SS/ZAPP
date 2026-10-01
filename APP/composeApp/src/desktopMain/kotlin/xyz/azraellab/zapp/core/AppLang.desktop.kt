@@ -34,7 +34,10 @@ actual object AppLangStore {
         true
     }.getOrDefault(false)
 
+    // toLanguageTag(), а не getLanguage(): регион нужен для разбора. В Молдове
+    // язык системы -- `ro`, и без `ro-MD` правило «СНГ -> русский» не срабатывает.
     actual fun systemCode(): String? = runCatching {
-        Locale.getDefault().language.takeIf { it.isNotBlank() }
+        Locale.getDefault().toLanguageTag()
+            .takeIf { it.isNotBlank() && it != "und" }
     }.getOrNull()
 }

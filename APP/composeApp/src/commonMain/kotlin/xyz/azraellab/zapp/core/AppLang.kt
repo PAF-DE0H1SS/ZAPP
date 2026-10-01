@@ -53,7 +53,17 @@ private val CIS_LANGS = setOf(
     "az", // Азербайджан
     "hy", // Армения
     "ka", // Грузия
-    "mo", // Молдова (молдавский -- румынский, но в интерфейсе СНГ нужен русский)
+)
+
+/**
+ * Страны СНГ по коду региона.
+ *
+ * Нужны отдельно от языков: в Молдове язык системы -- `ro` (румынский,
+ * «молдавский» как отдельный код deprecated), и по одному языку её не увидеть.
+ * Русский в этих странах ставится по региону, а не по `ro`.
+ */
+private val CIS_REGIONS = setOf(
+    "RU", "BY", "UA", "KZ", "KG", "TJ", "TM", "UZ", "AZ", "AM", "GE", "MD",
 )
 
 /** Стандартные китайские коды: zh, а также варианты script/region. */
@@ -63,6 +73,21 @@ private val CHINESE_LANGS = setOf("zh", "yue", "cmn")
 private fun primaryCode(code: String?): String? =
     code?.trim()?.lowercase()?.substringBefore('-')?.substringBefore('_')
         ?.takeIf { it.isNotBlank() }
+
+/**
+ * Регион кода вида `ru-RU`, `zh-Hans-CN`, `ro_MD`.
+ *
+ * Второй компонент -- не всегда регион: в `zh-Hans-CN` это script. Поэтому берём
+ * последний компонент и проверяем, что он похож на страну: две буквы, не script
+ * (`Hans`, `Latn`, `Cyrl` -- по три и четыре).
+ */
+private fun regionCode(code: String?): String? {
+    val parts = code?.trim()?.replace('_', '-')?.split('-')?.filter { it.isNotBlank() }
+        ?: return null
+    return parts.drop(1)
+        .lastOrNull { it.length == 2 && it.all { c -> c.isLetter() } }
+        ?.uppercase()
+}
 
 /**
  * Какой язык показывать: явный выбор пользователя, иначе язык системы по правилам
@@ -76,6 +101,9 @@ fun resolveLang(chosen: AppLang?, systemCode: String?): AppLang {
     val primary = primaryCode(systemCode) ?: return AppLang.EN
     return when {
         primary in CHINESE_LANGS -> AppLang.ZH
+        // Регион проверяем после китайского: `zh-CN` -- это Китай, и он должен
+        // остаться китайским, а не попасть под регионное правило.
+        regionCode(systemCode) in CIS_REGIONS -> AppLang.RU
         primary in CIS_LANGS -> AppLang.RU
         else -> AppLang.EN
     }

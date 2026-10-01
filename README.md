@@ -111,9 +111,11 @@ On NixOS, `jlink` and `jpackage` need `objcopy`, which is not in `PATH` by defau
 <details>
 <summary><b>🐧 NixOS</b></summary>
 
+`flake.nix` появится на этапе P12. До этого сборка вручную, с `objcopy` в `PATH`:
+
 ```bash
-nix build . --option sandbox false   # local build
-nix run .                            # run from the checkout
+export PATH=/nix/store/*binutils-*/bin:$PATH
+./gradlew autoBuild
 ```
 </details>
 
@@ -156,7 +158,7 @@ Staged as P0-P13, one stage per PR, build and tests green in between. Full detai
 ### 📚 Docs
 
 - [docs/PLAN.md](docs/PLAN.md) - product plan, design system, stages P0-P13
-- [AGENTS.md](AGENTS.md) - build environment, emulator setup, known pitfalls
+- `AGENTS.md` in a local checkout - build environment, emulator setup, known pitfalls
 
 ### 📄 License
 
@@ -253,9 +255,11 @@ namespace Android-библиотеки `xyz.azraellab.zapp.shared`. Namespace �
 <details>
 <summary><b>🐧 NixOS</b></summary>
 
+`flake.nix` появится на этапе P12. До этого сборка вручную, с `objcopy` в `PATH`:
+
 ```bash
-nix build . --option sandbox false   # локальная сборка
-nix run .                            # запуск из каталога
+export PATH=/nix/store/*binutils-*/bin:$PATH
+./gradlew autoBuild
 ```
 </details>
 
@@ -298,7 +302,7 @@ Source set `desktopTest` настроен, но тестовых кейсов п
 ### 📚 Документы
 
 - [docs/PLAN.md](docs/PLAN.md) - план продукта, дизайн-система, этапы P0-P13
-- [AGENTS.md](AGENTS.md) - окружение сборки, эмулятор, известные грабли
+- `AGENTS.md` в локальном клоне - окружение сборки, эмулятор, известные грабли
 
 ### 📄 Лицензия
 

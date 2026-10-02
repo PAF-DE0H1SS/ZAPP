@@ -15,9 +15,9 @@
 </div>
 
 > [!IMPORTANT]
-> **Status: skeleton (v0.1.0).** The project builds for Android and desktop, the design
-> system is in place, but there are no feature screens yet -- the app currently draws an
-> empty themed window. See the Roadmap for what comes next.
+> **Status: working interface (v0.1.0).** The project builds for Android and desktop.
+> The app opens on a dark themed window with a bottom bar: VPN, Zapret, GoodbyeDPI, GPS
+> and Settings, plus a separate traffic monitor window. See the Roadmap for what comes next.
 
 ZAPP is a network toolkit written in Kotlin with **Compose Multiplatform**: one shared UI
 for the native Android build and for desktop. The shared code lives in `APP/composeApp`, the
@@ -47,15 +47,18 @@ Build coordinates are kept in one place, `APP/gradle.properties`: `zappVersion=0
 
 ### 🎯 Features
 
-Nothing functional yet -- this is the foundation stage. What is in place:
+Settings are stored, presets import and export, and the traffic counters are live. What is in place:
 
 | Area | What works |
 |---|---|
 | 🧱 **Shared UI** | Compose Multiplatform module `:composeApp` compiled for Android and JVM desktop |
-| 🎨 **Design system** | colour schemes (dark/light), typography, shapes, spacing scale, ripples, starfield/glass background |
-| 🌗 **Theme persistence** | system / light / dark choice survives restart -- `SharedPreferences` on Android, `~/.config/zapp/theme` on desktop |
+| 🧭 **Navigation** | bottom bar with five tabs; the traffic monitor opens as a separate window |
+| 🎨 **Design system** | one dark colour scheme, typography, shapes, spacing scale, ripples, starfield/glass background |
+| 🌗 **Theme** | dark only -- there is no light scheme and nothing to switch to |
+| ⚙️ **Settings** | config model per section, presets with import/export, debounced save to disk |
+| 📶 **Traffic monitor** | system counters, speed graph, session summary; native C++ reader on Android with a Kotlin fallback |
 | 📦 **Packaging** | APK, MSI, `.deb`, AppImage and a cross-platform uber-JAR |
-| 🧪 **Tests** | 20 cases in `desktopTest`: 8 palette contrast + 12 locale resolution |
+| 🧪 **Tests** | 22 cases in `desktopTest`: 6 component contrast + 4 palette contrast + 12 locale resolution |
 
 ### 🧭 Architecture
 
@@ -142,9 +145,10 @@ take the desktop packages from CI, which builds them on `ubuntu` and `windows`.
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-20 test cases, all green: `ThemeTest` (8) checks every colour pair in both schemes against
-the WCAG contrast ratios, `I18nTest` (12) checks that the system locale maps to the right
-language, including the country part of a locale tag. `--rerun-tasks` matters: without it
+22 test cases, all green: `ComponentsTest` (6) checks each component colour pair against
+the WCAG contrast ratios, `ThemeTest` (4) does the same for the palette, and `I18nTest`
+(12) checks that the system locale maps to the right language, including the country part
+of a locale tag. `--rerun-tasks` matters: without it
 an unchanged task reports `UP-TO-DATE` and the test count is not recomputed.
 
 The palette tests are not decoration. Replace `outline` with `#D4D4D8` and `ThemeTest`
@@ -157,8 +161,8 @@ Staged as 0-13, one stage at a time, build and tests green in between. See [ABOU
 for a short, abstract description.
 
 - [x] **0** KMP skeleton, `ui/theme/`, background, ripple
-- [ ] **1** `ui/components/` -- design-system components with contrast tests
-- [ ] **2** `ui/nav/` + `NavScaffold` -- back-stack, rail on wide screens, two panes
+- [x] **1** `ui/components/` -- design-system components with contrast tests
+- [x] **2** `ui/nav/` -- bottom bar, five tabs, traffic monitor as a separate window
 - [ ] **3** `data/` -- DTO, repositories, `UiState`, ViewModel
 - [ ] **4** onboarding: `DeviceProfile`, capability probe, root/DIVERT/loopback requests
 - [ ] **5** `core/` parsers: vless / vmess / trojan / ss / hysteria2 / wireguard
@@ -217,15 +221,19 @@ compliance with the laws that apply to you.
 
 ### 🎯 Возможности
 
-Функционала пока нет -- это стадия фундамента. Что уже работает:
+Настройки сохраняются, пресеты импортируются и выгружаются, счётчики трафика живые.
+Что уже работает:
 
 | Область | Что есть |
 |---|---|
 | 🧱 **Общий UI** | модуль Compose Multiplatform `:composeApp`, собирается под Android и JVM-десктоп |
-| 🎨 **Дизайн-система** | цветовые схемы (тёмная/светлая), типографика, формы, шкала отступов, ripple, фон «звёздное небо» со стеклом |
-| 🌗 **Хранение темы** | выбор system / light / dark переживает перезапуск -- `SharedPreferences` на Android, `~/.config/zapp/theme` на десктопе |
+| 🧭 **Навигация** | нижняя панель из пяти разделов; мониторинг трафика открывается отдельным окном |
+| 🎨 **Дизайн-система** | одна тёмная цветовая схема, типографика, формы, шкала отступов, ripple, фон «звёздное небо» со стеклом |
+| 🌗 **Тема** | только тёмная: светлой схемы нет и переключаться не на что |
+| ⚙️ **Настройки** | модель настроек по разделам, пресеты с импортом и выгрузкой, отложенная запись на диск |
+| 📶 **Мониторинг трафика** | системные счётчики, график скорости, сводка за сессию; на Android -- нативный C++ с откатом на Kotlin |
 | 📦 **Упаковка** | APK, MSI, `.deb`, AppImage и кроссплатформенный uber-JAR |
-| 🧪 **Тесты** | 20 кейсов в `desktopTest`: 8 на контраст палитры + 12 на разбор локали |
+| 🧪 **Тесты** | 22 кейса в `desktopTest`: 6 на контраст компонентов + 4 на контраст палитры + 12 на разбор локали |
 
 ### 🧭 Архитектура
 
@@ -313,9 +321,10 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-20 тестовых кейсов, все зелёные: `ThemeTest` (8) проверяет каждую пару цветов в обеих
-схемах на контраст по WCAG, `I18nTest` (12) -- что локаль системы, включая страну
-в теге, отображается в правильный язык приложения. `--rerun-tasks` обязателен: без него
+22 тестовых кейса, все зелёные: `ComponentsTest` (6) проверяет каждую пару цветов
+компонента на контраст по WCAG, `ThemeTest` (4) -- то же самое для палитры,
+`I18nTest` (12) -- что локаль системы, включая страну в теге, отображается в правильный
+язык приложения. `--rerun-tasks` обязателен: без него
 неизменившаяся задача отдаёт `UP-TO-DATE`, и счётчик тестов не пересчитывается.
 
 Тесты палитры -- не для галочки. Подставьте вместо `outline` цвет `#D4D4D8`, и `ThemeTest`
@@ -328,8 +337,8 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 Короткое и абстрактное описание -- в [ABOUT.md](ABOUT.md).
 
 - [x] **0** каркас KMP, `ui/theme/`, фон, ripple
-- [ ] **1** `ui/components/` -- компоненты дизайн-системы с тестами контраста
-- [ ] **2** `ui/nav/` + `NavScaffold` -- back-stack, рельс на широком экране, две панели
+- [x] **1** `ui/components/` -- компоненты дизайн-системы с тестами контраста
+- [x] **2** `ui/nav/` -- нижняя панель, пять разделов, мониторинг трафика отдельным окном
 - [ ] **3** `data/` -- DTO, репозитории, `UiState`, ViewModel
 - [ ] **4** онбординг: `DeviceProfile`, разведка, запрос прав (root / DIVERT / loopback)
 - [ ] **5** `core/` парсеры: vless / vmess / trojan / ss / hysteria2 / wireguard
@@ -389,15 +398,18 @@ ZAPP предоставляется «КАК ЕСТЬ», без гарантий
 
 ### 🎯 功能
 
-目前还没有实际功能，仍处于基础阶段。已经就位的部分：
+设置可以保存，预设支持导入导出，流量计数已经可用。已就位的部分：
 
 | 领域 | 内容 |
 |---|---|
 | 🧱 **共享 UI** | Compose Multiplatform 模块 `:composeApp`，同时编译到 Android 和 JVM 桌面端 |
-| 🎨 **设计系统** | 配色方案（深色/浅色）、字体、形状、间距刻度、ripple、星点玻璃背景 |
-| 🌗 **主题持久化** | system / light / dark 的选择可跨重启保留 -- Android 用 `SharedPreferences`，桌面端用 `~/.config/zapp/theme` |
+| 🧭 **导航** | 底部五个标签页；流量监控以独立窗口打开 |
+| 🎨 **设计系统** | 单一深色配色、字体、形状、间距刻度、ripple、星点玻璃背景 |
+| 🌗 **主题** | 只有深色：没有浅色方案，也没有可切换的对象 |
+| ⚙️ **设置** | 分区的配置模型、预设导入导出、写盘防抖 |
+| 📶 **流量监控** | 系统计数、速度曲线、会话汇总；Android 上优先使用原生 C++，失败时退回 Kotlin |
 | 📦 **打包** | APK、MSI、`.deb`、AppImage 以及跨平台 uber-JAR |
-| 🧪 **测试** | `desktopTest` 共 20 个用例：8 个调色板对比度 + 12 个语言环境解析 |
+| 🧪 **测试** | `desktopTest` 共 22 个用例：6 个组件对比度 + 4 个调色板对比度 + 12 个语言环境解析 |
 | 🌐 **语言** | 英文、俄文、中文 |
 
 ### 🧭 架构
@@ -484,8 +496,9 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-20 个测试用例，全部通过：`ThemeTest`（8 个）按 WCAG 对比度检查两套配色里每一对颜色，
-`I18nTest`（12 个）检查系统语言环境（含地区部分）是否映射到正确的界面语言。
+22 个测试用例，全部通过：`ComponentsTest`（6 个）按 WCAG 对比度检查组件的每一对颜色，
+`ThemeTest`（4 个）对调色板做同样的检查，`I18nTest`（12 个）检查系统语言环境（含地区部分）
+是否映射到正确的界面语言。
 `--rerun-tasks` 很关键：没有它，未变更的任务会报 `UP-TO-DATE`，测试计数不会重新统计。
 
 调色板测试不是摆设。把 `outline` 换成 `#D4D4D8`，`ThemeTest` 会失败，这正是它该做的：
@@ -497,8 +510,8 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 [ABOUT.md](ABOUT.md)。
 
 - [x] **0** KMP 骨架、`ui/theme/`、背景、ripple
-- [ ] **1** `ui/components/` -- 设计系统组件及其对比度测试
-- [ ] **2** `ui/nav/` + `NavScaffold` -- 返回栈、宽屏侧栏、双面板
+- [x] **1** `ui/components/` -- 设计系统组件及其对比度测试
+- [x] **2** `ui/nav/` -- 底部导航五个标签页，流量监控独立窗口
 - [ ] **3** `data/` -- DTO、仓储、`UiState`、ViewModel
 - [ ] **4** 引导流程：`DeviceProfile`、能力探测、root/DIVERT/loopback 权限申请
 - [ ] **5** `core/` 解析器：vless / vmess / trojan / ss / hysteria2 / wireguard

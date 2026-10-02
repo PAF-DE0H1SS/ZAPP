@@ -162,12 +162,11 @@ The interface, the colours and the wording are shared, so a feature does not
 exist in one version and be missing from the other.
 
 The interface follows one visual idea. A dark surface, one accent colour, a star
-field that drifts slowly behind the content, and translucent panels over it. The
-effect inverts on a light theme, because white stars on white are nothing to see.
+field that drifts slowly behind the content, and translucent panels over it. There
+is one theme, and it is dark.
 
 Colour contrast is not left to judgement. Every pair of foreground and background
-colours is measured against a published standard, in both themes, and the check
-runs as a test. Borders are split in two: ones that carry meaning must be
+colours is measured against a published standard, and the check runs as a test. Borders are split in two: ones that carry meaning must be
 visible enough to see, and decorative ones are not held to the same rule. A
 border colour that is too faint to see fails the build.
 
@@ -184,9 +183,12 @@ no agreement to sign, no permission asked in advance.
 
 ## Where it is now
 
-The foundation is in place: the shared code builds for both platforms, the design
-system is finished, and the palette and language tests pass. The feature screens
-are not written yet. The app currently opens a themed window and nothing more.
+The interface is in place: the shared code builds for both platforms, the design
+system is finished, and the component, palette and language tests pass. There is a
+bottom bar with five sections, a settings page and a separate traffic monitor
+window, and the settings survive a restart. What is not there yet is the actual
+tunnelling and DPI unblocking, device probing with permissions, pulling configs
+from outside, and a map for location spoofing.
 
 The work is staged, and each stage ends with a green build and green tests.
 
@@ -353,12 +355,10 @@ The work is staged, and each stage ends with a green build and green tests.
 
 Интерфейс держится на одной визуальной идее. Тёмная поверхность, один акцентный
 цвет, медленно плывущее звёздное небо за содержимым и полупрозрачные панели поверх
-него. На светлой теме эффект инвертируется, потому что белые звёзды на белом -- это
-ничего.
+него. Тема одна, и она тёмная.
 
 Контраст цветов не оставлен на глаз. Каждая пара цвета текста и цвета фона
-измеряется по опубликованному стандарту в обеих темах, и проверка выполняется как
-тест. Границы делятся на два вида: несущие смысл должны быть видны достаточно, а
+измеряется по опубликованному стандарту, и проверка выполняется как тест. Границы делятся на два вида: несущие смысл должны быть видны достаточно, а
 декоративные под это правило не попадают. Слишком бледный цвет границы роняет
 сборку.
 
@@ -375,9 +375,11 @@ The work is staged, and each stage ends with a green build and green tests.
 
 ## Где мы сейчас
 
-Основа на месте: общий код собирается под обе платформы, дизайн-система закончена,
-тесты палитры и языка проходят. Экраны функций ещё не написаны. Приложение сейчас
-открывает оформленное окно и на этом всё.
+Интерфейс на месте: общий код собирается под обе платформы, дизайн-система
+закончена, тесты компонентов, палитры и языка проходят. Есть нижняя панель из пяти
+разделов, страница настроек и отдельное окно мониторинга трафика, настройки
+переживают перезапуск. Нет пока реального туннеля и обхода DPI, разведки устройства
+с правами, загрузки конфигов извне и карты для подмены координат.
 
 Работа разбита на этапы, и каждый этап заканчивается зелёной сборкой и зелёными
 тестами.
@@ -518,10 +520,9 @@ The work is staged, and each stage ends with a green build and green tests.
 功能不会只存在于某个版本而在另一个版本里缺失。
 
 界面围绕一个视觉想法展开。深色底、一个强调色、内容背后缓缓流动的星空，以及浮在
-其上的半透明面板。到了浅色主题，整个效果反转，因为白底上的白星等于什么都看不见。
+其上的半透明面板。主题只有一个，而且是深色的。
 
-颜色对比度不靠眼睛判断。每一组前景色和背景色都按公开标准测量，两套主题都测，检查
-以测试的形式跑。边框分成两种：承载意义的必须清晰可见，装饰性的不适用同一条规则。
+颜色对比度不靠眼睛判断。每一组前景色和背景色都按公开标准测量，检查以测试的形式跑。边框分成两种：承载意义的必须清晰可见，装饰性的不适用同一条规则。
 一个看不见的边框颜色会让构建失败。
 
 语言跟随系统：独联体地区用俄语，中文用中文，其余用英文，而明确的用户选择永远优先。
@@ -535,7 +536,8 @@ The work is staged, and each stage ends with a green build and green tests.
 
 ## 现在到哪一步了
 
-地基已经在了：共享代码在两个平台上都能构建，设计系统完成，调色板和语言的测试
-都通过。功能界面还没写。应用目前只打开一个配好主题的空窗口。
+界面已经在了：共享代码在两个平台上都能构建，设计系统完成，组件、调色板和语言的
+测试都通过。底部五个分区、设置页和独立的流量监控窗口都在，设置可以跨重启保留。
+还没有的是真正的隧道与 DPI 解绕、带权限的设备探测、外部配置拉取，以及坐标伪装用的地图。
 
 工作按阶段推进，每个阶段都以构建通过、测试通过收尾。

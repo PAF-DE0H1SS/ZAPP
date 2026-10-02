@@ -23,8 +23,6 @@ import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.ui.theme.AzraelCornerGlass
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.theme.AzraelTheme
-import xyz.azraellab.zapp.core.AppThemeStore
-import xyz.azraellab.zapp.ui.theme.AzraelThemeState
 import xyz.azraellab.zapp.ui.theme.isDark
 
 // Палитра, типографика и режимы темы живут в ui/theme (единая дизайн-система).
@@ -40,12 +38,13 @@ val AzraelBorder = xyz.azraellab.zapp.ui.theme.AzraelBorder
 val AzraelTextDim = xyz.azraellab.zapp.ui.theme.AzraelTextDim
 
 /**
- * Точка входа темы приложения: восстанавливает сохранённый режим из хранилища
- * (один раз за процесс) и рисует содержимое. Дальше состояние ведёт [AzraelThemeState].
+ * Точка входа темы приложения.
+ *
+ * Режима нет -- тема одна, тёмная, поэтому здесь нечего восстанавливать из
+ * хранилища: корень только натягивает схему и отдаёт содержимое.
  */
 @Composable
 fun AppThemeRoot(content: @Composable () -> Unit) {
-    AzraelThemeState.load()
     AzraelTheme(content = content)
 }
 

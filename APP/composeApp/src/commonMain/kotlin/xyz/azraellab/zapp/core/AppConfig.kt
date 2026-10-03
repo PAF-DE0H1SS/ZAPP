@@ -21,6 +21,12 @@ data class AppConfig(
     /** Показывать ли раздел мониторинга трафика. */
     val trafficMonitorEnabled: Boolean = true,
 
+    /** Детальный журнал: действия, состояния, ошибки (файл zapp.log). */
+    val detailLogEnabled: Boolean = true,
+
+    /** Приветствие уже показано. false -- показываем при первом запуске. */
+    val welcomeDone: Boolean = false,
+
     /** Схема версии: нужна для миграций при чтении старых файлов. */
     val version: Int = CURRENT_VERSION
 ) {

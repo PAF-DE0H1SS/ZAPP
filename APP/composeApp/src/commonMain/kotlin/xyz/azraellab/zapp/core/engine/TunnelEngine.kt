@@ -65,6 +65,8 @@ abstract class BaseTunnelEngine : TunnelEngine {
     }
 
     protected fun log(line: String) {
+        // Одна строка попадает и в карточку туннеля, и в общий журнал.
+        xyz.azraellab.zapp.core.log.AppLog.log("vpn", line)
         val next = _log.value + line
         _log.value = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
     }

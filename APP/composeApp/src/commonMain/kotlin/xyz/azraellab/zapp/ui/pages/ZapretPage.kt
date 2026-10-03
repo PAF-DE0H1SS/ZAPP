@@ -102,7 +102,16 @@ fun ZapretPage(state: AppState) {
                         },
                         selected = config.strategy,
                         onSelect = { code ->
-                            state.mutate { it.copy(zapret = it.zapret.copy(strategy = code)) }
+                            // Пресет применяется целиком: одна строка strategy
+                            // без её флагов -- «работает», но не меняет команду.
+                            state.mutate {
+                                it.copy(
+                                    zapret = xyz.azraellab.zapp.core.AutoStrategy.applyZapret(
+                                        it.zapret,
+                                        xyz.azraellab.zapp.core.AutoStrategy.Decision(code, "manual")
+                                    )
+                                )
+                            }
                         }
                     )
                 }
@@ -215,6 +224,7 @@ private fun ZapretAdvanced(state: AppState, config: ZapretConfig) {
                     Choice("fake", "fake"),
                     Choice("split2", "split2"),
                     Choice("fakedsplit", "fakedsplit"),
+                    Choice("multisplit", "multisplit"),
                     Choice("datanozzle", "datanozzle"),
                     Choice("multiback", "multiback"),
                     Choice("seqovl", "seqovl")
@@ -294,6 +304,13 @@ private fun ZapretAdvanced(state: AppState, config: ZapretConfig) {
                     checked = config.fakeCsum,
                     onCheckedChange = { on ->
                         state.mutate { it.copy(zapret = it.zapret.copy(fakeCsum = on)) }
+                    }
+                )
+                ZappSettingRow(
+                    title = "--dpi-desync-fooling=ts",
+                    checked = config.foolingTs,
+                    onCheckedChange = { on ->
+                        state.mutate { it.copy(zapret = it.zapret.copy(foolingTs = on)) }
                     }
                 )
             }

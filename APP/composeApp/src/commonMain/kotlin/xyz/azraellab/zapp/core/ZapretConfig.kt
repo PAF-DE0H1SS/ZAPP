@@ -121,6 +121,8 @@ data class ZapretConfig(
     val fakeSeq: Int? = null,
     /** `--fake-csum`: подменить контрольную сумму. */
     val fakeCsum: Boolean = false,
+    /** `--dpi-desync-fooling=ts`: трюк с таймингом (флаг из zapret-discord-youtube). */
+    val foolingTs: Boolean = false,
     /** `--fake-tcp-flags`: подменить флаги TCP. */
     val fakeTcpFlags: Int? = null,
     /** `--fake-mss`: подменить MSS. */
@@ -218,7 +220,8 @@ data class ZapretConfig(
         // опции nfqws, заменяющие собой старые `--fake-csum`/`--fake-seq`.
         val fooling = listOfNotNull(
             "badsum".takeIf { fakeCsum },
-            "badseq".takeIf { fakeSeq != null }
+            "badseq".takeIf { fakeSeq != null },
+            "ts".takeIf { foolingTs }
         )
         if (fooling.isNotEmpty()) add("--dpi-desync-fooling=" + fooling.joinToString(","))
         if (fakeTcpFlags != null) add("--dpi-desync-tcp-flags-set=$fakeTcpFlags")
@@ -298,7 +301,9 @@ data class ZapretDefaults(
     val fakeTcp: Boolean? = null,
     val fakeCutTls: Boolean? = null,
     val fakeSeq: Int? = null,
-    val fakeCsum: Boolean? = null
+    val fakeCsum: Boolean? = null,
+    val fakeRepeats: Int? = null,
+    val foolingTs: Boolean? = null
 )
 
 /** Режим работы Zapret. */
@@ -374,6 +379,18 @@ enum class ZapretStrategy(
         "fake", "Подмена пакета", "Fake packet",
         ZapretFamily.FAKE,
         ZapretDefaults(fakePacket = true, desync = setOf("fake"))
+    ),
+
+    // Пресеты по мотивам zapret-discord-youtube (general.bat).
+    MULTISPLIT_SEQOVL(
+        "multisplit-seqovl", "Multisplit + seqovl", "Multisplit + seqovl",
+        ZapretFamily.DESYNC,
+        ZapretDefaults(desync = setOf("multisplit"), splitPos = "1", splitSeqovl = 568)
+    ),
+    FAKE_FAKEDSPLIT_TS(
+        "fake-fakedsplit-ts", "Fake + fakedsplit (ts)", "Fake + fakedsplit (ts)",
+        ZapretFamily.DESYNC,
+        ZapretDefaults(desync = setOf("fake", "fakedsplit"), fakeRepeats = 6, foolingTs = true)
     );
 
     companion object {

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -25,8 +26,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.ui.pages.GoodbyeDpiPage
 import xyz.azraellab.zapp.ui.pages.GpsPage
@@ -111,11 +114,19 @@ fun AppRoot(state: AppState) {
             }
         }
     ) { padding ->
+        // На широких экранах контент ограничен и отцентрован: лента полей
+        // во всю ширину монитора нечитаема, строка становится длиннее глаза.
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding),
+            contentAlignment = Alignment.Center
         ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 720.dp)
+            ) {
             // Ключ -- это содержимое, а не имя вкладки: окно трафика живёт
             // поверх выбранной вкладки, и при его закрытии переход должен
             // вернуться к той же странице, а не переигрывать её появление.
@@ -145,6 +156,7 @@ fun AppRoot(state: AppState) {
                     key == AppTab.GPS.name -> GpsPage(state)
                     else -> SettingsPage(state)
                 }
+            }
             }
         }
     }

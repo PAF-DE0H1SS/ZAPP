@@ -146,7 +146,9 @@ object AutoStrategy {
             fakeTcp = d.fakeTcp ?: config.fakeTcp,
             fakeCutTls = d.fakeCutTls ?: config.fakeCutTls,
             fakeSeq = d.fakeSeq ?: config.fakeSeq,
-            fakeCsum = d.fakeCsum ?: config.fakeCsum
+            fakeCsum = d.fakeCsum ?: config.fakeCsum,
+            fakeRepeats = d.fakeRepeats ?: config.fakeRepeats,
+            foolingTs = d.foolingTs ?: config.foolingTs
         )
     }
 

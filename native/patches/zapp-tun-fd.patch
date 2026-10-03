@@ -1,0 +1,14 @@
+--- a/protocol/tun/inbound.go
++++ b/protocol/tun/inbound.go
+@@ -377,6 +377,11 @@
+ 			if HookBeforeCreatePlatformInterface != nil {
+ 				HookBeforeCreatePlatformInterface()
+ 			}
++			// ZAPP: на Android приложение не может открыть /dev/net/tun,
++			// туннель создаёт VpnService и передаёт готовый fd номером в
++			// окружении процесса. В desktop-сборке переменной нет и
++			// поведение прежнее: fd открывается здесь.
++			tunOptions.FileDescriptor = tunFdFromEnv()
+ 			tunInterface, err = tun.New(tunOptions)
+ 		}
+ 		monitor.Finish()

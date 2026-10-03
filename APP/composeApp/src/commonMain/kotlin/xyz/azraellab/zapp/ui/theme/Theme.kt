@@ -1,7 +1,9 @@
 package xyz.azraellab.zapp.ui.theme
 
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 
 /**
  * Единственная тема приложения: тёмная.
@@ -23,6 +25,13 @@ fun AzraelTheme(content: @Composable () -> Unit) {
         typography = AzraelTypography,
         shapes = AzraelShapes
     ) {
-        AzraelIndicationTheme(content)
+        // Цвет текста по умолчанию. Без этой строки в иерархии действует
+        // дефолт foundation -- чёрный, потому что нигде нет Surface: заголовки
+        // строк настроек и другие Text без явного цвета рисовались чёрным
+        // по тёмной карточке и были невидимы. MaterialTheme LocalContentColor
+        // не задаёт, поэтому провайдер ставится здесь, один раз на всё приложение.
+        CompositionLocalProvider(LocalContentColor provides AzraelDarkScheme.onSurface) {
+            AzraelIndicationTheme(content)
+        }
     }
 }

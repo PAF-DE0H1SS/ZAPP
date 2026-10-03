@@ -1,0 +1,18 @@
+diff --git a/experimental/deprecated/constants.go b/experimental/deprecated/constants.go
+index 5dfdfd4..06dfc30 100644
+--- a/experimental/deprecated/constants.go
++++ b/experimental/deprecated/constants.go
+@@ -29,8 +29,12 @@ func (n Note) Impending() bool {
+ 	}
+ 	versionCurrent := badversion.Parse(C.Version)
+ 	versionMinor := badversion.Parse(n.ScheduledVersion).Minor - versionCurrent.Minor
++	// ZAPP-deprecated-impending: версия форка amnezia-box (1.260910.0)
++	// ломает проверку sing-box: её minor (260910) больше любого
++	// ScheduledVersion, и каждый deprecated-отчёт паникует вместо
++	// предупреждения. Ранний срок уже прошёл -- возвращаем false.
+ 	if versionCurrent.PreReleaseIdentifier == "" && versionMinor < 0 {
+-		panic("invalid deprecated note: " + n.Name)
++		return false
+ 	}
+ 	return versionMinor <= 1
+ }

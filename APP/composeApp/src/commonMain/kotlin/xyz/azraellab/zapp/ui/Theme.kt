@@ -114,8 +114,15 @@ fun Modifier.glass(
 ): Modifier = this
     .clip(RoundedCornerShape(corner))
     .background(
+        // Альфа УМНОЖАЕТСЯ, а не заменяется. У поверхности темы она почти
+        // всегда маленькая (стекло на 5%), и `copy(alpha = 0.86f)` перетирал
+        // её до 86% -- карточки становились светло-серыми, а весь
+        // вторичный текст, рассчитанный на тёмную подложку, исчезал.
         brush = Brush.linearGradient(
-            colors = listOf(fill.copy(alpha = 0.86f), fill.copy(alpha = 0.62f)),
+            colors = listOf(
+                fill.copy(alpha = fill.alpha * 0.86f),
+                fill.copy(alpha = fill.alpha * 0.62f)
+            ),
             start = Offset.Zero,
             end = Offset(400f, 400f)
         )

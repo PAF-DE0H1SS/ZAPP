@@ -35,9 +35,11 @@ enum class Str {
     COMMON_APPLY,
     COMMON_AUTODETECT,
     COMMON_TEST,
+    COMMON_ADVANCED,
     COMMON_EXPORT,
     COMMON_IMPORT,
     COMMON_RESET,
+    COMMON_CLOSE,
 
     /** Списки доменов и приложений. */
     LIST_DOMAINS,
@@ -48,6 +50,7 @@ enum class Str {
     /** VPN. */
     VPN_PROFILES,
     VPN_ADD_PROFILE,
+    VPN_NAME,
     VPN_PROTOCOL,
     VPN_TRANSPORT,
     VPN_GATEWAY,
@@ -93,16 +96,9 @@ enum class Str {
     /** GoodbyeDPI. */
     DPI_MODE,
     DPI_SPLIT_POS,
-    DPI_SPLIT_OFFSET,
-    DPI_FAKE_LEN,
-    DPI_FAKE_VAL,
     DPI_FAKE_SEQ,
     DPI_FAKE_CSUM,
-    DPI_FAKE_FLAGS,
-    DPI_FAKE_MSS,
-    DPI_SKIP_ALPN,
-    DPI_SKIP_TLS13,
-    DPI_KEEP_SNI,
+    DPI_FAKE_SNI,
     DPI_DAEMON_PATH,
     DPI_AUTO_RESTART,
 
@@ -131,6 +127,38 @@ enum class Str {
     GPS_REINSTALL,
     GPS_UNSUPPORTED_TITLE,
     GPS_UNSUPPORTED_DESC,
+    GPS_VPN_HINT,
+
+    /** Состояние подмены: показывается в строке состояния. */
+    GPS_STATE_OFF,
+    GPS_STATE_STARTING,
+    GPS_STATE_ACTIVE,
+    GPS_STATE_ERROR,
+
+    /** Журнал подмены: события, которые видит пользователь. */
+    GPS_LOG_STARTING,
+    GPS_LOG_STOPPED,
+    GPS_LOG_PROVIDER,
+    GPS_LOG_NO_MOCK,
+    GPS_LOG_RESOLVED,
+    GPS_LOG_NO_GATEWAY,
+    GPS_LOG_RESOLVE_FAIL,
+    GPS_LOG_ROUTE_EMPTY,
+    GPS_LOG_ROUTE_DONE,
+    GPS_LOG_PROVIDER_ERROR,
+
+    /** Демоны zapret и goodbyedpi: состояния и события журналов. */
+    DAEMON_STATE_STOPPED,
+    DAEMON_STATE_STARTING,
+    DAEMON_STATE_RUNNING,
+    DAEMON_STATE_ERROR,
+    DAEMON_LOG_STARTING,
+    DAEMON_LOG_RUNNING,
+    DAEMON_LOG_STOPPED,
+    DAEMON_LOG_EXIT,
+    DAEMON_NO_BINARY,
+    DAEMON_NO_SNI,
+    DAEMON_BINARY,
 
     /** Мониторинг трафика. */
     TRAFFIC_TOTAL,
@@ -182,7 +210,134 @@ enum class Str {
     ERR_PRESET_EMPTY,
     TRAFFIC_OPEN_WINDOW,
     TRAFFIC_PER_APP,
-    TRAFFIC_SMOOTH;
+    TRAFFIC_SMOOTH,
+
+    /** Разрешения. */
+    SETTINGS_PERMISSIONS,
+    PERM_GRANT,
+    PERM_OPEN_SETTINGS,
+    PERM_STATE_GRANTED,
+    PERM_STATE_DENIED,
+    PERM_STATE_SETTINGS,
+    PERM_STATE_UNSUPPORTED,
+    PERM_VPN,
+    PERM_NOTIFICATIONS,
+    PERM_LOCATION_FINE,
+    PERM_LOCATION_MOCK,
+    PERM_HINT_DENIED,
+    PERM_HINT_MOCK,
+    PERM_HINT_UNSUPPORTED,
+
+    /** Разведка устройства. */
+    SETTINGS_DEVICE,
+    PROBE_YES,
+    PROBE_NO,
+    PROBE_UNKNOWN,
+    PROBE_MODEL,
+    PROBE_SYSTEM,
+    PROBE_KERNEL,
+    PROBE_ROOT,
+    PROBE_MAGISK,
+    PROBE_VPN,
+    PROBE_API,
+
+    /** Туннель. */
+    ENGINE_STATE_DISCONNECTED,
+    ENGINE_STATE_CONNECTING,
+    ENGINE_STATE_CONNECTED,
+    ENGINE_STATE_ERROR,
+    ENGINE_LOG,
+    ENGINE_LOG_EMPTY,
+    ERR_TUNNEL_UNSUPPORTED,
+    ERR_TUNNEL_ERROR,
+
+    /** Обновления: проверка по релизам GitHub. */
+    SETTINGS_UPDATES,
+    UPD_CHECK,
+    UPD_STATE_UNKNOWN,
+    UPD_STATE_CHECKING,
+    UPD_STATE_CURRENT,
+    UPD_STATE_AVAILABLE,
+    UPD_STATE_ERROR,
+    UPD_OPEN,
+
+    /** Строка состояния под навигацией. */
+    STATUS_PERMS_NEEDED,
+    STATUS_DPI,
+
+    /** Названия протоколов -- как в спецификации, без перевода смысла. */
+    PROTO_WIREGUARD,
+    PROTO_AMNEZIA_WG,
+    PROTO_OPENVPN,
+    PROTO_VLESS,
+    PROTO_VMESS,
+    PROTO_TROJAN,
+    PROTO_SHADOWSOCKS,
+    PROTO_HYSTERIA2,
+    PROTO_TUIC,
+    PROTO_SINGBOX,
+    PROTO_XRAY,
+    PROTO_TOR,
+    PROTO_SOCKS5,
+    PROTO_HTTP,
+    PROTO_SSH,
+
+    /** Источники коннектов и проверка. */
+    VPN_SOURCES,
+    VPN_SOURCE_ADD,
+    VPN_SOURCE_NAME,
+    VPN_SOURCE_URL,
+    VPN_SOURCE_REFRESH,
+    VPN_SOURCE_REFRESHED,
+    VPN_SOURCE_FAILED,
+    VPN_SOURCE_REMOVED,
+    VPN_SOURCE_EMPTY,
+    VPN_ARCHIVE,
+    VPN_ARCHIVE_EMPTY,
+    VPN_RECHECK,
+    VPN_CHECK_ALL,
+    VPN_CHECKING,
+    VPN_PING_LABEL,
+    VPN_STATUS_ALIVE,
+    VPN_STATUS_DEAD,
+    VPN_STATUS_UNKNOWN,
+    VPN_GROUP_MODE,
+    VPN_TOR_ENABLED,
+    VPN_ADD_LINKS,
+    VPN_IMPORT_NONE,
+    VPN_SORT_PING,
+    VPN_SORT_NAME,
+    VPN_MANUAL,
+    VPN_ALIVE_COUNT,
+    VPN_IMPORTED,
+    VPN_SOURCE_ADDED,
+
+    /** Тонкие настройки туннеля. */
+    VPN_DNS_FAKE_IP,
+    VPN_DNS_VIA_PROXY,
+    VPN_CLASH_API,
+    VPN_SECRET,
+    VPN_TOR_SOCKS,
+    VPN_AUTOSTART,
+    VPN_ROUTING_HINT_DNS,
+
+    /** Автоподбор стратегии обхода. */
+    STRATEGY_PROBE,
+    STRATEGY_APPLIED,
+    STRATEGY_NETWORK_FAIL,
+
+    /** Компоненты приложения: распакованные нативные бинари. */
+    COMPONENTS,
+    COMPONENTS_REINSTALL,
+    COMPONENTS_ABSENT,
+    DAEMON_AUTOSTART,
+
+    /** Системные уведомления: текст отдаётся в нотификацию целиком. */
+    NOTIFY_GPS_ON,
+    NOTIFY_GPS_OFF,
+    NOTIFY_GPS_ERROR,
+    NOTIFY_UPDATE,
+    NOTIFY_VPN_ON;
 
     /** Перевод для языка. */
     fun of(lang: AppLang): String = when (this) {
@@ -198,17 +353,19 @@ enum class Str {
 
         COMMON_CONNECT -> pick(lang, "Connect", "Подключить", "连接")
         COMMON_DISCONNECT -> pick(lang, "Disconnect", "Отключить", "断开")
-        COMMON_START -> pick(lang, "Start", "Запустить", "启动")
-        COMMON_STOP -> pick(lang, "Stop", "Остановить", "停止")
+        COMMON_START -> pick(lang, "START", "СТАРТ", "启动")
+        COMMON_STOP -> pick(lang, "STOP", "СТОП", "停止")
         COMMON_ADD -> pick(lang, "Add", "Добавить", "添加")
         COMMON_DELETE -> pick(lang, "Delete", "Удалить", "删除")
         COMMON_SAVE -> pick(lang, "Save", "Сохранить", "保存")
         COMMON_APPLY -> pick(lang, "Apply", "Применить", "应用")
         COMMON_AUTODETECT -> pick(lang, "Auto", "Авто", "自动")
         COMMON_TEST -> pick(lang, "Test", "Проверить", "测试")
+        COMMON_ADVANCED -> pick(lang, "Advanced", "Дополнительно", "高级")
         COMMON_EXPORT -> pick(lang, "Export", "Выгрузить", "导出")
         COMMON_IMPORT -> pick(lang, "Import", "Загрузить", "导入")
         COMMON_RESET -> pick(lang, "Reset", "Сбросить", "重置")
+        COMMON_CLOSE -> pick(lang, "Close", "Закрыть", "关闭")
 
         LIST_DOMAINS -> pick(lang, "Domains", "Домены", "域名")
         LIST_APPS -> pick(lang, "Applications", "Приложения", "应用")
@@ -217,6 +374,7 @@ enum class Str {
 
         VPN_PROFILES -> pick(lang, "Profiles", "Профили", "配置")
         VPN_ADD_PROFILE -> pick(lang, "Add profile", "Добавить профиль", "添加配置")
+        VPN_NAME -> pick(lang, "Name", "Имя", "名称")
         VPN_PROTOCOL -> pick(lang, "Protocol", "Протокол", "协议")
         VPN_TRANSPORT -> pick(lang, "Transport", "Транспорт", "传输")
         VPN_GATEWAY -> pick(lang, "Gateway", "Шлюз", "网关")
@@ -260,16 +418,9 @@ enum class Str {
 
         DPI_MODE -> pick(lang, "Mode", "Режим", "模式")
         DPI_SPLIT_POS -> pick(lang, "Split position", "Позиция разреза", "分割位置")
-        DPI_SPLIT_OFFSET -> pick(lang, "Split offset", "Смещение разреза", "分割偏移")
-        DPI_FAKE_LEN -> pick(lang, "Fake length", "Длина подмены", "伪造长度")
-        DPI_FAKE_VAL -> pick(lang, "Filler", "Заполнитель", "填充内容")
         DPI_FAKE_SEQ -> pick(lang, "Fake sequence", "Подмена номера", "伪造序号")
         DPI_FAKE_CSUM -> pick(lang, "Fake checksum", "Подмена контрольной суммы", "伪造校验和")
-        DPI_FAKE_FLAGS -> pick(lang, "Fake flags", "Подмена флагов", "伪造标志位")
-        DPI_FAKE_MSS -> pick(lang, "Fake MSS", "Подмена MSS", "伪造 MSS")
-        DPI_SKIP_ALPN -> pick(lang, "Skip ALPN", "Пропускать ALPN", "跳过 ALPN")
-        DPI_SKIP_TLS13 -> pick(lang, "Skip TLS 1.3", "Пропускать TLS 1.3", "跳过 TLS 1.3")
-        DPI_KEEP_SNI -> pick(lang, "Keep SNI", "Сохранять SNI", "保留 SNI")
+        DPI_FAKE_SNI -> pick(lang, "Fake SNI domain", "Домен для Fake SNI", "Fake SNI 域名")
         DPI_DAEMON_PATH -> pick(lang, "Daemon path", "Путь к демону", "守护进程路径")
         DPI_AUTO_RESTART -> pick(lang, "Restart daemon", "Перезапуск демона", "重启守护进程")
 
@@ -330,6 +481,35 @@ enum class Str {
         GPS_ROUTE_FORMAT -> pick(lang, "One point per line (lat,lon)", "Одна точка в строке (широта,долгота)", "每行一个点 (纬度,经度)")
         GPS_UNSUPPORTED_TITLE -> pick(lang, "GPS spoofing not supported", "Подмена GPS не поддерживается", "不支持 GPS 伪造")
         GPS_UNSUPPORTED_DESC -> pick(lang, "This feature is only available on Android", "Эта функция доступна только на Android", "此功能仅在 Android 上可用")
+        GPS_VPN_HINT -> pick(lang, "Coordinates follow the connected gateway: the point is resolved when spoofing starts",
+            "Координаты следуют за подключённым шлюзом: точка определяется при старте подмены",
+            "坐标跟随已连接的网关：启动伪造时解析坐标")
+        GPS_STATE_OFF -> pick(lang, "Off", "Выключено", "已关闭")
+        GPS_STATE_STARTING -> pick(lang, "Starting", "Запуск", "启动中")
+        GPS_STATE_ACTIVE -> pick(lang, "Active", "Активна", "生效中")
+        GPS_STATE_ERROR -> pick(lang, "Error", "Ошибка", "错误")
+        GPS_LOG_STARTING -> pick(lang, "Spoofing: start", "Подмена: старт", "伪造：启动")
+        GPS_LOG_STOPPED -> pick(lang, "Spoofing: stopped", "Подмена: остановлена", "伪造：已停止")
+        GPS_LOG_PROVIDER -> pick(lang, "Mock provider ready", "Тест-провайдер готов", "模拟提供者就绪")
+        GPS_LOG_NO_MOCK -> pick(lang, "Mock location permission missing", "Нет разрешения на имитацию местоположения", "缺少模拟位置权限")
+        GPS_LOG_RESOLVED -> pick(lang, "VPN point", "Точка VPN", "VPN 点")
+        GPS_LOG_NO_GATEWAY -> pick(lang, "VPN gateway address not set", "Адрес шлюза VPN не задан", "未设置 VPN 网关地址")
+        GPS_LOG_RESOLVE_FAIL -> pick(lang, "Could not geolocate the gateway", "Не удалось определить координаты шлюза", "无法定位网关坐标")
+        GPS_LOG_ROUTE_EMPTY -> pick(lang, "Route has no points", "Маршрут не содержит точек", "路线没有点")
+        GPS_LOG_ROUTE_DONE -> pick(lang, "Route completed", "Маршрут пройден", "路线已完成")
+        GPS_LOG_PROVIDER_ERROR -> pick(lang, "Provider rejected the fix", "Провайдер отклонил координаты", "提供者拒绝坐标")
+
+        DAEMON_STATE_STOPPED -> pick(lang, "Stopped", "Остановлен", "已停止")
+        DAEMON_STATE_STARTING -> pick(lang, "Starting", "Запуск", "启动中")
+        DAEMON_STATE_RUNNING -> pick(lang, "Running", "Работает", "运行中")
+        DAEMON_STATE_ERROR -> pick(lang, "Error", "Ошибка", "错误")
+        DAEMON_LOG_STARTING -> pick(lang, "Starting", "Запуск", "启动")
+        DAEMON_LOG_RUNNING -> pick(lang, "Running", "Работает", "运行中")
+        DAEMON_LOG_STOPPED -> pick(lang, "Stopped", "Остановлен", "已停止")
+        DAEMON_LOG_EXIT -> pick(lang, "Exit code", "Код выхода", "退出码")
+        DAEMON_NO_BINARY -> pick(lang, "Binary not found", "Бинарь не найден", "找不到可执行文件")
+        DAEMON_NO_SNI -> pick(lang, "Fake SNI mode needs a domain", "Режиму Fake SNI нужен домен", "Fake SNI 模式需要域名")
+        DAEMON_BINARY -> pick(lang, "Binary path", "Путь к бинарю", "可执行文件路径")
         LIST_EMPTY_PROFILES -> pick(lang, "No profiles", "Профилей нет", "没有配置")
         LIST_EMPTY_PRESETS -> pick(lang, "No presets", "Пресетов нет", "没有预设")
 
@@ -345,6 +525,131 @@ enum class Str {
         ERR_PRESET_DELETED -> pick(lang, "Preset deleted", "Пресет удалён", "预设已删除")
         ERR_PRESET_FAILED -> pick(lang, "Operation failed", "Операция не удалась", "操作失败")
         ERR_PRESET_EMPTY -> pick(lang, "File is empty", "Файл пуст", "文件为空")
+
+        SETTINGS_PERMISSIONS -> pick(lang, "Permissions", "Разрешения", "权限")
+        PERM_GRANT -> pick(lang, "Grant", "Разрешить", "允许")
+        PERM_OPEN_SETTINGS -> pick(lang, "Open settings", "Открыть настройки", "打开设置")
+        PERM_STATE_GRANTED -> pick(lang, "Granted", "Дано", "已允许")
+        PERM_STATE_DENIED -> pick(lang, "Not granted", "Не дано", "未允许")
+        PERM_STATE_SETTINGS -> pick(lang, "Via system settings", "Через системные настройки", "需系统设置")
+        PERM_STATE_UNSUPPORTED -> pick(lang, "Not on this platform", "Нет на этой платформе", "本平台不支持")
+        PERM_VPN -> pick(lang, "VPN tunnel", "Туннель VPN", "VPN 隧道")
+        PERM_NOTIFICATIONS -> pick(lang, "Notifications", "Уведомления", "通知")
+        PERM_LOCATION_FINE -> pick(lang, "Precise location", "Точное местоположение", "精确位置")
+        PERM_LOCATION_MOCK -> pick(lang, "Mock location", "Имитация местоположения", "模拟位置")
+        PERM_HINT_DENIED -> pick(lang, "The system dialog was rejected", "Системный диалог отклонён", "系统对话框被拒绝")
+        PERM_HINT_MOCK -> pick(lang, "Pick this app as the mock location app in the developer settings",
+            "Укажите это приложение для имитации в настройках разработчика", "请在开发者选项中选择本应用进行模拟")
+        PERM_HINT_UNSUPPORTED -> pick(lang, "The platform has no such permission", "На платформе нет такого разрешения", "平台无此权限")
+
+        SETTINGS_DEVICE -> pick(lang, "Device", "Устройство", "设备")
+        PROBE_YES -> pick(lang, "Yes", "Да", "有")
+        PROBE_NO -> pick(lang, "No", "Нет", "无")
+        PROBE_UNKNOWN -> pick(lang, "Not checked", "Не проверено", "未检查")
+        PROBE_MODEL -> pick(lang, "Model", "Модель", "型号")
+        PROBE_SYSTEM -> pick(lang, "System", "Система", "系统")
+        PROBE_KERNEL -> pick(lang, "Kernel", "Ядро", "内核")
+        PROBE_ROOT -> pick(lang, "Root", "Root", "Root")
+        PROBE_MAGISK -> pick(lang, "Magisk", "Magisk", "Magisk")
+        PROBE_VPN -> pick(lang, "VPN API", "VPN API", "VPN API")
+        PROBE_API -> pick(lang, "API level", "Уровень API", "API 级别")
+
+        ENGINE_STATE_DISCONNECTED -> pick(lang, "Off", "Выключен", "已断开")
+        ENGINE_STATE_CONNECTING -> pick(lang, "Connecting...", "Подключение...", "连接中...")
+        ENGINE_STATE_CONNECTED -> pick(lang, "Connected", "Подключено", "已连接")
+        ENGINE_STATE_ERROR -> pick(lang, "Error", "Ошибка", "出错")
+        ENGINE_LOG -> pick(lang, "Log", "Журнал", "日志")
+        ENGINE_LOG_EMPTY -> pick(lang, "Nothing yet", "Пока пусто", "暂无内容")
+        ERR_TUNNEL_UNSUPPORTED -> pick(lang, "Tunnel is not available on this platform",
+            "Туннель недоступен на этой платформе", "本平台不支持隧道")
+        ERR_TUNNEL_ERROR -> pick(lang, "Connection error", "Ошибка подключения", "连接错误")
+
+        SETTINGS_UPDATES -> pick(lang, "Updates", "Обновления", "更新")
+        UPD_CHECK -> pick(lang, "Check for updates", "Проверить обновления", "检查更新")
+        UPD_STATE_UNKNOWN -> pick(lang, "Not checked", "Не проверено", "未检查")
+        UPD_STATE_CHECKING -> pick(lang, "Checking...", "Проверка...", "检查中...")
+        UPD_STATE_CURRENT -> pick(lang, "Up to date", "Уже актуально", "已是最新")
+        UPD_STATE_AVAILABLE -> pick(lang, "Update available", "Доступно обновление", "有可用更新")
+        UPD_STATE_ERROR -> pick(lang, "Check failed", "Не удалось проверить", "检查失败")
+        UPD_OPEN -> pick(lang, "Open release page", "Открыть страницу релиза", "打开发布页")
+        STATUS_PERMS_NEEDED -> pick(lang, "Permissions needed", "Нужны разрешения", "需要权限")
+        STATUS_DPI -> pick(lang, "DPI", "DPI", "DPI")
+        NOTIFY_GPS_ON -> pick(lang, "GPS spoofing on", "Подмена GPS включена", "GPS 伪造已开启")
+        NOTIFY_GPS_OFF -> pick(lang, "GPS spoofing off", "Подмена GPS выключена", "GPS 伪造已关闭")
+        NOTIFY_GPS_ERROR -> pick(lang, "GPS spoofing failed", "Подмена GPS не запустилась", "GPS 伪造失败")
+        NOTIFY_UPDATE -> pick(lang, "Update available", "Доступно обновление", "有可用更新")
+        NOTIFY_VPN_ON -> pick(lang, "VPN tunnel is active", "VPN-туннель активен", "VPN 隧道已启用")
+
+        PROTO_WIREGUARD -> pick(lang, "WireGuard", "WireGuard", "WireGuard")
+        PROTO_AMNEZIA_WG -> pick(lang, "Amnezia WG", "Amnezia WG", "Amnezia WG")
+        PROTO_OPENVPN -> pick(lang, "OpenVPN", "OpenVPN", "OpenVPN")
+        PROTO_VLESS -> "VLESS"
+        PROTO_VMESS -> "VMess"
+        PROTO_TROJAN -> "Trojan"
+        PROTO_SHADOWSOCKS -> pick(lang, "Shadowsocks", "Shadowsocks", "Shadowsocks")
+        PROTO_HYSTERIA2 -> pick(lang, "Hysteria 2", "Hysteria 2", "Hysteria 2")
+        PROTO_TUIC -> "TUIC"
+        PROTO_SINGBOX -> pick(lang, "Sing-box", "Sing-box", "Sing-box")
+        PROTO_XRAY -> "Xray"
+        PROTO_TOR -> "Tor"
+        PROTO_SOCKS5 -> "SOCKS5"
+        PROTO_HTTP -> "HTTP"
+        PROTO_SSH -> "SSH"
+
+        VPN_SOURCES -> pick(lang, "Sources", "Источники", "来源")
+        VPN_SOURCE_ADD -> pick(lang, "Add source", "Добавить источник", "添加来源")
+        VPN_SOURCE_NAME -> pick(lang, "Source name", "Название источника", "来源名称")
+        VPN_SOURCE_URL -> pick(lang, "Subscription URL", "URL подписки", "订阅链接")
+        VPN_SOURCE_REFRESH -> pick(lang, "Update", "Обновить", "更新")
+        VPN_SOURCE_REFRESHED -> pick(lang, "Updated: links", "Обновлено: ссылок", "已更新：链接")
+        VPN_SOURCE_FAILED -> pick(lang, "Fetch failed", "Не удалось загрузить", "获取失败")
+        VPN_SOURCE_REMOVED -> pick(lang, "Source removed", "Источник удалён", "来源已删除")
+        VPN_SOURCE_EMPTY -> pick(lang, "No links in source", "В источнике нет ссылок", "来源中没有链接")
+        VPN_ARCHIVE -> pick(lang, "Archive", "Архив", "归档")
+        VPN_ARCHIVE_EMPTY -> pick(lang, "Archive is empty", "Архив пуст", "归档为空")
+        VPN_RECHECK -> pick(lang, "Recheck", "Проверить снова", "重新检查")
+        VPN_CHECK_ALL -> pick(lang, "Check all", "Проверить все", "全部检查")
+        VPN_CHECKING -> pick(lang, "Checking", "Проверка", "检查中")
+        VPN_PING_LABEL -> pick(lang, "Ping", "Пинг", "延迟")
+        VPN_STATUS_ALIVE -> pick(lang, "Alive", "Жив", "存活")
+        VPN_STATUS_DEAD -> pick(lang, "Dead", "Мёртв", "失效")
+        VPN_STATUS_UNKNOWN -> pick(lang, "Not checked", "Не проверялся", "未检查")
+        VPN_GROUP_MODE -> pick(lang, "Auto-pick best", "Автовыбор лучшего", "自动选择最优")
+        VPN_TOR_ENABLED -> pick(lang, "Tor bridges", "Мосты Tor", "Tor 桥接")
+        VPN_ADD_LINKS -> pick(lang, "Add links", "Добавить ссылки", "添加链接")
+        VPN_IMPORT_NONE -> pick(lang, "Nothing recognized", "Текст не распознан", "无法识别文本")
+        VPN_SORT_PING -> pick(lang, "By ping", "По пингу", "按延迟")
+        VPN_SORT_NAME -> pick(lang, "By name", "По имени", "按名称")
+        VPN_MANUAL -> pick(lang, "Manual", "Вручную", "手动")
+        VPN_ALIVE_COUNT -> pick(lang, "Alive", "Живых", "存活")
+        VPN_IMPORTED -> pick(lang, "Imported", "Импортировано", "已导入")
+        VPN_SOURCE_ADDED -> pick(lang, "Source added", "Источник добавлен", "来源已添加")
+
+        VPN_DNS_FAKE_IP -> pick(lang, "Fake-IP DNS", "Fake-IP DNS", "Fake-IP DNS")
+        VPN_DNS_VIA_PROXY -> pick(lang, "DNS through tunnel", "DNS через туннель", "DNS 走隧道")
+        VPN_CLASH_API -> pick(lang, "Clash API (monitoring)", "Clash API (мониторинг)", "Clash API（监控）")
+        VPN_SECRET -> pick(lang, "Secret", "Секрет", "密钥")
+        VPN_TOR_SOCKS -> pick(lang, "Tor SOCKS port", "SOCKS-порт Tor", "Tor SOCKS 端口")
+        VPN_AUTOSTART -> pick(lang, "Start on launch", "Старт при запуске", "启动时自动连接")
+        VPN_ROUTING_HINT_DNS -> pick(
+            lang,
+            "DNS interception works with the sing-box backend; kernel WireGuard keeps the system resolver",
+            "Перехват DNS работает на движке sing-box; ядерный WireGuard оставляет системный резолвер",
+            "DNS 拦截仅在 sing-box 引擎生效；内核 WireGuard 使用系统解析器"
+        )
+
+        STRATEGY_PROBE -> pick(lang, "Detect strategy", "Подобрать стратегию", "检测策略")
+        STRATEGY_APPLIED -> pick(lang, "Strategy applied", "Стратегия применена", "策略已应用")
+        STRATEGY_NETWORK_FAIL -> pick(
+            lang,
+            "Network check failed",
+            "Не удалось проверить сеть",
+            "网络检查失败"
+        )
+        COMPONENTS -> pick(lang, "Components", "Компоненты", "组件")
+        COMPONENTS_REINSTALL -> pick(lang, "Reinstall", "Переустановить", "重新安装")
+        COMPONENTS_ABSENT -> pick(lang, "Not installed", "Не установлены", "未安装")
+        DAEMON_AUTOSTART -> pick(lang, "Start on launch", "Старт при запуске", "启动时自动运行")
     }
 
     /**

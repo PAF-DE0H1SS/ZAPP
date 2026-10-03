@@ -9,6 +9,14 @@ signing/
 *.jks
 *.keystore
 
+# Нативные бинари и сырьё: клоны upstream-репозиториев, тарболлы, сборка.
+# В git идут только скрипты и патчи (build*.sh, pack.sh, patches/).
+native/out/
+native/src/
+
+# Библиотеки для APK: кладёт pack.sh из native/out (300M)
+APP/app/src/main/jniLibs/
+
 # Служебное окружение
 .idea/
 ldpath

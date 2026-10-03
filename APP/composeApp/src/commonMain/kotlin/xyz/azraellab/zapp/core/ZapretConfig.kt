@@ -19,6 +19,8 @@ data class ZapretConfig(
     // --- Общие ---
     /** Включить правила Zapret. */
     val enabled: Boolean = false,
+    /** Путь к бинарю; пусто -- искать `zapret` в PATH. */
+    val binaryPath: String = "",
     /** Подбирать стратегию автоматически по результату проверки сети. */
     val autoStrategy: Boolean = true,
     /** Явно выбранная стратегия; при [autoStrategy] её переопределяет подбор. */
@@ -27,6 +29,8 @@ data class ZapretConfig(
     val mode: String = ZapretMode.BYPASS.code,
     /** Проверять найденную стратегию перед применением. */
     val verifyStrategy: Boolean = true,
+    /** Перезапускать процесс, если он упал при включённом тумблере. */
+    val autoRestart: Boolean = true,
 
     // --- Область действия ---
     /** Домены через запятую, например `example.com,youtube.com`. */
@@ -169,67 +173,55 @@ data class ZapretConfig(
     /**
      * Собирает командную строку zapret.
      *
-     * Порядок флагов фиксирован, чтобы одинаковые настройки всегда давали
-     * одинаковую строку: иначе сравнение двух пресетов в diff показывает
-     * изменения там, где их нет.
+     * Флаги сверены с `nfq/nfqws.c` официального `bol-van/zapret`: каждая
+     * строка здесь -- либо `long_options` nfqws, либо ничего. Порядок
+     * фиксирован, чтобы одинаковые настройки всегда давали одинаковую
+     * строку: иначе сравнение двух пресетов в diff показывает изменения
+     * там, где их нет.
+     *
+     * Поля, у которых нет флагов nfqws (per-app фильтры, `--fake-*` старых
+     * форков), в команду не попадают: неверная опция роняет демон на старте,
+     * а это хуже, чем несработавшая настройка.
      */
     fun toArgs(): List<String> = buildList {
-        add("--new=${if (newSyntax) 1 else 0}")
-        if (bgIncrement) add("--bg-inc")
-
         appendFlag("hostcase", hostCase)
-        appendFlag("hostspell", hostSpell)
+        if (hostSpell) add("--hostspell=HoST")
         appendFlag("hostnospace", hostNoSpace)
-        appendFlag("hosthash", hostHash)
-        appendFlag("methodspace", methodSpace)
         appendFlag("methodeol", methodEol)
-        appendFlag("unixeol", unixEol)
-        appendFlag("tlsrec", tlsRec)
-        appendFlag("multipath", multipath)
-        appendFlag("ipdiag", ipdiag)
-
         appendValue("--wssize", wsSize)
+
         appendValue("--filter-tcp", filterTcp)
         appendValue("--filter-udp", filterUdp)
-        appendValue("--dpi-ports", dpiPorts)
-        appendValue("--filter-ip", filterIp)
 
-        if (desyncMethods.isNotEmpty()) {
-            add("--dpi-desync=${desyncMethods.joinToString(",")}")
+        // Списки доменов -- настоящие опции nfqws: значения кладутся прямо
+        // в команду, файл для них не нужен.
+        if (domainList().isNotEmpty()) {
+            add("--hostlist-domains=" + domainList().joinToString(","))
         }
-        appendValue("--dpi-split", dpiSplit)
-        appendValue("--dpi-split-pos", dpiSplitPos)
-        appendValue("--dpi-split-seqovl", dpiSplitSeqovl)
-        appendValue("--dpi-split2-pos", dpiSplit2Pos)
-        appendValue("--dpi-split2-seqovl", dpiSplit2Seqovl)
+        if (exclusionList().isNotEmpty()) {
+            add("--hostlist-exclude-domains=" + exclusionList().joinToString(","))
+        }
 
-        appendValue("--fake-tls", fakeTlsMode)
-        appendValue("--fake-tls-host", fakeTlsHost)
-        appendValue("--fake-tls-padlen", fakeTlsPadLen)
-        appendValue("--fake-tls-cutlen", fakeTlsCutLen)
-        appendFlag("fake-packet", fakePacket)
-        appendFlag("fake-skip", fakeSkip)
-        appendFlag("fake-tcp", fakeTcp)
-        appendValue("--fake-dport", fakeDport)
-        appendValue("--fake-dport-ttl", fakeDportTtl)
-        appendValue("--fake-sport", fakeSport)
-        appendValue("--fake-srcaddr", fakeSrcAddr)
-        appendValue("--fake-seq", fakeSeq)
-        appendFlag("fake-csum", fakeCsum)
-        appendValue("--fake-tcp-flags", fakeTcpFlags)
-        appendValue("--fake-mss", fakeMss)
-        appendValue("--fake-repeats", fakeRepeats)
-        appendFlag("fake-cut", fakeCut)
-        appendFlag("fake-cut-tls", fakeCutTls)
-        appendFlag("fake-sniff", fakeSniff)
-
-        appendValue("--ttl", ttl)
-        appendValue("--ttl-end", ttlEnd)
-        appendFlag("ttl-6", ttl6)
-        appendFlag("skip-ttl", skipTtl)
+        // Подмена пакета -- это режим fake у desync, а не отдельная опция.
+        val methods = desyncMethods + if (fakePacket) setOf("fake") else emptySet()
+        if (methods.isNotEmpty()) {
+            add("--dpi-desync=" + methods.joinToString(","))
+        }
+        appendValue("--dpi-desync-split-pos", dpiSplitPos)
+        appendValue("--dpi-desync-split-seqovl", dpiSplitSeqovl)
+        appendValue("--dpi-desync-ttl", ttl)
+        if (ttl6 && ttl != null) add("--dpi-desync-ttl6=$ttl")
         appendValue("--wsize", wsize)
-        appendValue("--mss", mss)
-        appendValue("--multiply", multiply)
+        fakeRepeats?.let { add("--dpi-desync-repeats=$it") }
+
+        // Fooling: неверная контрольная сумма и SEQ в прошлом -- две реальные
+        // опции nfqws, заменяющие собой старые `--fake-csum`/`--fake-seq`.
+        val fooling = listOfNotNull(
+            "badsum".takeIf { fakeCsum },
+            "badseq".takeIf { fakeSeq != null }
+        )
+        if (fooling.isNotEmpty()) add("--dpi-desync-fooling=" + fooling.joinToString(","))
+        if (fakeTcpFlags != null) add("--dpi-desync-tcp-flags-set=$fakeTcpFlags")
 
         if (comment.isNotBlank()) add("--comment=$comment")
     }
@@ -248,7 +240,7 @@ data class ZapretConfig(
     }
 
     /** Человекочитаемая строка для показа и копирования. */
-    fun toCommandLine(binary: String = "zapret"): String =
+    fun toCommandLine(binary: String = binaryPath.ifBlank { "zapret" }): String =
         (listOf(binary) + toArgs()).joinToString(" ")
 }
 

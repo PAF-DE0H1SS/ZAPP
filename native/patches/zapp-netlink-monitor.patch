@@ -1,0 +1,12 @@
+--- a/route/network.go
++++ b/route/network.go
+@@ -101,7 +101,7 @@
+ 	}
+ 	usePlatformDefaultInterfaceMonitor := nm.platformInterface != nil
+ 	enforceInterfaceMonitor := routeOptions.AutoDetectInterface
+ 	if !usePlatformDefaultInterfaceMonitor {
+-		networkMonitor, err := tun.NewNetworkUpdateMonitor(logger)
++		networkMonitor, err := newZappNetworkUpdateMonitor(logger)
+ 		if !((err != nil && !enforceInterfaceMonitor) || errors.Is(err, os.ErrInvalid)) {
+ 			if err != nil {
+ 				return nil, E.Cause(err, "create network monitor")

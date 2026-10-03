@@ -30,6 +30,17 @@ kotlin {
     jvm("desktop")
 
     sourceSets {
+        // Общий JVM-слой: Android и десктоп -- обе JVM, поэтому HTTP-клиент,
+        // геолокация и сокеты пишутся один раз здесь, а не копируются в
+        // androidMain и desktopMain. Промежуточный source set -- штатный
+        // механизм KMP: androidMain и desktopMain зависят от него наравне
+        // с commonMain, и expect из common получает ровно один actual.
+        val jvmShared by creating {
+            dependsOn(commonMain.get())
+        }
+        getByName("androidMain").dependsOn(jvmShared)
+        getByName("desktopMain").dependsOn(jvmShared)
+
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.foundation)

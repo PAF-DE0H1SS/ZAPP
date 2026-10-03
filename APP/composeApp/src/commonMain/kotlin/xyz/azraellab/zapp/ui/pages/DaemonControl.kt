@@ -36,8 +36,16 @@ fun DaemonControlCard(
     onStop: () -> Unit
 ) {
     val state by engine.state.collectAsState()
+    val log by engine.log.collectAsState()
 
     if (!engine.supported) return
+
+    // Причина сбоя -- прямо в карточке, а не только в журнале ниже.
+    val reason = if (state == DaemonState.ERROR) {
+        log.lastOrNull()?.let { if (it.text != null) tr(it.text) + " ${it.arg}" else it.raw }
+    } else {
+        null
+    }
 
     ZappCard {
         Row(
@@ -45,17 +53,25 @@ fun DaemonControlCard(
             horizontalArrangement = Arrangement.spacedBy(AzraelSpace.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = tr(state.labelKey()),
-                style = MaterialTheme.typography.titleMedium,
-                color = when (state) {
-                    DaemonState.RUNNING -> MaterialTheme.colorScheme.primary
-                    DaemonState.ERROR -> MaterialTheme.colorScheme.error
-                    DaemonState.STARTING -> MaterialTheme.colorScheme.tertiary
-                    DaemonState.STOPPED -> MaterialTheme.colorScheme.onSurface
-                },
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = tr(state.labelKey()),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = when (state) {
+                        DaemonState.RUNNING -> MaterialTheme.colorScheme.primary
+                        DaemonState.ERROR -> MaterialTheme.colorScheme.error
+                        DaemonState.STARTING -> MaterialTheme.colorScheme.tertiary
+                        DaemonState.STOPPED -> MaterialTheme.colorScheme.onSurface
+                    }
+                )
+                if (reason != null) {
+                    Text(
+                        text = reason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
             // Работающий демон останавливается; всё остальное -- запускается.
             // В состоянии ERROR кнопка «Старт» перезапускает процесс, а не
             // показывает прошлую ошибку повторно.
@@ -108,10 +124,18 @@ fun JournalCard(lines: List<String>) {
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(AzraelSpace.xs)) {
                     lines.takeLast(JOURNAL_VISIBLE).forEach { line ->
+                        // Ошибка -- цветом: причину надо видеть, не читая всё.
+                        val isError = line.startsWith("error") ||
+                            line.contains("failed", ignoreCase = true) ||
+                            line.contains("panic", ignoreCase = true)
                         Text(
                             text = line,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isError) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
                         )
                     }
                 }

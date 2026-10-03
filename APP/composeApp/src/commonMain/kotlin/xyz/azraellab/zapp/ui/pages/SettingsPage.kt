@@ -468,10 +468,18 @@ private fun LogSection(state: AppState) {
             } else {
                 // Хвост ленты: новые записи внизу, экран показывает последние.
                 lines.takeLast(100).forEach { line ->
+                    // Ошибка -- цветом, чтобы её было видно с ходу.
+                    val isError = "[err" in line ||
+                        line.contains("error", ignoreCase = true) ||
+                        line.contains("fail", ignoreCase = true)
                     Text(
                         text = line,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isError) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

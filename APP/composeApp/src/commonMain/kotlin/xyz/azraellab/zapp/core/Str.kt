@@ -187,9 +187,34 @@ enum class Str {
     SETTINGS_ABOUT,
     SETTINGS_SYSTEM,
     SETTINGS_APPLY_LIVE,
+    SETTINGS_LOG,
+    SETTINGS_DOCS,
+    SETTINGS_SECTION_GENERAL,
     ABOUT_VERSION,
     ABOUT_LICENSE,
     ABOUT_PLATFORM,
+
+    /** Журнал (детальный лог). */
+    LOG_DETAIL_ON,
+    LOG_CLEAR,
+    LOG_EMPTY,
+    LOG_FILE_HINT,
+
+    /** Приветствие и подсказки. */
+    WELCOME_TITLE,
+    WELCOME_SUBTITLE,
+    WELCOME_NEXT,
+    WELCOME_DONE,
+    WELCOME_STEP_HINTS,
+    WELCOME_HINT_VPN,
+    WELCOME_HINT_ZAPRET,
+    WELCOME_HINT_DPI,
+    WELCOME_HINT_GPS,
+    WELCOME_HINT_LOG,
+    WELCOME_PERMISSIONS,
+
+    /** Кнопки навигации. */
+    COMMON_BACK,
 
     /** Пустые состояния. */
     LIST_EMPTY_PROFILES,
@@ -366,6 +391,7 @@ enum class Str {
         COMMON_IMPORT -> pick(lang, "Import", "Загрузить", "导入")
         COMMON_RESET -> pick(lang, "Reset", "Сбросить", "重置")
         COMMON_CLOSE -> pick(lang, "Close", "Закрыть", "关闭")
+        COMMON_BACK -> pick(lang, "Back", "Назад", "返回")
 
         LIST_DOMAINS -> pick(lang, "Domains", "Домены", "域名")
         LIST_APPS -> pick(lang, "Applications", "Приложения", "应用")
@@ -463,8 +489,61 @@ enum class Str {
         SETTINGS_PRESETS -> pick(lang, "Presets", "Пресеты", "预设")
         SETTINGS_PRESET_NAME -> pick(lang, "Preset name", "Имя пресета", "预设名称")
         SETTINGS_ABOUT -> pick(lang, "About", "О программе", "关于")
+        SETTINGS_LOG -> pick(lang, "Log", "Журнал", "日志")
+        SETTINGS_DOCS -> pick(lang, "Documentation", "Документация", "文档")
+        SETTINGS_SECTION_GENERAL -> pick(lang, "General", "Основное", "常规")
         SETTINGS_SYSTEM -> pick(lang, "System", "Система", "系统")
         SETTINGS_APPLY_LIVE -> pick(lang, "Apply on change", "Применять сразу", "立即应用")
+        LOG_DETAIL_ON -> pick(lang, "Detailed log", "Детальный журнал", "详细日志")
+        LOG_CLEAR -> pick(lang, "Clear log", "Очистить журнал", "清空日志")
+        LOG_EMPTY -> pick(lang, "Nothing logged yet", "Записей пока нет", "暂无记录")
+        LOG_FILE_HINT -> pick(lang, "Saved to file zapp.log", "Сохраняется в файл zapp.log", "保存到文件 zapp.log")
+        WELCOME_TITLE -> pick(lang, "Welcome to ZAPP", "Добро пожаловать в ZAPP", "欢迎使用 ZAPP")
+        WELCOME_SUBTITLE -> pick(
+            lang,
+            "Bypass, VPN and GPS in one app. A short tour and permissions first.",
+            "Обход блокировок, VPN и GPS в одном приложении. Сначала короткий тур и разрешения.",
+            "绕过封锁、VPN 与 GPS 集于一应俱全。先了解概览并授予权限。"
+        )
+        WELCOME_NEXT -> pick(lang, "Next", "Далее", "下一步")
+        WELCOME_DONE -> pick(lang, "Get started", "Начать", "开始使用")
+        WELCOME_STEP_HINTS -> pick(lang, "What the tabs do", "Что делают вкладки", "各标签页的功能")
+        WELCOME_HINT_VPN -> pick(
+            lang,
+            "VPN: import links or sources, pick a live connect, press START.",
+            "VPN: добавьте ссылки или источники, выберите живой коннект, нажмите СТАРТ.",
+            "VPN：导入链接或源，选择可用节点，点击启动。"
+        )
+        WELCOME_HINT_ZAPRET -> pick(
+            lang,
+            "Zapret: DPI bypass rules for throttled resources (YouTube, Discord).",
+            "Zapret: правила обхода DPI для ресурсов с замедлением (YouTube, Discord).",
+            "Zapret：针对限速资源（YouTube、Discord）的 DPI 绕过规则。"
+        )
+        WELCOME_HINT_DPI -> pick(
+            lang,
+            "GoodbyeDPI: another bypass engine, useful when zapret is not enough.",
+            "GoodbyeDPI: ещё один движок обхода, полезен, когда zapret не хватает.",
+            "GoodbyeDPI：另一绕过引擎，zapret 不够用时可尝试。"
+        )
+        WELCOME_HINT_GPS -> pick(
+            lang,
+            "GPS: mock coordinates for apps that check your location.",
+            "GPS: подмена координат для приложений, проверяющих местоположение.",
+            "GPS：为检查定位的应用伪造坐标。"
+        )
+        WELCOME_HINT_LOG -> pick(
+            lang,
+            "Every action and error lands in the Log tab in Settings.",
+            "Каждое действие и ошибка попадают в раздел «Журнал» в настройках.",
+            "所有操作与错误都会记录在设置的“日志”中。"
+        )
+        WELCOME_PERMISSIONS -> pick(
+            lang,
+            "Grant the permissions so the app works. You can review them later in Settings.",
+            "Выдайте разрешения, чтобы приложение работало. Позже их можно проверить в настройках.",
+            "请授予权限以便应用正常运行。之后可在设置中查看。"
+        )
         ABOUT_VERSION -> pick(lang, "Version", "Версия", "版本")
         ABOUT_LICENSE -> pick(lang, "License", "Лицензия", "许可")
         ABOUT_PLATFORM -> pick(lang, "Platform", "Платформа", "平台")

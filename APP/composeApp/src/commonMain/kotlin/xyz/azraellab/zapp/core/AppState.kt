@@ -27,6 +27,7 @@ import xyz.azraellab.zapp.core.engine.createTunnelEngine
 import xyz.azraellab.zapp.core.gps.GpsEngine
 import xyz.azraellab.zapp.core.gps.GpsState
 import xyz.azraellab.zapp.core.gps.createGpsEngine
+import xyz.azraellab.zapp.core.log.AppLog
 import xyz.azraellab.zapp.core.native.NativeBinaries
 import xyz.azraellab.zapp.core.net.ConfigImport
 import xyz.azraellab.zapp.core.net.LinkProbe
@@ -201,6 +202,8 @@ class AppState(
      */
     fun load() {
         config = runCatching { store.readConfig() }.getOrNull() ?: AppConfig()
+        AppLog.enabled = config.detailLogEnabled
+        AppLog.log("app", "start v${APP_VERSION}")
         presets = runCatching { store.readPresets() }.getOrDefault(emptyList())
         meter = TrafficMeter(config.traffic)
         gpsEngine.applyConfig(config.gps)
@@ -225,6 +228,7 @@ class AppState(
     /** Заменяет настройки целиком и планирует запись. */
     fun update(next: AppConfig) {
         config = next
+        AppLog.enabled = config.detailLogEnabled
         gpsEngine.applyConfig(config.gps)
         tunnel.applyConfig(config.vpn)
         scheduleSave()
@@ -233,6 +237,7 @@ class AppState(
     /** Точечное изменение: удобно для тумблеров и полей. */
     fun mutate(block: (AppConfig) -> AppConfig) {
         config = block(config)
+        AppLog.enabled = config.detailLogEnabled
         // Движок читает конфиг каждый такт, поэтому здесь достаточно
         // передать ссылку -- такт сам подхватит новые значения.
         gpsEngine.applyConfig(config.gps)
@@ -425,7 +430,9 @@ class AppState(
      * обрывает цепочку: движок сам скажет в журнале, чего ему не хватило.
      */
     fun startGps(onResult: (Boolean) -> Unit = {}) {
+        AppLog.log("gps", "start requested")
         if (!gpsEngine.supported) {
+            AppLog.log("gps", "unsupported on this platform")
             onResult(false)
             return
         }
@@ -461,6 +468,7 @@ class AppState(
 
     /** Останавливает подмену. */
     fun stopGps() {
+        AppLog.log("gps", "stop")
         gpsEngine.stop()
     }
 
@@ -479,6 +487,7 @@ class AppState(
      * иначе новые правила не применялись бы.
      */
     fun startZapret() {
+        AppLog.log("zapret", "start: ${config.zapret.toArgs().joinToString(" ")}")
         if (!config.zapret.enabled) {
             mutate { it.copy(zapret = it.zapret.copy(enabled = true)) }
         }
@@ -487,6 +496,7 @@ class AppState(
     }
 
     fun stopZapret() {
+        AppLog.log("zapret", "stop")
         zapretDaemon.stop()
         if (config.zapret.enabled) {
             mutate { it.copy(zapret = it.zapret.copy(enabled = false)) }
@@ -502,6 +512,7 @@ class AppState(
      * честнее сказать об этом до запуска.
      */
     fun startDpi() {
+        AppLog.log("goodbyedpi", "start: ${config.goodbyeDpi.toArgs().joinToString(" ")}")
         if (GoodbyeDpiMode.of(config.goodbyeDpi.mode) == GoodbyeDpiMode.DISABLED) {
             mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(mode = GoodbyeDpiMode.AUTO.code)) }
         }
@@ -522,6 +533,7 @@ class AppState(
     }
 
     fun stopDpi() {
+        AppLog.log("goodbyedpi", "stop")
         dpiDaemon.stop()
     }
 
@@ -536,10 +548,12 @@ class AppState(
      */
     fun connectVpn() {
         if (!tunnel.supported) return
+        AppLog.log("vpn", "connect requested (group=${config.vpn.groupMode})")
         tunnel.connect()
     }
 
     fun disconnectVpn() {
+        AppLog.log("vpn", "disconnect requested")
         tunnel.disconnect()
     }
 
@@ -623,6 +637,12 @@ class AppState(
 
     fun clearVpnNotice() {
         vpnNotice = null
+    }
+
+    /** Приветствие показано: фиксируем и больше не показываем. */
+    fun finishWelcome() {
+        mutate { it.copy(welcomeDone = true) }
+        AppLog.log("app", "welcome finished")
     }
 
     /** Коннекты, показываемые сейчас: живые, не проверенные и не из архива. */

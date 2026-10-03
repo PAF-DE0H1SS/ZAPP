@@ -2,11 +2,49 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+        Сеть: без INTERNET приложение не может ни обновить источники, ни
+        проверить коннекты, ни поднять туннель: сокеты блокируются на
+        уровне системы ещё до каких-либо ошибок приложения. Состояние сети
+        нужно, чтобы честно показывать «нет связи», а не крутить проверку
+        вхолостую.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+        Foreground-сервис: туннель держится вне зависимости от того, свёрнуто
+        ли приложение, а системный значок VPN остаётся видимым. Тип
+        specialUse для сервиса, который не попадает в штатные категории
+        (сеть/медиа); подтверждение типа объявляется свойством сервиса ниже.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!--
+        Точное местоположение: точность нужна тест-провайдеру, координаты
+        которого подменяют собой системные. ACCESS_MOCK_LOCATION объявлен
+        осознанно: без него приложение вообще не попадает в список
+        «Приложение для имитации местоположения» в настройках разработчика.
+        Само разрешение выдаётся не диалогом, а выбором в этих настройках,
+        поэтому runtime-диалог запрашивается только для гео.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION" />
+
+    <!--
+        Уведомления: события подмены и обновления. Это runtime-разрешение
+        (Android 13+), спрашивается диалогом, поэтому запрос живёт в
+        настройках и не навязывается при старте.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
+        android:extractNativeLibs="true"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
@@ -20,6 +58,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            VPN-туннель. BIND_VPN_SERVICE держит привязку у системы:
+            приложение не может поднять туннель само по своей воле,
+            только через службу с этим разрешением. Экспорт намеренный,
+            системный VPN-менеджер должен уметь службу найти; вся защита
+            от посторонних вызовов в самом разрешении (подпись системы).
+        -->
+        <service
+            android:name="xyz.azraellab.zapp.core.engine.ZappVpnService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="persistent_vpn_tunnel" />
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

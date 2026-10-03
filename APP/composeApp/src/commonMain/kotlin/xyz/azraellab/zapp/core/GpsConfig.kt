@@ -59,6 +59,10 @@ data class GpsConfig(
         get() = when (GpsMode.of(mode)) {
             GpsMode.FIXED -> GpsTarget.Fixed(latitude, longitude)
             GpsMode.ROUTE -> GpsTarget.Route(routePoints())
+            // Координаты VPN -- единственная точка, которой ещё нет: её
+            // даёт не конфиг, а геолокация адреса шлюза, поэтому движок
+            // разрешает её сам при старте.
+            GpsMode.VPN_LOCATION -> GpsTarget.VpnLocation
             GpsMode.DISABLED -> GpsTarget.Off
         }
 }
@@ -67,7 +71,17 @@ data class GpsConfig(
 enum class GpsMode(val code: String, val ru: String, val en: String) {
     DISABLED("disabled", "Выключено", "Disabled"),
     FIXED("fixed", "Точка", "Fixed point"),
-    ROUTE("route", "Маршрут", "Route");
+    ROUTE("route", "Маршрут", "Route"),
+
+    /**
+     * Координаты там, где находится шлюз VPN.
+     *
+     * Сценарий: туннель уходит в другой город или страну, а приложения
+     * карт должны показывать ту же точку, иначе локация и трафик
+     * противоречат друг другу. Точка вычисляется при старте по адресу
+     * шлюза и дальше ведёт себя как обычная фиксированная.
+     */
+    VPN_LOCATION("vpn", "Координаты VPN", "VPN location");
 
     companion object {
         fun of(code: String?): GpsMode =
@@ -101,6 +115,9 @@ sealed interface GpsTarget {
     data object Off : GpsTarget
     data class Fixed(val latitude: Double, val longitude: Double) : GpsTarget
     data class Route(val points: List<RoutePoint>) : GpsTarget
+
+    /** Точка ещё не разрешена: движок найдёт её по адресу шлюза. */
+    data object VpnLocation : GpsTarget
 }
 
 /** Разбор и запись строки маршрута. */

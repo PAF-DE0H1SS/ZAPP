@@ -41,6 +41,16 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
+    packaging {
+        jniLibs {
+            // Нативные бинари (jniLibs) должны лежать на диске обычными
+            // файлами: SELinux разрешает исполнять только их, а не файлы
+            // из app data. При false система оставила бы их внутри APK и
+            // путь для запуска был бы недоступен.
+            useLegacyPackaging = true
+        }
+    }
+
     // Нативный счётчик трафика на C++.
     //
     // Собирается именно здесь, а не в :composeApp: у KMP-расширения

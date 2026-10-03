@@ -18,6 +18,9 @@ object AndroidCtx {
         if (app == null) app = context.applicationContext
     }
 
+    /** Контекст, если процесс уже поднят; null до первого attach(). */
+    val current: Context? get() = app
+
     fun require(): Context = app
         ?: error("AndroidCtx не инициализирован: MainActivity.attach() не вызван")
 }

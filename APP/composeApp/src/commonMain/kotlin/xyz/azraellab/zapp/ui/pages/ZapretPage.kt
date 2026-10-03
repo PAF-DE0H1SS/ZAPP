@@ -41,13 +41,14 @@ fun ZapretPage(state: AppState) {
     var advancedOpen by rememberSaveable { mutableStateOf(false) }
 
     PageScaffold(title = tr(Str.TAB_ZAPRET)) {
-        // --- Включение ---
+        // --- Управление и состояние ---
+        DaemonControlCard(
+            engine = state.zapretDaemon,
+            onStart = { state.startZapret() },
+            onStop = { state.stopZapret() }
+        )
+
         ZappCard {
-            ZappSettingRow(
-                title = tr(Str.TAB_ZAPRET),
-                checked = config.enabled,
-                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(enabled = on)) } }
-            )
             ZappSettingRow(
                 title = tr(Str.ZAPRET_ALL_TRAFFIC),
                 checked = config.allTraffic,
@@ -69,12 +70,6 @@ fun ZapretPage(state: AppState) {
                     onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(domains = v)) } },
                     placeholder = "example.com, youtube.com",
                     supportingText = tr(Str.LIST_DOMAINS) + ": ${config.domainList().size}"
-                )
-                ZappTextField(
-                    label = tr(Str.LIST_APPS),
-                    value = config.apps,
-                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(apps = v)) } },
-                    placeholder = "com.android.chrome"
                 )
                 ZappTextField(
                     label = tr(Str.LIST_EXCLUSIONS),
@@ -119,7 +114,16 @@ fun ZapretPage(state: AppState) {
                         state.mutate { it.copy(zapret = it.zapret.copy(verifyStrategy = on)) }
                     }
                 )
+                ZappSettingRow(
+                    title = tr(Str.DAEMON_AUTOSTART),
+                    checked = config.autoRestart,
+                    onCheckedChange = { on ->
+                        state.mutate { it.copy(zapret = it.zapret.copy(autoRestart = on)) }
+                    }
+                )
             }
+
+            StrategyProbeCard(state = state, target = "zapret")
         }
 
         // --- Команда, которая получится ---
@@ -139,7 +143,7 @@ fun ZapretPage(state: AppState) {
         // --- Дополнительно ---
         ZappCard {
             ZappSettingRow(
-                title = tr(Str.ZAPRET_FILTER_TCP) + " / " + tr(Str.ZAPRET_DPI_PORTS),
+                title = tr(Str.COMMON_ADVANCED),
                 checked = advancedOpen,
                 onCheckedChange = { advancedOpen = it }
             )
@@ -148,6 +152,9 @@ fun ZapretPage(state: AppState) {
         if (advancedOpen) {
             ZapretAdvanced(state = state, config = config)
         }
+
+        // --- Журнал: причина запуска и смерти процесса ---
+        DaemonLogCard(engine = state.zapretDaemon)
     }
 }
 
@@ -177,29 +184,17 @@ private fun ZapretAdvanced(state: AppState, config: ZapretConfig) {
                 onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(filterUdp = v)) } },
                 placeholder = "443"
             )
+        }
+    }
+
+    // --- Путь к бинарю ---
+    PageGroup(tr(Str.SETTINGS_SYSTEM)) {
+        ZappCard {
             ZappTextField(
-                label = tr(Str.ZAPRET_DPI_PORTS),
-                value = config.dpiPorts,
-                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(dpiPorts = v)) } },
-                placeholder = "443"
-            )
-            ZappTextField(
-                label = "filter-ip",
-                value = config.filterIp,
-                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(filterIp = v)) } },
-                placeholder = "1.2.3.0/24"
-            )
-            ZappSettingRow(
-                title = tr(Str.ZAPRET_NEW_SYNTAX),
-                checked = config.newSyntax,
-                onCheckedChange = { on ->
-                    state.mutate { it.copy(zapret = it.zapret.copy(newSyntax = on)) }
-                }
-            )
-            ZappSettingRow(
-                title = tr(Str.ZAPRET_IPDIAG),
-                checked = config.ipdiag,
-                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(ipdiag = on)) } }
+                label = tr(Str.DAEMON_BINARY),
+                value = config.binaryPath,
+                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(binaryPath = v)) } },
+                placeholder = "zapret"
             )
         }
     }
@@ -242,6 +237,17 @@ private fun ZapretAdvanced(state: AppState, config: ZapretConfig) {
                     onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(ttl = v)) } },
                     placeholder = "2"
                 )
+                if (config.ttl != null) {
+                    // Линейный TTL имеет смысл только вместе с базовым:
+                    // без значения, от которого считать, флаг глуп.
+                    ZappSettingRow(
+                        title = "--dpi-desync-ttl6",
+                        checked = config.ttl6,
+                        onCheckedChange = { on ->
+                            state.mutate { it.copy(zapret = it.zapret.copy(ttl6 = on)) }
+                        }
+                    )
+                }
                 ZappNumberField(
                     label = tr(Str.ZAPRET_WINDOW),
                     value = config.wsize,
@@ -249,39 +255,27 @@ private fun ZapretAdvanced(state: AppState, config: ZapretConfig) {
                     placeholder = "65535"
                 )
                 ZappTextField(
-                    label = tr(Str.ZAPRET_DPI_SPLIT),
-                    value = config.dpiSplit,
-                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(dpiSplit = v)) } },
-                    placeholder = "seqovl"
-                )
-                ZappTextField(
-                    label = "--dpi-split-pos",
+                    label = "--dpi-desync-split-pos",
                     value = config.dpiSplitPos,
                     onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(dpiSplitPos = v)) } },
                     placeholder = "1,m1"
                 )
                 ZappNumberField(
-                    label = "--dpi-split-seqovl",
+                    label = "--dpi-desync-split-seqovl",
                     value = config.dpiSplitSeqovl,
                     onValueChange = { v ->
                         state.mutate { it.copy(zapret = it.zapret.copy(dpiSplitSeqovl = v)) }
                     }
                 )
-                ZappSettingRow(
-                    title = tr(Str.ZAPRET_MULTIPATH),
-                    checked = config.multipath,
-                    onCheckedChange = { on ->
-                        state.mutate { it.copy(zapret = it.zapret.copy(multipath = on)) }
-                    }
-                )
                 ZappNumberField(
-                    label = "--multiply",
-                    value = config.multiply,
-                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(multiply = v)) } }
+                    label = "--dpi-desync-repeats",
+                    value = config.fakeRepeats,
+                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(fakeRepeats = v)) } }
                 )
             }
 
-            // Подмена пакета относится к fake и patch.
+            // Подмена пакета: сам флаг -- режим fake у desync, а fooling
+            // подставляет вместо старых --fake-csum/--fake-seq свои опции.
             if (family == ZapretFamily.FAKE || family == ZapretFamily.PATCH) {
                 ZappSettingRow(
                     title = tr(Str.ZAPRET_FAKE),
@@ -290,37 +284,16 @@ private fun ZapretAdvanced(state: AppState, config: ZapretConfig) {
                         state.mutate { it.copy(zapret = it.zapret.copy(fakePacket = on)) }
                     }
                 )
-                ZappTextField(
-                    label = "--fake-tls",
-                    value = config.fakeTlsMode,
-                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(fakeTlsMode = v)) } },
-                    placeholder = "SNI"
-                )
-                ZappTextField(
-                    label = "--fake-tls-host",
-                    value = config.fakeTlsHost,
-                    onValueChange = { v ->
-                        state.mutate { it.copy(zapret = it.zapret.copy(fakeTlsHost = v)) }
-                    },
-                    placeholder = "example.com"
-                )
                 ZappNumberField(
-                    label = "--fake-seq",
+                    label = tr(Str.DPI_FAKE_SEQ),
                     value = config.fakeSeq,
                     onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(fakeSeq = v)) } }
                 )
                 ZappSettingRow(
-                    title = "--fake-csum",
+                    title = tr(Str.DPI_FAKE_CSUM),
                     checked = config.fakeCsum,
                     onCheckedChange = { on ->
                         state.mutate { it.copy(zapret = it.zapret.copy(fakeCsum = on)) }
-                    }
-                )
-                ZappSettingRow(
-                    title = "--fake-cut-tls",
-                    checked = config.fakeCutTls,
-                    onCheckedChange = { on ->
-                        state.mutate { it.copy(zapret = it.zapret.copy(fakeCutTls = on)) }
                     }
                 )
             }
@@ -338,21 +311,19 @@ private fun ZapretAdvanced(state: AppState, config: ZapretConfig) {
                 onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(hostSpell = on)) } }
             )
             ZappSettingRow(
-                title = "--methodspace",
-                checked = config.methodSpace,
-                onCheckedChange = { on ->
-                    state.mutate { it.copy(zapret = it.zapret.copy(methodSpace = on)) }
-                }
-            )
-            ZappNumberField(
-                label = tr(Str.ZAPRET_MSS),
-                value = config.mss,
-                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(mss = v)) } }
+                title = "--hostnospace",
+                checked = config.hostNoSpace,
+                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(hostNoSpace = on)) } }
             )
             ZappSettingRow(
-                title = tr(Str.ZAPRET_LOGGING),
-                checked = config.logging,
-                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(logging = on)) } }
+                title = "--methodeol",
+                checked = config.methodEol,
+                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(methodEol = on)) } }
+            )
+            ZappNumberField(
+                label = "--wssize",
+                value = config.wsSize,
+                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(wsSize = v)) } }
             )
         }
     }

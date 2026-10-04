@@ -67,6 +67,7 @@ jobs:
         run: |
           url="https://github.com/${{ github.repository }}/releases/download/native-bins/native-jniLibs.tar.gz"
           if curl -fsSL --retry 3 "$url" -o /tmp/native-jniLibs.tar.gz; then
+            mkdir -p APP/app/src/main/jniLibs
             tar -xzf /tmp/native-jniLibs.tar.gz -C APP/app/src/main/jniLibs
             echo "распаковано .so: $(find APP/app/src/main/jniLibs -name '*.so' | wc -l)"
           else

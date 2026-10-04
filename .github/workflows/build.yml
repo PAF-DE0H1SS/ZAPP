@@ -59,6 +59,20 @@ jobs:
             "$KS_PASS" "$KS_ALIAS" "$KEY_PASS" > APP/signing/keystore.properties
           echo "keystore раскладан, release будет подписан"
 
+      # Нативные демоны (wg/box/openvpn/tor/lyrebird/nfqws/goodbyedpi) в git
+      # не входят: ~300 МБ против лимита GitHub в 100 МБ. Они лежат отдельным
+      # релизом native-bins; без них APK собирается, но без VPN/Zapret/Tor
+      # и в релиз не публикуется (проверка libbox.so в release-job).
+      - name: Fetch native daemons
+        run: |
+          url="https://github.com/${{ github.repository }}/releases/download/native-bins/native-jniLibs.tar.gz"
+          if curl -fsSL --retry 3 "$url" -o /tmp/native-jniLibs.tar.gz; then
+            tar -xzf /tmp/native-jniLibs.tar.gz -C APP/app/src/main/jniLibs
+            echo "распаковано .so: $(find APP/app/src/main/jniLibs -name '*.so' | wc -l)"
+          else
+            echo "релиз native-bins не найден -- собираем без нативных демонов"
+          fi
+
       - name: Build Android
         working-directory: APP
         run: ./gradlew :app:assembleDebug :app:assembleRelease

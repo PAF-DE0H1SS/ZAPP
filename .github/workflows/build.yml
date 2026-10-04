@@ -194,10 +194,17 @@ jobs:
             exit 1
           fi
           # Подписанный production APK идёт к релизу вместе с десктопными
-          # образами; неподписанный (app-release-unsigned.apk) -- нет.
-          if [ -f artifacts/app-release.apk ]; then
-            cp artifacts/app-release.apk "zapp-$TAG_NAME.apk"
+          # образами. upload-artifact сохраняет структуру каталогов
+          # (release/app-release.apk), поэтому ищем рекурсивно. CI-сборка
+          # пока без native/ (jniLibs в .gitignore, ~300 МБ) и не содержит
+          # демонов -- такой APK в релиз не добавляем: признак полной сборки
+          # -- libbox.so в архиве.
+          apk=$(find artifacts -type f -name 'app-release.apk' | head -1 || true)
+          if [ -n "$apk" ] && unzip -l "$apk" | grep -q 'libbox\.so'; then
+            cp "$apk" "zapp-$TAG_NAME.apk"
             files+=("zapp-$TAG_NAME.apk")
+          else
+            echo "CI-APK без нативных демонов -- в релиз не добавляем"
           fi
           gh release create "$TAG_NAME" \
             --repo "$GITHUB_REPOSITORY" \

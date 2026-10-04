@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -17,13 +19,30 @@ android {
         applicationId = "xyz.azraellab.zapp"
         minSdk = 33
         targetSdk = 36
-        versionCode = 1
+        versionCode = 2
         versionName = zappVersion
 
         // STL не отключаем. `ANDROID_STL=none` убирает libc++ из sysroot, и
         // тогда даже `<cstdint>` не находится: счётчик читает /proc через
         // std::string и std::vector, то есть без STL он не компилируется.
         // По умолчанию NDK берёт c++_static, что и нужно.
+    }
+
+    // Подпись release-сборки. keystore и пароли живут в signing/ (в .gitignore,
+    // в репозиторий не попадают): локально их создал владелец, в CI их
+    // раскладывает шаг Prepare release keystore из GitHub Secrets. Без файла
+    // signingConfigs остаётся пустым и сборка выходит неподписанной.
+    signingConfigs {
+        create("release") {
+            val propsFile = rootProject.file("signing/keystore.properties")
+            if (propsFile.exists()) {
+                val props = Properties().apply { propsFile.inputStream().use { load(it) } }
+                storeFile = rootProject.file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -34,6 +53,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
+                .takeIf { it.storeFile?.exists() == true }
         }
     }
 

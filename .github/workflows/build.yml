@@ -39,6 +39,26 @@ jobs:
         working-directory: APP
         run: ./gradlew :composeApp:desktopTest
 
+      # Подпись release-APK. Секреты задаются владельцем репозитория
+      # (gh secret set); без них сборка идёт без signingConfigs и выдаёт
+      # app-release-unsigned.apk -- такой в релиз не публикуется.
+      - name: Prepare release keystore
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "Секреты keystore не заданы -- release-сборка будет неподписанной"
+            exit 0
+          fi
+          mkdir -p APP/signing
+          echo "$KS_B64" | base64 -d > APP/signing/zapp.keystore
+          printf 'storeFile=signing/zapp.keystore\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$KS_PASS" "$KS_ALIAS" "$KEY_PASS" > APP/signing/keystore.properties
+          echo "keystore раскладан, release будет подписан"
+
       - name: Build Android
         working-directory: APP
         run: ./gradlew :app:assembleDebug :app:assembleRelease
@@ -49,7 +69,7 @@ jobs:
           name: zapp-android-apks
           path: |
             APP/app/build/outputs/apk/debug/app-debug.apk
-            APP/app/build/outputs/apk/release/app-release-unsigned.apk
+            APP/app/build/outputs/apk/release/*.apk
 
   windows:
     name: Windows 10/11 MSI installer
@@ -172,6 +192,12 @@ jobs:
           if [ "${#files[@]}" -eq 0 ]; then
             echo "Нет ни одного production-артефакта - релиз не создаём" >&2
             exit 1
+          fi
+          # Подписанный production APK идёт к релизу вместе с десктопными
+          # образами; неподписанный (app-release-unsigned.apk) -- нет.
+          if [ -f artifacts/app-release.apk ]; then
+            cp artifacts/app-release.apk "zapp-$TAG_NAME.apk"
+            files+=("zapp-$TAG_NAME.apk")
           fi
           gh release create "$TAG_NAME" \
             --repo "$GITHUB_REPOSITORY" \

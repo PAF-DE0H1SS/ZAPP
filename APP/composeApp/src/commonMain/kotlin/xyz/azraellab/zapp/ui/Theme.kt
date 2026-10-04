@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import xyz.azraellab.zapp.core.PerfConfig
 import xyz.azraellab.zapp.ui.theme.AzraelCornerGlass
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.theme.AzraelTheme
@@ -49,7 +50,11 @@ fun AppThemeRoot(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun GlassBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+fun GlassBackground(
+    modifier: Modifier = Modifier,
+    perf: PerfConfig = PerfConfig(),
+    content: @Composable BoxScope.() -> Unit
+) {
     val scheme = MaterialTheme.colorScheme
     // Градиент фона раньше был зашит на тёмную схему (#0C110C → #0A0A0A → #070707),
     // поэтому светлая тема выглядела как «тёмное приложение с чёрным текстом»:
@@ -67,7 +72,7 @@ fun GlassBackground(modifier: Modifier = Modifier, content: @Composable BoxScope
         AmbientGlow(color = scheme.primary, size = 380.dp, alpha = 0.06f, Modifier.align(Alignment.TopEnd))
         AmbientGlow(color = scheme.secondary, size = 420.dp, alpha = 0.03f, Modifier.align(Alignment.BottomEnd))
         // Звёзды и белые кометы как на сайте (/e2) - под контентом, мышь не ловит.
-        StarfieldBackground(Modifier.matchParentSize())
+        StarfieldBackground(Modifier.matchParentSize(), perf)
         content()
     }
 }

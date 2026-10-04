@@ -71,7 +71,9 @@ private class JvmDaemonEngine(
                 return@launch
             }
             val args = materialize(spec) ?: run {
-                log(DaemonEvent(Str.DAEMON_NO_BINARY, arg = binaryName))
+                // Не бинарь, а файлы: причины разные, и путать их в
+                // журнале -- искать не ту поломку.
+                log(DaemonEvent(Str.DAEMON_FILES_FAILED, arg = binaryName))
                 setState(DaemonState.ERROR)
                 return@launch
             }
@@ -131,12 +133,23 @@ private class JvmDaemonEngine(
         daemonLogcat(TAG, "${id.name}: $line")
     }
 
-    /** Читает stdout+stderr процесса построчно, пока поток не закроется. */
+    /**
+     * Читает stdout+stderr процесса построчно, пока поток не закроется.
+     *
+     * Две защиты, и обе обязательны. Пустые строки пропускаются:
+     * [DaemonEvent] требует непустой payload, а исключение внутри
+     * `forEachLine` закрывает reader -> закрывает pipe -> следующая же
+     * запись демона -- SIGPIPE и смерть с кодом 141, которая в журнале
+     * выглядит как «упал сам» и прячет настоящую ошибку. Перехват каждой
+     * строки тем же защитным: читатель не имеет права ронять поток ни
+     * при каком состоянии демона -- это его единственный канал вывода.
+     */
     private fun startReader(process: Process) {
         Thread {
             runCatching {
                 process.inputStream.bufferedReader().forEachLine { line ->
-                    log(DaemonEvent(raw = line))
+                    if (line.isEmpty()) return@forEachLine
+                    runCatching { log(DaemonEvent(raw = line)) }
                 }
             }
         }.apply {

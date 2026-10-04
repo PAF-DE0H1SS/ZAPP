@@ -26,7 +26,11 @@ import xyz.azraellab.zapp.core.AppConfig
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.Docs
+import xyz.azraellab.zapp.core.GoodbyeDpiMode
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.ZapretFamily
+import xyz.azraellab.zapp.core.ZapretMode
+import xyz.azraellab.zapp.core.ZapretStrategy
 import xyz.azraellab.zapp.core.log.AppLog
 import xyz.azraellab.zapp.core.native.NativeBinaries
 import xyz.azraellab.zapp.core.permissions.PermissionId
@@ -47,6 +51,7 @@ import xyz.azraellab.zapp.ui.components.ZappNumberField
 import xyz.azraellab.zapp.ui.components.ZappSectionTitle
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.components.ZappTextField
+import xyz.azraellab.zapp.ui.nav.ZappBackHandler
 import xyz.azraellab.zapp.ui.tr
 
 /**
@@ -60,6 +65,10 @@ import xyz.azraellab.zapp.ui.tr
 fun SettingsPage(state: AppState) {
     // null = корень со списком категорий; иначе -- имя открытого окна.
     var section by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Системная кнопка «назад» закрывает открытое подокно, а не всё
+    // приложение: из окна категории возвращаемся в список категорий.
+    ZappBackHandler(enabled = section != null) { section = null }
 
     when (section) {
         null -> SettingsRoot(
@@ -91,8 +100,24 @@ fun SettingsPage(state: AppState) {
             PresetsSection(state)
         }
 
+        "perf" -> SubPage(Str.SETTINGS_PERF, back = { section = null }) {
+            PerfSection(state)
+        }
+
         "vpn" -> SubPage(Str.TAB_VPN, back = { section = null }) {
             VpnExtrasSection(state)
+        }
+
+        "tor" -> SubPage(Str.TAB_TOR, back = { section = null }) {
+            TorSection(state)
+        }
+
+        "zapret" -> SubPage(Str.TAB_ZAPRET, back = { section = null }) {
+            ZapretSection(state)
+        }
+
+        "dpi" -> SubPage(Str.TAB_GOODBYE_DPI, back = { section = null }) {
+            GoodbyeDpiSection(state)
         }
 
         "components" -> SubPage(Str.COMPONENTS, back = { section = null }) {
@@ -125,7 +150,13 @@ private fun SettingsRoot(state: AppState, onOpen: (String) -> Unit) {
             CategoryRow(tr(Str.SETTINGS_UPDATES)) { onOpen("updates") }
             CategoryRow(tr(Str.TAB_TRAFFIC)) { onOpen("traffic") }
             CategoryRow(tr(Str.SETTINGS_PRESETS)) { onOpen("presets") }
+            CategoryRow(tr(Str.SETTINGS_PERF)) { onOpen("perf") }
             CategoryRow(tr(Str.TAB_VPN)) { onOpen("vpn") }
+            CategoryRow(tr(Str.TAB_TOR)) { onOpen("tor") }
+            if (NativeBinaries.installed().isNotEmpty()) {
+                CategoryRow(tr(Str.TAB_ZAPRET)) { onOpen("zapret") }
+                CategoryRow(tr(Str.TAB_GOODBYE_DPI)) { onOpen("dpi") }
+            }
             if (NativeBinaries.installed().isNotEmpty()) {
                 CategoryRow(tr(Str.COMPONENTS)) { onOpen("components") }
             }
@@ -184,6 +215,68 @@ private fun GeneralSection(state: AppState) {
                 options = AppLang.entries.map { Choice(it.code, labelOf(it)) },
                 selected = AppLangState.current.code,
                 onSelect = { code -> AppLangState.set(AppLang.of(code)) }
+            )
+        }
+    }
+    PageGroup(tr(Str.SETTINGS_REPLAY_WELCOME)) {
+        ZappCard {
+            ZappButton(
+                text = tr(Str.SETTINGS_REPLAY_WELCOME),
+                role = ButtonRole.SECONDARY,
+                onClick = {
+                    state.mutate { it.copy(welcomeDone = false) }
+                    AppLog.log("app", "welcome tour replay requested")
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+/**
+ * Производительность: фон и размер страницы списка.
+ *
+ * Отдельная категория, а не в «Основном»: это настройки под слабое
+ * железо, к языку и приветствию они отношения не имеют. Значения
+ * ограничены [PerfConfig.sanitized], поэтому мусор из файла не попадёт
+ * в цикл отрисовки.
+ */
+@Composable
+private fun PerfSection(state: AppState) {
+    val perf = state.config.perf.sanitized()
+    PageGroup(tr(Str.SETTINGS_PERF)) {
+        ZappCard {
+            ZappSettingRow(
+                title = tr(Str.PERF_BG_ANIM),
+                checked = perf.animatedBackground,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(perf = it.perf.copy(animatedBackground = on).sanitized()) }
+                }
+            )
+            ZappChoiceRow(
+                label = tr(Str.PERF_BG_FPS),
+                options = listOf(15, 30, 60).map { Choice(it.toString(), "$it fps") },
+                selected = perf.backgroundFps.toString(),
+                onSelect = { code ->
+                    state.mutate {
+                        it.copy(perf = it.perf.copy(backgroundFps = code.toInt()).sanitized())
+                    }
+                }
+            )
+            ZappChoiceRow(
+                label = tr(Str.PERF_LIST_PAGE),
+                options = listOf(15, 30, 60, 120).map { Choice(it.toString(), it.toString()) },
+                selected = perf.listPageSize.toString(),
+                onSelect = { code ->
+                    state.mutate {
+                        it.copy(perf = it.perf.copy(listPageSize = code.toInt()).sanitized())
+                    }
+                }
+            )
+            Text(
+                text = tr(Str.PERF_LIST_PAGE_HINT),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -376,9 +469,15 @@ private fun PresetsSection(state: AppState) {
 
 /** VPN-мелочи, которые не нужны на основном экране. */
 @Composable
-private fun VpnExtrasSection(state: AppState) {
+ private fun VpnExtrasSection(state: AppState) {
     val vpn = state.config.vpn
-    PageGroup(tr(Str.TAB_VPN)) {
+    PageGroup(tr(Str.VPN_PROFILES)) {
+        VpnProfileEditor(state)
+    }
+    PageGroup(tr(Str.VPN_ROUTING)) {
+        VpnRoutingCard(state)
+    }
+    PageGroup(tr(Str.SETTINGS_SYSTEM)) {
         ZappCard {
             ZappSettingRow(
                 title = tr(Str.VPN_CLASH_API),
@@ -404,6 +503,21 @@ private fun VpnExtrasSection(state: AppState) {
                     }
                 )
             }
+        }
+    }
+}
+
+/**
+ * Настройки Tor.
+ *
+ * Всё, что относится к тор'у, лежит здесь, а не в разделе VPN: SOCKS-порт
+ * уехал из VPN-окна, чтобы каждое окно говорило только о своём.
+ */
+@Composable
+private fun TorSection(state: AppState) {
+    val vpn = state.config.vpn
+    PageGroup(tr(Str.SETTINGS_SYSTEM)) {
+        ZappCard {
             ZappNumberField(
                 label = tr(Str.VPN_TOR_SOCKS),
                 value = vpn.torSocksPort,
@@ -411,6 +525,295 @@ private fun VpnExtrasSection(state: AppState) {
                     state.mutate { it.copy(vpn = it.vpn.copy(torSocksPort = v ?: 9050)) }
                 },
                 placeholder = "9050"
+            )
+        }
+    }
+}
+
+/**
+ * Тонкие настройки Zapret.
+ *
+ * Перенесены сюда с главного экрана: фильтры портов, desync-ручки и пути
+ * к бинарю -- это разовая настройка под конкретную сеть, а главный экран
+ * показывает только выбор стратегии и кнопки запуска.
+ */
+@Composable
+private fun ZapretSection(state: AppState) {
+    val config = state.config.zapret
+    val family = ZapretStrategy.of(config.strategy).family
+
+    PageGroup(tr(Str.ZAPRET_STRATEGY)) {
+        ZappCard {
+            ZappSettingRow(
+                title = tr(Str.ZAPRET_ALL_TRAFFIC),
+                checked = config.allTraffic,
+                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(allTraffic = on)) } }
+            )
+            ZappSettingRow(
+                title = tr(Str.ZAPRET_IPV4_ONLY),
+                checked = config.ipv4Only,
+                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(ipv4Only = on)) } }
+            )
+            ZappSettingRow(
+                title = tr(Str.COMMON_TEST),
+                checked = config.verifyStrategy,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(zapret = it.zapret.copy(verifyStrategy = on)) }
+                }
+            )
+            ZappSettingRow(
+                title = tr(Str.DAEMON_AUTOSTART),
+                checked = config.autoRestart,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(zapret = it.zapret.copy(autoRestart = on)) }
+                }
+            )
+        }
+    }
+
+    PageGroup(tr(Str.ZAPRET_FILTERS)) {
+        ZappCard {
+            ZappTextField(
+                label = tr(Str.ZAPRET_FILTER_TCP),
+                value = config.filterTcp,
+                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(filterTcp = v)) } },
+                placeholder = "80,443"
+            )
+            ZappTextField(
+                label = tr(Str.ZAPRET_FILTER_UDP),
+                value = config.filterUdp,
+                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(filterUdp = v)) } },
+                placeholder = "443"
+            )
+            ZappTextField(
+                label = tr(Str.LIST_EXCLUSIONS),
+                value = config.exclusions,
+                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(exclusions = v)) } },
+                placeholder = "cdn.example.org"
+            )
+        }
+    }
+
+    PageGroup(tr(Str.SETTINGS_SYSTEM)) {
+        ZappCard {
+            ZappTextField(
+                label = tr(Str.DAEMON_BINARY),
+                value = config.binaryPath,
+                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(binaryPath = v)) } },
+                placeholder = "nfqws"
+            )
+            ZappChoiceRow(
+                label = tr(Str.ZAPRET_MODE),
+                options = ZapretMode.entries.map { Choice(it.code, it.modeLabel()) },
+                selected = config.mode,
+                onSelect = { code -> state.mutate { it.copy(zapret = it.zapret.copy(mode = code)) } }
+            )
+            ZappChoiceRow(
+                label = tr(Str.ZAPRET_DPI_DESYNC),
+                options = ZAPRET_DESYNC_CHOICES,
+                selected = config.desyncMethods.firstOrNull() ?: "",
+                onSelect = { method ->
+                    state.mutate { it.copy(zapret = it.zapret.copy(desyncMethods = setOf(method))) }
+                }
+            )
+
+            // TTL и окно относятся к desync: в других семействах поля не
+            // показываются, а не сереют.
+            if (family == ZapretFamily.DESYNC) {
+                ZappNumberField(
+                    label = tr(Str.ZAPRET_TTL),
+                    value = config.ttl,
+                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(ttl = v)) } },
+                    placeholder = "2"
+                )
+                if (config.ttl != null) {
+                    ZappSettingRow(
+                        title = "--dpi-desync-ttl6",
+                        checked = config.ttl6,
+                        onCheckedChange = { on ->
+                            state.mutate { it.copy(zapret = it.zapret.copy(ttl6 = on)) }
+                        }
+                    )
+                }
+                ZappNumberField(
+                    label = tr(Str.ZAPRET_WINDOW),
+                    value = config.wsize,
+                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(wsize = v)) } },
+                    placeholder = "65535"
+                )
+                ZappTextField(
+                    label = "--dpi-desync-split-pos",
+                    value = config.dpiSplitPos,
+                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(dpiSplitPos = v)) } },
+                    placeholder = "1,m1"
+                )
+                ZappNumberField(
+                    label = "--dpi-desync-split-seqovl",
+                    value = config.dpiSplitSeqovl,
+                    onValueChange = { v ->
+                        state.mutate { it.copy(zapret = it.zapret.copy(dpiSplitSeqovl = v)) }
+                    }
+                )
+                ZappNumberField(
+                    label = "--dpi-desync-repeats",
+                    value = config.fakeRepeats,
+                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(fakeRepeats = v)) } }
+                )
+            }
+
+            if (family == ZapretFamily.FAKE || family == ZapretFamily.PATCH) {
+                ZappSettingRow(
+                    title = tr(Str.ZAPRET_FAKE),
+                    checked = config.fakePacket,
+                    onCheckedChange = { on ->
+                        state.mutate { it.copy(zapret = it.zapret.copy(fakePacket = on)) }
+                    }
+                )
+                ZappNumberField(
+                    label = tr(Str.DPI_FAKE_SEQ),
+                    value = config.fakeSeq,
+                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(fakeSeq = v)) } }
+                )
+                ZappSettingRow(
+                    title = tr(Str.DPI_FAKE_CSUM),
+                    checked = config.fakeCsum,
+                    onCheckedChange = { on ->
+                        state.mutate { it.copy(zapret = it.zapret.copy(fakeCsum = on)) }
+                    }
+                )
+                ZappSettingRow(
+                    title = "--dpi-desync-fooling=ts",
+                    checked = config.foolingTs,
+                    onCheckedChange = { on ->
+                        state.mutate { it.copy(zapret = it.zapret.copy(foolingTs = on)) }
+                    }
+                )
+            }
+
+            ZappSettingRow(
+                title = "--hostcase",
+                checked = config.hostCase,
+                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(hostCase = on)) } }
+            )
+            ZappSettingRow(
+                title = "--hostspell",
+                checked = config.hostSpell,
+                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(hostSpell = on)) } }
+            )
+            ZappSettingRow(
+                title = "--hostnospace",
+                checked = config.hostNoSpace,
+                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(hostNoSpace = on)) } }
+            )
+            ZappSettingRow(
+                title = "--methodeol",
+                checked = config.methodEol,
+                onCheckedChange = { on -> state.mutate { it.copy(zapret = it.zapret.copy(methodEol = on)) } }
+            )
+            ZappNumberField(
+                label = "--wssize",
+                value = config.wsSize,
+                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(wsSize = v)) } }
+            )
+            Text(
+                text = tr(Str.ZAPRET_COMMAND),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = config.toCommandLine(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+/**
+ * Тонкие настройки GoodbyeDPI.
+ *
+ * Как и у Zapret: разовая настройка под сеть живёт здесь, а не на
+ * главном экране, который отвечает за запуск и режим.
+ */
+@Composable
+private fun GoodbyeDpiSection(state: AppState) {
+    val config = state.config.goodbyeDpi
+    val mode = GoodbyeDpiMode.of(config.mode)
+
+    PageGroup(tr(Str.DPI_MODE)) {
+        ZappCard {
+            ZappSettingRow(
+                title = tr(Str.DAEMON_AUTOSTART),
+                checked = config.autoStart,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(autoStart = on)) }
+                }
+            )
+            if (mode == GoodbyeDpiMode.SPLIT_POS) {
+                ZappNumberField(
+                    label = tr(Str.DPI_SPLIT_POS),
+                    value = config.splitPos.toIntOrNull(),
+                    onValueChange = { v ->
+                        state.mutate {
+                            it.copy(goodbyeDpi = it.goodbyeDpi.copy(splitPos = v?.toString() ?: "2"))
+                        }
+                    },
+                    placeholder = "2"
+                )
+            }
+            if (mode != GoodbyeDpiMode.FAKE_SSL) {
+                ZappNumberField(
+                    label = tr(Str.DPI_FAKE_SEQ),
+                    value = config.fakeSeq,
+                    onValueChange = { v ->
+                        state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(fakeSeq = v)) }
+                    }
+                )
+            }
+            if (mode != GoodbyeDpiMode.FAKE_PATCH) {
+                ZappSettingRow(
+                    title = tr(Str.DPI_FAKE_CSUM),
+                    checked = config.fakeCsum,
+                    onCheckedChange = { on ->
+                        state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(fakeCsum = on)) }
+                    }
+                )
+            }
+            if (mode == GoodbyeDpiMode.FAKE_SNI) {
+                ZappTextField(
+                    label = tr(Str.DPI_FAKE_SNI),
+                    value = config.fakeSni,
+                    onValueChange = { v ->
+                        state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(fakeSni = v)) }
+                    },
+                    placeholder = "example.com"
+                )
+            }
+            // Название -- сам флаг: включён означает «пропустить без SNI».
+            ZappSettingRow(
+                title = "--allow-no-sni",
+                checked = !config.hostCheck,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(hostCheck = !on)) }
+                }
+            )
+            ZappTextField(
+                label = tr(Str.DPI_DAEMON_PATH),
+                value = config.daemonPath,
+                onValueChange = { v ->
+                    state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(daemonPath = v)) }
+                },
+                placeholder = "goodbyedpi"
+            )
+            Text(
+                text = tr(Str.ZAPRET_COMMAND),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = config.toCommandLine(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
     }
@@ -647,4 +1050,16 @@ private fun labelOf(lang: AppLang): String = when (lang) {
     AppLang.EN -> "English"
     AppLang.RU -> "Русский"
     AppLang.ZH -> "中文"
+}
+
+/** Список методов desync: стабильный, вне композиции. */
+private val ZAPRET_DESYNC_CHOICES = listOf(
+    "fake", "split2", "fakedsplit", "multisplit", "datanozzle", "multiback", "seqovl"
+).map { Choice(it, it) }
+
+/** Метка режима Zapret на языке интерфейса. */
+@Composable
+private fun ZapretMode.modeLabel(): String {
+    val lang = AppLangState.current
+    return if (lang == AppLang.RU) ru else en
 }

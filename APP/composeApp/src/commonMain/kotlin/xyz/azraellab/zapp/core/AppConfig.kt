@@ -27,11 +27,134 @@ data class AppConfig(
     /** Приветствие уже показано. false -- показываем при первом запуске. */
     val welcomeDone: Boolean = false,
 
+    /**
+     * Производительность: фон, размер страницы списка.
+     *
+     * Отдельный блок, потому что это свойства железа, а не поведения
+     * обхода: пресеты его не переносят, а мини-опросник в приветствии
+     * заполняет по классу устройства.
+     */
+    val perf: PerfConfig = PerfConfig(),
+
+    /**
+     * Ответы мини-опросника: как пользуются приложением.
+     *
+     * Пустой профиль -- опросник не заполнялся; `applied` показывает,
+     * были ли ответы уже применены к настройкам.
+     */
+    val usage: UsageProfile = UsageProfile(),
+
     /** Схема версии: нужна для миграций при чтении старых файлов. */
     val version: Int = CURRENT_VERSION
 ) {
     companion object {
         const val CURRENT_VERSION: Int = 1
+    }
+}
+
+/**
+ * Настройки производительности.
+ *
+ * Значения по умолчанию совпадают с прежним поведением приложения, чтобы
+ * старый файл настроек после обновления выглядел и работал один в один.
+ */
+@Serializable
+data class PerfConfig(
+    /** Анимированное звёздное небо на фоне. false -- статичная отрисовка. */
+    val animatedBackground: Boolean = true,
+
+    /** Частота кадров фона. Ограничена 15..60: больше бессмысленно, меньше -- каша. */
+    val backgroundFps: Int = 30,
+
+    /** Сколько коннектов рисовать в списке за раз. */
+    val listPageSize: Int = 30
+) {
+    fun sanitized(): PerfConfig = copy(
+        backgroundFps = backgroundFps.coerceIn(15, 60),
+        listPageSize = listPageSize.coerceIn(10, 120)
+    )
+}
+
+/**
+ * Ответы мини-опросника о характере использования.
+ *
+ * Коды -- стабильные строки, они попадают в файл настроек и сравниваются
+ * в тестах; человеческие подписи живут в [Str]. Неизвестный код
+ * интерпретируется как «не выбрано» и ничего не меняет.
+ */
+@Serializable
+data class UsageProfile(
+    /** Чего хотят от приложения: video | games | chat | privacy. */
+    val purpose: String = "",
+
+    /** Класс устройства: low | mid | high. */
+    val device: String = "",
+
+    /** Главный приоритет: speed | stability | battery. */
+    val priority: String = "",
+
+    /** Опросник заполнен и применён. */
+    val applied: Boolean = false
+) {
+    companion object {
+        const val PURPOSE_VIDEO = "video"
+        const val PURPOSE_GAMES = "games"
+        const val PURPOSE_CHAT = "chat"
+        const val PURPOSE_PRIVACY = "privacy"
+
+        const val DEVICE_LOW = "low"
+        const val DEVICE_MID = "mid"
+        const val DEVICE_HIGH = "high"
+
+        const val PRIORITY_SPEED = "speed"
+        const val PRIORITY_STABILITY = "stability"
+        const val PRIORITY_BATTERY = "battery"
+    }
+}
+
+/**
+ * Применение ответов опросника к настройкам.
+ *
+ * Чистая функция без состояния: её же вызывает экран приветствия, и её же
+ * покрывают тесты -- любое изменение маппинга видно сразу. Маппинг
+ * консервативный: ответ меняет только то, что однозначно следует из него,
+ * и никогда не трогает настройки обхода (стратегии, правила, домены).
+ */
+object UsageTuner {
+    fun apply(config: AppConfig, usage: UsageProfile): AppConfig {
+        if (!usage.applied) return config
+
+        val perf = config.perf
+            .copy(listPageSize = when (usage.device) {
+                UsageProfile.DEVICE_LOW -> 15
+                UsageProfile.DEVICE_MID -> 30
+                UsageProfile.DEVICE_HIGH -> 60
+                else -> config.perf.listPageSize
+            })
+            .copy(animatedBackground = when (usage.priority) {
+                UsageProfile.PRIORITY_BATTERY -> false
+                UsageProfile.PRIORITY_SPEED, UsageProfile.PRIORITY_STABILITY ->
+                    config.perf.animatedBackground
+                else -> config.perf.animatedBackground
+            })
+            .copy(backgroundFps = when {
+                usage.priority == UsageProfile.PRIORITY_BATTERY -> 15
+                usage.device == UsageProfile.DEVICE_LOW -> 20
+                else -> config.perf.backgroundFps
+            })
+
+        val vpn = config.vpn.copy(
+            groupMode = when (usage.purpose) {
+                UsageProfile.PURPOSE_CHAT, UsageProfile.PURPOSE_VIDEO -> true
+                else -> config.vpn.groupMode
+            },
+            killSwitch = when (usage.purpose) {
+                UsageProfile.PURPOSE_PRIVACY -> true
+                else -> config.vpn.killSwitch
+            }
+        )
+
+        return config.copy(perf = perf.sanitized(), vpn = vpn)
     }
 }
 

@@ -12,9 +12,20 @@ import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppLangStore
+import xyz.azraellab.zapp.core.LinkSpeedBus
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.toDisplayString
 import java.io.File
 import java.net.InetAddress
 
@@ -32,10 +43,19 @@ import java.net.InetAddress
  */
 class ZappVpnService : VpnService() {
 
-    private var tun: ParcelFileDescriptor? = null
-    private var tunDup: ParcelFileDescriptor? = null
-    private var fdServer: LocalServerSocket? = null
-    private var fdOwner: LocalSocket? = null
+    @Volatile private var tun: ParcelFileDescriptor? = null
+    @Volatile private var tunDup: ParcelFileDescriptor? = null
+    @Volatile private var fdServer: LocalServerSocket? = null
+    @Volatile private var fdOwner: LocalSocket? = null
+
+    /** Жизнь тикера скорости: свой scope, чтобы не трогать корутины ядра. */
+    private val speedScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var speedJob: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
 
     override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
 
@@ -79,8 +99,69 @@ class ZappVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        instance = null
+        stopSpeedTicker()
+        // Scope живёт ровно столько, сколько сервис: после onDestroy
+        // инстанса больше нет, и возобновить его некому.
+        speedScope.cancel()
         closeTunnel()
         super.onDestroy()
+    }
+
+    /**
+     * Рвёт туннель снаружи -- из движка, не дожидаясь onDestroy.
+     *
+     * Система держит сервис живым, пока есть биндинг на активный
+     * VpnService: stopService в таком случае не уничтожает сервис,
+     * onDestroy не вызывается и fd /dev/tun остаётся открытым. Мёртвый
+     * tun0 перехватывает весь трафик устройства (чёрная дыра сети),
+     * пока fd не закрыт. Поэтому сначала закрываем fd сами, а сервис
+     * останавливаем отдельно.
+     */
+    fun teardown() {
+        stopSpeedTicker()
+        closeTunnel()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
+    }
+
+    /**
+     * Плашка в уведомлении: пока подключены, в тексте живёт скорость
+     * туннеля (↓/↑, обновление раз в секунду от общего канала).
+     *
+     * Подписка, а не таймер: канал сам шлёт новое значение, а при
+     * отключении шлёт null -- уведомление возвращается к базовому
+     * тексту и сервис гаснет вместе с туннелем.
+     */
+    private fun startSpeedTicker() {
+        if (speedJob?.isActive == true) return
+        speedJob = speedScope.launch {
+            LinkSpeedBus.current
+                // Уведомление перерисовывается только при смене текста:
+                // публикация новой скорости каждую секунду -- не повод
+                // дёргать системный UI, когда цифры не изменились.
+                .map { speed ->
+                    speed?.toDisplayString()
+                        ?: Str.NOTIFY_VPN_ON.of(AppLang.of(runCatching { AppLangStore.read() }.getOrNull()) ?: AppLang.EN)
+                }
+                .distinctUntilChanged()
+                .collect { text -> showNotification(text) }
+        }
+    }
+
+    /**
+     * Подписка снимается, но scope остаётся: teardown может случиться
+     * при живом сервисе (биндинг системы), и тогда следующий СТАРТ
+     * должен снова подписаться на тот же scope.
+     */
+    private fun stopSpeedTicker() {
+        speedJob?.cancel()
+        speedJob = null
     }
 
     private fun openTunnel(params: VpnTunnelParams): ParcelFileDescriptor {
@@ -124,28 +205,48 @@ class ZappVpnService : VpnService() {
             manager.createNotificationChannel(channel)
         }
 
+        val lang = AppLang.of(runCatching { AppLangStore.read() }.getOrNull())
+            ?: AppLang.EN
+
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(Str.NOTIFY_VPN_ON.of(lang)),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification(Str.NOTIFY_VPN_ON.of(lang)))
+        }
+        // Дальше уведомление ведёт подписка на скорость: она и обновляет
+        // плашку, и возвращает базовый текст при отключении.
+        startSpeedTicker()
+    }
+
+    /** Одно уведомление на все случаи: заголовок -- имя продукта, текст -- подпись. */
+    private fun buildNotification(contentText: String): Notification {
         val icon = resources
             .getIdentifier("ic_launcher", "mipmap", packageName)
             .takeIf { it != 0 } ?: android.R.drawable.ic_dialog_info
         val lang = AppLang.of(runCatching { AppLangStore.read() }.getOrNull())
             ?: AppLang.EN
-
-        val notification = Notification.Builder(this, CHANNEL_ID)
+        return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(icon)
             .setContentTitle(Str.APP_NAME.of(lang))
-            .setContentText(Str.NOTIFY_VPN_ON.of(lang))
+            .setContentText(contentText)
             .setOngoing(true)
             .build()
+    }
 
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+    /**
+     * Обновление текста уже показанного уведомления.
+     *
+     * Тот же id, что у foreground: новая нотификация заменяет старую
+     * без дубля в шторке. После teardown подписка снята, поэтому сюда
+     * после остановки туннеля ничего не приходит.
+     */
+    private fun showNotification(contentText: String) {
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        manager.notify(NOTIFICATION_ID, buildNotification(contentText))
     }
 
     /**
@@ -225,8 +326,12 @@ class ZappVpnService : VpnService() {
         return host to prefix
     }
 
-    private companion object {
-        const val CHANNEL_ID = "zapp-vpn"
-        const val NOTIFICATION_ID = 43
+    internal companion object {
+        private const val CHANNEL_ID = "zapp-vpn"
+        private const val NOTIFICATION_ID = 43
+
+        /** Живой сервис для teardown() из движка. */
+        @Volatile
+        internal var instance: ZappVpnService? = null
     }
 }

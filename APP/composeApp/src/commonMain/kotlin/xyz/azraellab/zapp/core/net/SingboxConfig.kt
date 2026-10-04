@@ -261,6 +261,10 @@ object SingboxConfig {
                     put("tag", "dns-0")
                     put("server", "8.8.8.8")
                     put("server_port", 53)
+                    // Как и явным серверам: с dnsViaProxy резолв идёт через
+                    // туннель, иначе первый пинг узла -- это ещё и утечка
+                    // запроса мимо прокси. Сервер -- IP, петли не будет.
+                    if (vpn.dnsViaProxy && finalTag != DIRECT_TAG) put("detour", finalTag)
                 })
             }
             if (vpn.dnsFakeIp) {
@@ -358,8 +362,15 @@ object SingboxConfig {
         put("outbounds", buildJsonArray {
             outbounds.forEach { add(JsonPrimitive(tagOf(it))) }
         })
-        put("interval", "5m")
-        put("tolerance", 50)
+        // Часто и мелко: раз в минуту группа перепроверяет узлы, а
+        // tolerance в 10 мс переключает только на заметно более быстрый --
+        // минимум пинга без дёрганья туда-сюда на шуме замера.
+        put("interval", "1m")
+        put("tolerance", 10)
+        // При смене узла существующие соединения рвутся и переезжают на
+        // новый: без этого «выбрал быстрее» действовало бы только для
+        // новых соединений, а живые сидели бы на старом пинге.
+        put("interrupt_exist_connections", true)
     }
 
     // --- WireGuard / Amnezia WG ---

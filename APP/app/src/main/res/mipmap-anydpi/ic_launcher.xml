@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Основная иконка (application icon): открытый замок. Динамическая
+    подмена — привилегия Android-лаунчеров через activity-alias; всё,
+    что её не умеет (десктоп, уведомления, настройки), видит именно
+    этот значок.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <foreground android:drawable="@drawable/ic_unlock_glyph" />
+    <monochrome android:drawable="@drawable/ic_unlock_glyph" />
 </adaptive-icon>

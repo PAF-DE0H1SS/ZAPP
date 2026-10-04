@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,8 +22,10 @@ import xyz.azraellab.zapp.core.daemon.DaemonEvent
 import xyz.azraellab.zapp.core.daemon.DaemonId
 import xyz.azraellab.zapp.core.daemon.DaemonSpec
 import xyz.azraellab.zapp.core.daemon.DaemonState
+import xyz.azraellab.zapp.core.daemon.DpiFirewall
 import xyz.azraellab.zapp.core.daemon.createDaemonEngine
 import xyz.azraellab.zapp.core.engine.TunnelEngine
+import xyz.azraellab.zapp.core.engine.TunnelState
 import xyz.azraellab.zapp.core.engine.createTunnelEngine
 import xyz.azraellab.zapp.core.gps.GpsEngine
 import xyz.azraellab.zapp.core.gps.GpsState
@@ -63,9 +66,26 @@ import xyz.azraellab.zapp.core.update.isNewerVersion
 class AppState(
     private val store: ConfigStore = createConfigStore(),
     private val gateway: PresetFileGateway = createPresetFileGateway(),
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default)
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) {
     companion object {
+        /**
+         * Единственный экземпляр на процесс.
+         *
+         * Система может пересоздать Activity (смена activity-alias для
+         * иконки, поворот, пересборка задачи лаунчером), и без этого
+         * холдера каждый раз рождался бы второй AppState со своими
+         * движками: два туннеля дрались бы за порт 9050, а подписки
+         * тикали бы вдвое. Живёт он в Companion, а не в Activity, --
+         * процесс переживает пересоздание, холдер тоже.
+         */
+        @Volatile
+        private var instance: AppState? = null
+
+        fun obtain(): AppState = instance ?: synchronized(this) {
+            instance ?: AppState().also { instance = it }
+        }
+
         /** Отложенная запись: столько ждём после последнего изменения. */
         const val SAVE_DEBOUNCE_MS = 400L
 
@@ -79,8 +99,9 @@ class AppState(
         /** Как часто смотрим, не пора ли обновить источники коннектов. */
         const val SOURCE_REFRESH_TICK_MS: Long = 60_000L
 
-        /** Сколько коннектов проверяем параллельно: больше -- давим сеть. */
-        const val CHECK_PARALLEL: Int = 16
+        /** Сколько коннектов проверяем параллельно: 32 быстро меряет
+         *  сотни ссылок и всё ещё щадит мобильную сеть. */
+        const val CHECK_PARALLEL: Int = 32
 
         /** Через сколько результатов писать их в список: плавность против шума. */
         const val CHECK_FLUSH_BATCH: Int = 8
@@ -144,6 +165,11 @@ class AppState(
     private var meter: TrafficMeter = TrafficMeter()
     private var pollJob: Job? = null
 
+    // Объявлен до init: поле, объявленное после init-блока, инициализируется
+    // ПОСЛЕ него, и ранний запуск подписки перезаписал бы только что
+    // сохранённую ссылку нулём -- опрос скорости нельзя потерять так.
+    private var linkJob: Job? = null
+
     init {
         // Уведомления о подмене: движок сообщает только состояния, а что
         // именно сказать пользователю -- решает здесь общая подписка,
@@ -164,6 +190,78 @@ class AppState(
                 }
             }
         }
+
+        // Статус туннеля: плашка скорости и иконка приложения живут на
+        // одном событии. Подключено -- единственный момент, когда есть
+        // что мерить и чем гордиться на рабочем столе.
+        //
+        // Обёртка в runCatching обязательна: scope без изоляции убивался
+        // бы одним исключением в обработчике, и с ним вместе помирали бы
+        // все остальные подписки -- скорость, иконка, GPS. Ошибка пишется
+        // в журнал, а подписка продолжает жить.
+        scope.launch {
+            tunnel.state.collect { current ->
+                AppLog.log("state", "tunnel -> $current")
+                runCatching {
+                    if (current == TunnelState.CONNECTED) {
+                        startLinkSpeed()
+                    } else {
+                        stopLinkSpeed()
+                    }
+                    LauncherIcon.setConnected(current == TunnelState.CONNECTED)
+                }.onFailure { e ->
+                    AppLog.log("state", "handler failed: ${e.message ?: e::class.simpleName}")
+                }
+            }
+        }
+    }
+
+    // --- Скорость туннеля для плашки и уведомления ---
+
+    /**
+     * Опрос счётчиков туннеля раз в секунду, пока подключены.
+     *
+     * Отдельный от мониторинга трафика цикл: мониторинг зависит от
+     * пользовательской настройки и крутится только при открытом окне,
+     * а плашка должна жить при любом подключении. Свой -- значит и свой
+     * базовый срез: общий meter двойным опросом сломал бы дельты.
+     */
+    private fun startLinkSpeed() {
+        if (linkJob?.isActive == true) return
+        AppLog.log("spd", "ticker start")
+        linkJob = scope.launch {
+            val source = trafficSource()
+            var previous: TrafficSample? = null
+            var ticks = 0
+            while (isActive) {
+                val sample = runCatching { source.read(source.nowMs()) }.getOrNull()
+                if (sample == null) {
+                    if (ticks < 3) AppLog.log("spd", "read failed")
+                } else {
+                    val speed = previous?.let { linkSpeedBetween(it, sample) }
+                    LinkSpeedBus.publish(speed)
+                    // Первые тики и каждое десятое -- чтобы видеть и сам
+                    // факт работы, и не заливать журнал письмами в секунду.
+                    if (ticks < 3 || ticks % 10 == 0) {
+                        AppLog.log(
+                            "spd",
+                            "tick=$ticks ifaces=${sample.interfaces.size} speed=$speed"
+                        )
+                    }
+                    previous = sample
+                }
+                ticks++
+                delay(1000)
+            }
+        }
+    }
+
+    /** Опрос снят: скорость неизвестна, плашка прячется, уведомление чистится. */
+    private fun stopLinkSpeed() {
+        if (linkJob != null) AppLog.log("spd", "ticker stop")
+        linkJob?.cancel()
+        linkJob = null
+        LinkSpeedBus.publish(null)
     }
 
     // --- Мониторинг трафика ---
@@ -557,6 +655,47 @@ class AppState(
         tunnel.disconnect()
     }
 
+    /**
+     * Подключение через Tor: выбирает активный мост и поднимает туннель.
+     *
+     * Выбор пользователя -- не декорация: если на вкладке Tor выбран
+     * источник, СТАРТ идёт через него, а не через первый попавшийся
+     * живой. Запасной порядок: выбранный живой -> самый быстрый живой
+     * (минимальный пинг -- приоритет автовыбора) -> выбранный мёртвый
+     * (tor попробует сам, список в конфиге его).
+     *
+     * Если туннель уже поднят другим протоколом -- сначала снимается он,
+     * иначе движок продолжил бы старое подключение и мост ни на что не
+     * повлиял бы. Смена активного профиля и переподключение идут в одной
+     * корутине с ожиданием DISCONNECTED: гонка «выбрал, но не успел
+     * остановиться» здесь исключена.
+     */
+    fun connectTor() {
+        if (!tunnel.supported) return
+        val torProfiles = config.vpn.profiles.filter { it.protocol == VpnProtocol.TOR.code }
+        val bridge = VpnConnects.torBridgeFor(torProfiles, config.vpn.activeProfileId)
+        if (bridge == null) {
+            vpnNotice = VpnNotice(Str.TOR_NO_BRIDGES)
+            AppLog.log("vpn", "tor connect refused: no bridges")
+            return
+        }
+        selectProfile(bridge.id)
+        AppLog.log("vpn", "tor connect requested (bridge=${bridge.name.ifBlank { bridge.id }})")
+        if (tunnel.state.value == TunnelState.DISCONNECTED) {
+            tunnel.connect()
+            return
+        }
+        scope.launch {
+            disconnectVpn()
+            var waits = 0
+            while (tunnel.state.value != TunnelState.DISCONNECTED && waits < 50) {
+                delay(100); waits++
+            }
+            tunnel.applyConfig(config.vpn)
+            tunnel.connect()
+        }
+    }
+
     // --- Обновления ---
 
     /**
@@ -669,8 +808,13 @@ class AppState(
 
     // --- Источники ---
 
-    /** Добавляет свой источник по URL подписки; false -- адрес не похож на URL. */
-    fun addSource(url: String, name: String): Boolean {
+    /**
+     * Добавляет свой источник по URL подписки; false -- адрес не похож на URL.
+     *
+     * [kind] определяет, в каком разделе источник появится: "proxy" --
+     * список VPN, "tor" -- вкладка Tor с мостами.
+     */
+    fun addSource(url: String, name: String, kind: String = "proxy"): Boolean {
         val clean = url.trim()
         if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
             vpnNotice = VpnNotice(Str.VPN_SOURCE_FAILED)
@@ -689,7 +833,8 @@ class AppState(
                     sources = current.vpn.sources + VpnSource(
                         id = id,
                         name = name.ifBlank { host },
-                        url = clean
+                        url = clean,
+                        kind = kind
                     )
                 )
             )
@@ -760,6 +905,7 @@ class AppState(
             }
 
             if (text == null) {
+                AppLog.log("source", "${source.name}: fetch failed ($error)")
                 setStatus(source.id, SourceState.ERROR, 0, error)
                 continue
             }
@@ -770,6 +916,7 @@ class AppState(
             }
             markSourceRefreshed(source.id)
             setStatus(source.id, SourceState.OK, links)
+            AppLog.log("source", "${source.name}: updated, links=$links")
         }
     }
 
@@ -955,6 +1102,10 @@ class AppState(
                     }
                 }
             }
+
+            // Итог одним числом: сколько живо из проверенных.
+            val alive = targets.count { config.vpn.profileById(it.first)?.health?.alive == true }
+            AppLog.log("ping", "checked=${targets.size} alive=$alive")
         }
     }
 
@@ -1030,6 +1181,11 @@ class AppState(
      * ни разу не грузили. Всё это фон: приложение уже показало экран.
      */
     private suspend fun startAutoServices() {
+        // Уборка сирот движка должна кончиться до первого демона:
+        // иначе свежий zapret конкурирует за NFQUEUE с сиротой и
+        // падает с «Operation not permitted» до того, как фоновый pkill
+        // доедет.
+        runCatching { tunnel.awaitStartup() }
         if (config.zapret.enabled) startZapret()
         if (config.goodbyeDpi.autoStart &&
             GoodbyeDpiMode.of(config.goodbyeDpi.mode) != GoodbyeDpiMode.DISABLED
@@ -1056,6 +1212,7 @@ class AppState(
     private fun watchDaemons() {
         scope.launch {
             zapretDaemon.state.collect { state ->
+                refreshDpiFirewall()
                 if (state == DaemonState.ERROR && config.zapret.enabled && config.zapret.autoRestart) {
                     delay(DAEMON_RESTART_DELAY_MS)
                     if (config.zapret.enabled && zapretDaemon.state.value == DaemonState.ERROR) {
@@ -1066,6 +1223,7 @@ class AppState(
         }
         scope.launch {
             dpiDaemon.state.collect { state ->
+                refreshDpiFirewall()
                 val enabled = config.goodbyeDpi.autoRestart &&
                     GoodbyeDpiMode.of(config.goodbyeDpi.mode) != GoodbyeDpiMode.DISABLED
                 if (state == DaemonState.ERROR && enabled) {
@@ -1074,6 +1232,39 @@ class AppState(
                         startDpi()
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * Свежие NFQUEUE-правила под текущее состояние демонов.
+     *
+     * Живы оба -- цепочка обслуживает оба набора портов; жив ни один --
+     * цепочка снимается, чтобы трафик не ходил в пустую очередь.
+     * Правила читаются из состояний (а не из тумблеров): во время
+     * автоперезапуска процесс мёртв, и слушателя для очереди нет.
+     */
+    private fun refreshDpiFirewall() {
+        val up = setOf(DaemonState.STARTING, DaemonState.RUNNING)
+        val tcp = linkedSetOf<String>()
+        val udp = linkedSetOf<String>()
+        if (zapretDaemon.state.value in up) {
+            config.zapret.filterTcp.split(',').map { it.trim() }
+                .filterTo(tcp) { it.isNotEmpty() }
+            config.zapret.filterUdp.split(',').map { it.trim() }
+                .filterTo(udp) { it.isNotEmpty() }
+        }
+        if (dpiDaemon.state.value in up) {
+            // goodbyedpi без портовых фильтров: ему нужны только сами
+            // рукопожатия HTTP/HTTPS.
+            tcp += "80"
+            tcp += "443"
+        }
+        scope.launch(Dispatchers.IO) {
+            if (tcp.isEmpty() && udp.isEmpty()) {
+                DpiFirewall.disable()
+            } else {
+                DpiFirewall.enable(tcp.toList(), udp.toList())
             }
         }
     }
@@ -1143,6 +1334,9 @@ class AppState(
         dpiDaemon.stop()
         tunnel.disconnect()
         saveJob?.cancel()
+        // Правила снимаются синхронно: после dispose коллекторов уже нет,
+        // и оставить очередь без слушателя на чужом трафике нельзя.
+        scope.launch(Dispatchers.IO) { DpiFirewall.disable() }
     }
 
 }

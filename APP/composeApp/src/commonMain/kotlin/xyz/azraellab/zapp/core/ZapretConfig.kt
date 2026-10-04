@@ -19,7 +19,7 @@ data class ZapretConfig(
     // --- Общие ---
     /** Включить правила Zapret. */
     val enabled: Boolean = false,
-    /** Путь к бинарю; пусто -- искать `zapret` в PATH. */
+    /** Путь к бинарю; пусто -- брать `nfqws` из состава приложения. */
     val binaryPath: String = "",
     /** Подбирать стратегию автоматически по результату проверки сети. */
     val autoStrategy: Boolean = true,
@@ -195,6 +195,12 @@ data class ZapretConfig(
         appendValue("--filter-tcp", filterTcp)
         appendValue("--filter-udp", filterUdp)
 
+        // Номер очереди явно: android-сборка nfqws не имеет значения по
+        // умолчанию и падает с «Need queue number». Цепочка ZAPP_DPI
+        // (DpiFirewall) шлёт пакеты ровно в очередь 0 -- номера обязаны
+        // совпадать.
+        add("--qnum=0")
+
         // Списки доменов -- настоящие опции nfqws: значения кладутся прямо
         // в команду, файл для них не нужен.
         if (domainList().isNotEmpty()) {
@@ -243,7 +249,7 @@ data class ZapretConfig(
     }
 
     /** Человекочитаемая строка для показа и копирования. */
-    fun toCommandLine(binary: String = binaryPath.ifBlank { "zapret" }): String =
+    fun toCommandLine(binary: String = binaryPath.ifBlank { "nfqws" }): String =
         (listOf(binary) + toArgs()).joinToString(" ")
 }
 

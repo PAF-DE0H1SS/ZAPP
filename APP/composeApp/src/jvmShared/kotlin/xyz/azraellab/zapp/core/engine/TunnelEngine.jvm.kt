@@ -1,16 +1,19 @@
 package xyz.azraellab.zapp.core.engine
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.daemon.DaemonEngine
+import xyz.azraellab.zapp.core.daemon.DaemonEvent
 import xyz.azraellab.zapp.core.daemon.DaemonId
 import xyz.azraellab.zapp.core.daemon.DaemonSpec
 import xyz.azraellab.zapp.core.daemon.DaemonState
@@ -22,6 +25,8 @@ import xyz.azraellab.zapp.core.native.BinaryResolver
 import xyz.azraellab.zapp.core.root.RootShell
 import java.io.File
 import java.net.InetAddress
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.coroutineContext
 
 actual fun createTunnelEngine(): TunnelEngine = JvmTunnelEngine()
 
@@ -59,21 +64,93 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
 
     private var watchJob: Job? = null
 
+    /** Одна попытка подключения: параллельный СТАРТ второго не начинает. */
+    private val inFlight = AtomicBoolean(false)
+
+    /** Текущая попытка, чтобы СТОП мог её отменить до спавна демонов. */
+    @Volatile
+    private var connectJob: Job? = null
+
     override val supported: Boolean = true
+
+    private val reapJob: Job
+
+    init {
+        // Демоны -- отдельные процессы от root: убил приложение (свайп,
+        // обновление, крэш) -- tor и box продолжают жить, держат порты
+        // и tun. Свежий запуск тогда падает с «Address already in use»,
+        // а старый туннель работает молча, вне контроля приложения.
+        // Чистка по каталогу, куда кладутся все бинарии, -- она же
+        // снимает сирот любого протокола, а не только tor'а. Job
+        // сохраняется: автозапуск ждёт её завершения перед спавном
+        // демонов (см. awaitStartup).
+        reapJob = scope.launch { reapOrphanDaemons() }
+    }
+
+    /**
+     * Снятие демонов, переживших смерть прошлого процесса приложения.
+     *
+     * TERM, пауза и KILL: тор закрывается по TERM аккуратно, но бывает
+     * занят в операции, и KILL гарантирует, что порт 9050 свободен к
+     * моменту следующего старта. На платформе без каталога команда
+     * просто ничего не находит.
+     */
+    private fun reapOrphanDaemons() {
+        // Паттерн -- конкретные бинарии, а не общий каталог: cmdline самой
+        // команды (sh -c) содержит каталог, и паттерн по каталогу убивает
+        // собственную обёртку вместе с детьми. Список бинариев в cmdline
+        // не встречается подряд с префиксом каталога -- сам себя pkill
+        // не находит.
+        val own = "/data/local/tmp/zapp/bin/(tor|box|openvpn|lyrebird|wg|nfqws|goodbyedpi)"
+        runCatching {
+            RootShell.run("pkill -TERM -f '$own'; sleep 1; pkill -KILL -f '$own'", 4000)
+        }
+    }
+
+    /**
+     * Завершается, когда стартовая уборка сирот закончена.
+     *
+     * Зовётся из автозапуска до спавна демонов: сирота прошлой сессии
+     * держит свою NFQUEUE-очередь, и первый цикл zapret умирает с
+     * «Operation not permitted», пока уборка ещё идёт в фоне.
+     */
+    override suspend fun awaitStartup() {
+        reapJob.join()
+    }
 
     override fun applyConfig(config: VpnConfig) {
         this.config = config
     }
 
     override fun connect() {
-        scope.launch {
+        val job = scope.launch {
+            // Двойной тап или VPN+Tor почти одновременно: два
+            // performConnect бились бы за порт 9050 и за демон TUNNEL,
+            // второй падал с «Address already in use» (и портит состояние
+            // первому). Одна попытка -- одна, пока не закончится.
+            if (state.value == TunnelState.CONNECTING || state.value == TunnelState.CONNECTED) {
+                return@launch
+            }
+            if (!inFlight.compareAndSet(false, true)) return@launch
             stopping = false
-            performConnect()
+            try {
+                performConnect()
+            } finally {
+                inFlight.set(false)
+            }
         }
+        connectJob = job
     }
 
     override fun disconnect() {
-        scope.launch { performDisconnect(userInitiated = true) }
+        scope.launch {
+            // СТОП во время подключения: сначала рвём попытку, иначе она
+            // после уборки доспавнит демон -- сирота держит порт 9050.
+            // Отмена видна только на ближайшей suspension-точке, поэтому
+            // в точках спавна стоит проверка stopping.
+            connectJob?.cancel()
+            performDisconnect(userInitiated = true)
+        }
     }
 
     // --- Подключение ---
@@ -93,6 +170,11 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         val protocol = VpnProtocol.of(profile?.protocol)
         try {
             when {
+                // Tor -- раньше groupMode: мост, выбранный на вкладке Tor,
+                // обязан вести в torUp, а не в urltest-группу остальных
+                // коннектов. groupMode -- режим списка VPN, он не отменяет
+                // явный выбор моста.
+                profile != null && protocol == VpnProtocol.TOR -> torUp(profile, vpn)
                 vpn.groupMode -> boxGroup(vpn)
                 profile == null -> error("no active profile")
                 protocol == VpnProtocol.WIREGUARD -> kernelWireGuard(profile, awg = false)
@@ -103,13 +185,30 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
                 protocol == VpnProtocol.XRAY -> boxBuilt(SingboxConfig.build(profile, vpn), vpn, profile)
                 else -> boxBuilt(SingboxConfig.build(profile, vpn), vpn, profile)
             }
+        } catch (e: CancellationException) {
+            // СТОП отменил попытку: это не ошибка, уборку уже делает
+            // performDisconnect, состояние ERROR ставить нельзя.
+            throw e
         } catch (e: Exception) {
+            if (stopping) {
+                // СТОП успел прийти во время подключения: разбор уже идёт,
+                // ошибка пользователя -- не сбой.
+                cleanupQuiet()
+                return
+            }
             log("error: ${e.message ?: e::class.simpleName.orEmpty()}")
             cleanupQuiet()
             setState(TunnelState.ERROR)
             return
         }
 
+        // Отмена видна не на suspension-точке: между концом try и этой
+        // строкой СТОП мог уже убрать туннель -- CONNECTED соврал бы.
+        coroutineContext.ensureActive()
+        if (stopping) {
+            cleanupQuiet()
+            return
+        }
         setState(TunnelState.CONNECTED)
         log("connected")
         startWatch()
@@ -251,10 +350,12 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         val tunnel = vpnTunnelParams(
             built.json, vpn, profile?.name?.takeIf { it.isNotBlank() } ?: "ZAPP"
         )
+        if (stopping) error("connection stopped before tunnel start")
         val fd = tunnel?.let { VpnTunnel.establish(it) }
 
         val daemon = createDaemonEngine(DaemonId.TUNNEL)
         boxDaemon = daemon
+        if (stopping) error("connection stopped before box start")
         daemon.start(
             DaemonSpec(
                 binary = "box",
@@ -276,10 +377,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
             )
         )
         if (!awaitState(daemon, DaemonState.RUNNING, START_TIMEOUT_MS)) {
-            val reason = daemon.log.value.lastOrNull()?.let { line ->
-                line.text?.let { "${it.name} ${line.arg}".trim() } ?: line.raw
-            } ?: "no output"
-            error("box failed to start: $reason")
+            error("box failed to start: ${daemonReason(daemon)}")
         }
         log("box is running")
     }
@@ -292,6 +390,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         if (vpn.killSwitch) enableKillSwitch(endpointsOf(profile), vpn)
         val daemon = createDaemonEngine(DaemonId.TUNNEL)
         openvpnDaemon = daemon
+        if (stopping) error("connection stopped before openvpn start")
         daemon.start(
             DaemonSpec(
                 binary = "openvpn",
@@ -300,8 +399,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
             )
         )
         if (!awaitState(daemon, DaemonState.RUNNING, START_TIMEOUT_MS)) {
-            val reason = daemon.log.value.lastOrNull()?.raw ?: "no output"
-            error("openvpn failed to start: $reason")
+            error("openvpn failed to start: ${daemonReason(daemon)}")
         }
         log("openvpn is running")
     }
@@ -328,38 +426,121 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
                     appendLine("ClientTransportPlugin $name exec ${RootShell.quote(transport)}")
                 }
             }
-            for (line in profile.rawConfig.lineSequence().map { it.trim() }) {
-                if (line.isEmpty() || line.startsWith("#")) continue
-                val normalized = if (line.startsWith("Bridge ", ignoreCase = true)) line
-                else "Bridge $line"
-                appendLine(normalized)
+            // Сначала мосты выбранного профиля, потом -- живых остальных:
+            // tor пробует список по порядку, и неподготовленный фейловер
+            // (мёртвый основной мост) экономит минуты bootstrap'а. Дубли
+            // строк между источниками схлопываются -- списки часто одни
+            // и те же, отличаясь порядком.
+            val seen = mutableSetOf<String>()
+            fun appendBridges(raw: String) {
+                for (line in raw.lineSequence().map { it.trim() }) {
+                    if (line.isEmpty() || line.startsWith("#")) continue
+                    val normalized = if (line.startsWith("Bridge ", ignoreCase = true)) line
+                    else "Bridge $line"
+                    if (seen.add(normalized)) appendLine(normalized)
+                }
+            }
+            appendBridges(profile.rawConfig)
+            for (other in vpn.profiles) {
+                if (other.id == profile.id) continue
+                if (other.protocol != VpnProtocol.TOR.code) continue
+                if (other.health.alive == false) continue
+                appendBridges(other.rawConfig)
             }
         }
 
         RootShell.run("mkdir -p /data/local/tmp/zapp/tor-data", 2000)
 
+        if (stopping) error("connection stopped before tor start")
+        ensureSocksPortFree(socksPort)
         val daemon = createDaemonEngine(DaemonId.TUNNEL)
         torDaemon = daemon
         daemon.start(DaemonSpec(binary = tor, args = listOf("-f", "{{torrc}}"), files = mapOf("torrc" to torrc)))
         if (!awaitState(daemon, DaemonState.RUNNING, START_TIMEOUT_MS)) {
-            val reason = daemon.log.value.lastOrNull()?.raw ?: "no output"
-            error("tor failed to start: $reason")
+            error("tor failed to start: ${daemonReason(daemon)}")
         }
 
-        // Bootstrap: порт открывается не сразу, а после первого цикла.
+        // Bootstrap: SOCKS-порт открывается сразу, но без 100% трафик через
+        // мост ещё не проходит -- Tor отвергает запросы до готовности.
+        // Готовность -- строка самого tor'а, а не пинг порта: пинг дал бы
+        // «ready» на мгновение раньше реальной работы. Прогресс идёт в
+        // журнал туннеля десятками процентов: мосты на телефоне собираются
+        // десятки секунд, и тишина в журнале выглядит как зависание.
         log("tor bootstrap, socks:$socksPort ...")
         val deadline = System.currentTimeMillis() + TOR_BOOTSTRAP_MS
+        // -10, а не -1: иначе первый десяток (0..9) не проходит проверку
+        // «новый десяток» (5/10 == -1/10 == 0) и прогресс молчит до 10%.
+        var lastPct = -10
         while (System.currentTimeMillis() < deadline) {
-            if (daemon.state.value == DaemonState.ERROR) error("tor exited during bootstrap")
-            if (tcpPingLocal(socksPort)) {
+            if (stopping) error("tor bootstrap cancelled")
+            if (daemon.state.value == DaemonState.ERROR) {
+                error("tor exited during bootstrap: ${daemonReason(daemon)}")
+            }
+            val pct = torProgressPercent(daemon.log.value)
+            if (pct == 100) {
                 log("tor is ready")
                 if (vpn.killSwitch) enableKillSwitch(bridgeAddresses(profile.rawConfig), vpn)
                 boxBuilt(SingboxConfig.buildTor(vpn, socksPort), vpn, null)
                 return
             }
+            if (pct in 0..99 && pct / 10 > lastPct / 10) {
+                lastPct = pct
+                log("tor bootstrap $pct%")
+            }
             delay(500)
         }
         error("tor bootstrap timeout (${TOR_BOOTSTRAP_MS / 1000}s)")
+    }
+
+    /**
+     * Порт SOCKS должен принадлежать нам, а не сироте прошлой попытки.
+     *
+     * Двойной СТАРТ или убитое приложение оставляли старый tor на 9050:
+     * новый тогда падал с «Address already in use» и портил состояние.
+     * Свой висящий процесс убиваем сами и даём порту освободиться; чужой
+     * не трогаем, но называем в ошибке -- молчаливый запуск упал бы
+     * позже и непонятно почему.
+     */
+    private fun ensureSocksPortFree(port: Int) {
+        if (!RootShell.available()) return
+        val holder = RootShell.run("netstat -tlnp 2>/dev/null | grep ':$port '", 3000)
+        if (!holder.ok || holder.output.isBlank()) return
+        // Только слушатели мешают: netstat отдаёт и клиентские TIME_WAIT
+        // на этот же порт (сокет tor'а прошлой сессии), а они bind'у не
+        // мешают. Порог -- наличие состояния LISTEN в строке.
+        val listening = holder.output.lineSequence()
+            .filter { "LISTEN" in it }
+            .joinToString("\n")
+        if (listening.isBlank()) return
+        if ("/data/local/tmp/zapp/bin/" in listening) {
+            log("note: socks port $port held by orphan tor; killing it")
+            runCatching {
+                RootShell.run(
+                    "pkill -TERM -f '/data/local/tmp/zapp/bin/tor'; sleep 1; " +
+                        "pkill -KILL -f '/data/local/tmp/zapp/bin/tor'",
+                    4000
+                )
+            }
+            return
+        }
+        error("socks port $port busy: ${lastLine(listening)}")
+    }
+
+    /**
+     * Последняя осмысленная строка журнала демона для ошибки запуска.
+     *
+     * `lastOrNull().raw` у события без raw (text-событие) даёт пустую
+     * строку, и причина сбоя превращалась в «no output» -- ищем с конца
+     * то, из чего можно составить причину: raw-строку, затем текст.
+     */
+    private fun daemonReason(daemon: DaemonEngine): String {
+        for (event in daemon.log.value.asReversed()) {
+            event.raw.takeIf { it.isNotBlank() }?.let { return it }
+            val text = event.text ?: continue
+            val rendered = "${text.name} ${event.arg}".trim()
+            if (rendered.isNotBlank()) return rendered
+        }
+        return "no output"
     }
 
     // --- Kill switch ---
@@ -520,13 +701,6 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         return daemon.state.value == target
     }
 
-    private fun tcpPingLocal(port: Int): Boolean = runCatching {
-        java.net.Socket().use { socket ->
-            socket.connect(java.net.InetSocketAddress("127.0.0.1", port), 500)
-            true
-        }
-    }.getOrDefault(false)
-
     private fun must(result: RootShell.Result, what: String) {
         if (!result.ok) error("$what failed: ${lastLine(result.output)}")
     }
@@ -590,7 +764,32 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     private companion object {
         const val WATCH_TICK_MS = 3000L
         const val START_TIMEOUT_MS = 10_000L
-        const val TOR_BOOTSTRAP_MS = 60_000L
+
+        // Мосты на телефоне собираются десятки секунд: lyrebird отбрасывает
+        // мёртвые хосты по таймауту, а до 100% нужно пройти несколько
+        // цепочек. За 60s не уложились на живых мостах -- минута запаса.
+        const val TOR_BOOTSTRAP_MS = 120_000L
         val PRIVATE_V4 = listOf("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8")
     }
+}
+
+/**
+ * Последний процент bootstrap Tor из строк демона; -1, если tor ещё не
+ * печатал прогресс.
+ *
+ * Ищется с конца: строки приходят потоком, и «Bootstrapped 100%» могло
+ * быть перекрыто новыми notice'ами. Чистая функция по журналу -- её же
+ * покрывают тесты: неправильный парсер означает либо вечное ожидание,
+ * либо преждевременный «ready».
+ */
+internal fun torProgressPercent(lines: List<DaemonEvent>): Int {
+    for (i in lines.indices.reversed()) {
+        val marker = "Bootstrapped "
+        val idx = lines[i].raw.lastIndexOf(marker)
+        if (idx < 0) continue
+        val digits = lines[i].raw.substring(idx + marker.length).takeWhile { it.isDigit() }
+        val pct = digits.toIntOrNull() ?: continue
+        return pct.coerceIn(0, 100)
+    }
+    return -1
 }

@@ -27,6 +27,7 @@ import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
+import xyz.azraellab.zapp.core.PerfConfig
 
 /**
  * Ночное небо: мерцающие звёзды и белые кометы со шлейфами - перенос /e2 сайта
@@ -176,7 +177,10 @@ private class StarfieldState {
             nextSpawnMs = (COMET_SPAWN_MIN_MS + rnd.nextInt(COMET_SPAWN_MAX_MS - COMET_SPAWN_MIN_MS + 1)).toLong()
         }
 
-        for (c in ArrayList(comets)) {
+        // Идём с конца, чтобы remove() не сдвигал хвост необработанных.
+        var ci = comets.size - 1
+        while (ci >= 0) {
+            val c = comets[ci]
             c.progress += c.speed * frameScale
             if (c.progress < 1f) {
                 val hx = c.headX(); val hy = c.headY()
@@ -193,10 +197,11 @@ private class StarfieldState {
             }
             if (c.progress >= 1f) {
                 c.life -= 0.04f * frameScale
-                if (c.life <= 0f) { comets.remove(c); continue }
+                if (c.life <= 0f) { comets.removeAt(ci); ci--; continue }
             }
             c.trail.addLast(Offset(c.headX(), c.headY()))
             while (c.trail.size > 100) c.trail.removeFirst()
+            ci--
         }
     }
 
@@ -264,7 +269,7 @@ private fun trimTrail(trail: List<Offset>): List<Offset> {
 }
 
 @Composable
-fun StarfieldBackground(modifier: Modifier = Modifier) {
+fun StarfieldBackground(modifier: Modifier = Modifier, perf: PerfConfig = PerfConfig()) {
     val state = remember { StarfieldState() }
     val density = LocalDensity.current.density
     // Тема берётся из самой палитры, а не из isSystemInDarkTheme(): фон рисуется под
@@ -276,21 +281,42 @@ fun StarfieldBackground(modifier: Modifier = Modifier) {
     // до пересоздания состояния (remember без ключа переживает смену темы).
     LaunchedEffect(palette) { state.setPalette(palette) }
     var tick by remember { mutableIntStateOf(0) }
+    // Настройки берём отдельными ключами: изменение настроек перезапускает
+    // цикл, а не подменяет значения внутри работающей корутины.
+    val animated = perf.animatedBackground
+    val fps = perf.backgroundFps.coerceIn(15, 60)
 
     BoxWithConstraints(modifier) {
         val wPx = with(LocalDensity.current) { maxWidth.toPx() }
         val hPx = with(LocalDensity.current) { maxHeight.toPx() }
 
-        LaunchedEffect(wPx, hPx) {
-            var last = 0L
-            while (true) {
-                withFrameNanos { t ->
-                    if (last != 0L) {
-                        state.advance(((t - last) / 1_000_000_000f).coerceAtMost(0.05f), wPx, hPx, density)
+        if (animated) {
+            LaunchedEffect(wPx, hPx, fps) {
+                val frameMs = 1_000_000_000L / fps
+                var last = 0L
+                var lastDraw = 0L
+                while (true) {
+                    withFrameNanos { t ->
+                        // Симуляция двигается только вместе с перерисовкой, а не на
+                        // каждом кадре экрана: на 120-Гц дисплее это лишние 90
+                        // вызовов advance в секунду -- чистая нагрузка на CPU.
+                        if (t - lastDraw >= frameMs) {
+                            if (last != 0L) {
+                                state.advance(((t - last) / 1_000_000_000f).coerceAtMost(0.05f), wPx, hPx, density)
+                            }
+                            last = t
+                            lastDraw = t
+                            tick++
+                        }
                     }
-                    last = t
-                    tick++
                 }
+            }
+        } else {
+            // Статичный фон: один прогон симуляции, чтобы звёзды и одна комета
+            // были на месте, дальше кадры не обновляются вовсе.
+            LaunchedEffect(wPx, hPx) {
+                state.advance(0f, wPx, hPx, density)
+                tick++
             }
         }
 

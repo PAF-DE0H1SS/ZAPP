@@ -7,8 +7,13 @@ import xyz.azraellab.zapp.core.Str
 
 /** Какой именно демон запускается: у каждого свой каталог файлов. */
 enum class DaemonId(val defaultBinary: String) {
-    /** Правила обхода DPI поверх nfqueue. */
-    ZAPRET("zapret"),
+    /**
+     * Правила обхода DPI поверх nfqueue.
+     *
+     * Бинарь называется `nfqws` (так он лежит и в jniLibs): «zapret» --
+     * имя проекта, а не исполняемого файла.
+     */
+    ZAPRET("nfqws"),
 
     /** Рукопожатия поверх nfqueue. */
     GOODBYEDPI("goodbyedpi"),

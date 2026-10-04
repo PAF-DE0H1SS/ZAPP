@@ -7,11 +7,18 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -34,6 +41,7 @@ import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.ui.pages.GoodbyeDpiPage
 import xyz.azraellab.zapp.ui.pages.GpsPage
 import xyz.azraellab.zapp.ui.pages.SettingsPage
+import xyz.azraellab.zapp.ui.pages.TorPage
 import xyz.azraellab.zapp.ui.pages.VpnPage
 import xyz.azraellab.zapp.ui.pages.ZapretPage
 import xyz.azraellab.zapp.ui.StatusBar
@@ -75,6 +83,13 @@ fun AppRoot(state: AppState) {
     val activeTab = current?.takeIf { it in tabs } ?: tabs.first()
     if (current != activeTab) tabName = activeTab.name
 
+    // Слоты панели: связанные разделы живут в одной кнопке (тор и VPN,
+    // zapret и goodbyeDPI), чтобы не тратить полосу на четыре почти
+    // одноимённых ячейки. GPS и настройки -- одиночки.
+    val slots = remember(tabs) { tabSlots(tabs) }
+
+    ZappBackHandler(enabled = trafficOpen) { state.setTrafficWindowOpen(false) }
+
     Scaffold(
         containerColor = Color.Transparent,
         bottomBar = {
@@ -84,31 +99,140 @@ fun AppRoot(state: AppState) {
             Column {
                 StatusBar(state)
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-                tabs.forEach { tab ->
-                    NavigationBarItem(
-                        selected = tab == activeTab && !trafficOpen,
+                // RowScope нужен явно: внутри Box контент кнопки теряет
+                // неявного приёмника строки панели.
+                val navRow = this
+                slots.forEach { slot ->
+                    // Запомненная половина пары: возврат в пару открывает
+                    // то, что смотрели раньше, а не всегда первую половину.
+                    val choice = rememberSaveable(slot.first().name) {
+                        mutableStateOf(slot.first().name)
+                    }
+                    val shown = activeTab.takeIf { it in slot }
+                        ?: slot.firstOrNull { it.name == choice.value }
+                        ?: slot.first()
+                    val isSelected = !trafficOpen && activeTab in slot
+                    // Кнопка прозрачная; выделенный слот обведён зелёным
+                    // контуром вместо сплошной заливки-индикатора.
+                    // Высота -- своя у NavigationBarItem: fillMaxHeight
+                    // здесь растянул бы панель на весь экран, потому что
+                    // Scaffold отдаёт bottomBar неограниченную высоту.
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 4.dp)
+                            .then(
+                                if (isSelected) {
+                                    Modifier.border(
+                                        width = 1.dp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(14.dp)
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                    navRow.NavigationBarItem(
+                        selected = isSelected,
+                        modifier = Modifier.fillMaxWidth(),
                         onClick = {
-                            tabName = tab.name
                             state.setTrafficWindowOpen(false)
+                            val next = when {
+                                // На одном из пары: повторное нажатие
+                                // переключает на другого.
+                                activeTab in slot && slot.size > 1 ->
+                                    slot.first { it != activeTab }
+                                activeTab in slot -> activeTab
+                                // Не на их окнах: простой переход к
+                                // запомненному члену слота.
+                                else -> slot.firstOrNull { it.name == choice.value }
+                                    ?: slot.first()
+                            }
+                            if (slot.size > 1) choice.value = next.name
+                            tabName = next.name
                         },
-                        icon = { Icon(tab.icon, contentDescription = null) },
-                        // maxLines=1: «GoodbyeDPI» иначе переносится на
-                        // вторую строку и в панели появляется обрубок.
+                        icon = {
+                            if (slot.size == 1) {
+                                Icon(
+                                    imageVector = slot.first().icon,
+                                    contentDescription = null,
+                                    tint = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    }
+                                )
+                            } else {
+                                // Две иконки в одной кнопке: активная
+                                // зелёная, вторая белая -- видно, какая
+                                // половина открыта.
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    slot.forEachIndexed { index, member ->
+                                        if (index > 0) Spacer(Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = member.icon,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(if (member == shown) 22.dp else 16.dp),
+                                            tint = if (isSelected && member == activeTab) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurface
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        },
                         label = {
-                            Text(
-                                text = tr(tab.title),
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1
-                            )
+                            if (slot.size == 1) {
+                                Text(
+                                    text = tr(shown.short),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    }
+                                )
+                            } else {
+                                // «T | V» / «Z | GDPI»: активная буква
+                                // зелёная, вторая белая.
+                                Row {
+                                    slot.forEachIndexed { index, member ->
+                                        if (index > 0) {
+                                            Text(
+                                                text = " | ",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 1,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Text(
+                                            text = tr(member.short),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            maxLines = 1,
+                                            color = if (isSelected && member == activeTab) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurface
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                            indicatorColor = Color.Transparent,
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primary,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurface,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurface
                         )
                     )
+                    }
                 }
                 }
             }
@@ -150,6 +274,7 @@ fun AppRoot(state: AppState) {
                         state = state,
                         onBack = { state.setTrafficWindowOpen(false) }
                     )
+                    key == AppTab.TOR.name -> TorPage(state)
                     key == AppTab.VPN.name -> VpnPage(state)
                     key == AppTab.ZAPRET.name -> ZapretPage(state)
                     key == AppTab.GOODBYE_DPI.name -> GoodbyeDpiPage(state)
@@ -160,4 +285,32 @@ fun AppRoot(state: AppState) {
             }
         }
     }
+}
+
+/**
+ * Слоты нижней панели из списка доступных вкладок.
+ *
+ * Связанные разделы объединяются в пару, если оба присутствуют:
+ * TOR+VPN и Zapret+GoodbyeDPI. Одиночки (GPS, настройки) идут как есть.
+ * Порядок входного списка -- канонический порядок [AppTab], пара всегда
+ * лежит в нём подряд.
+ */
+internal fun tabSlots(tabs: List<AppTab>): List<List<AppTab>> {
+    val slots = mutableListOf<List<AppTab>>()
+    var i = 0
+    while (i < tabs.size) {
+        val first = tabs[i]
+        val next = tabs.getOrNull(i + 1)
+        val partner = if (next != null && partnerOf(next) == first) next else null
+        slots += if (partner != null) listOf(first, partner) else listOf(first)
+        i += if (partner != null) 2 else 1
+    }
+    return slots
+}
+
+/** Вторая половина слота; null, если вкладка -- одиночка. */
+internal fun partnerOf(tab: AppTab): AppTab? = when (tab) {
+    AppTab.VPN -> AppTab.TOR
+    AppTab.GOODBYE_DPI -> AppTab.ZAPRET
+    else -> null
 }

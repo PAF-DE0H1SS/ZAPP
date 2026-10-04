@@ -4,6 +4,11 @@ build/
 .gradle/
 local.properties
 
+# Тестовый APK собирается локально и весит >100 МБ -- GitHub такие файлы
+# не принимает, а хранить бинари в истории нельзя. Образы раздаёт CI
+# (см. .github/workflows/build.yml), не репозиторий.
+zapp-test.apk
+
 # Подпись APK: keystore и пароли не в репозитории
 signing/
 *.jks

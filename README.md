@@ -51,14 +51,18 @@ Settings are stored, presets import and export, and the traffic counters are liv
 
 | Area | What works |
 |---|---|
+| 🛡️ **Tor** | bridge sources built in (top-100 lists and custom URLs), fastest-bridge auto-pick by latency, failover to a backup pool, bootstrap to 100%, local SOCKS 9050, pluggable transports via lyrebird |
+| 🌐 **VPN** | WireGuard / AmneziaWG, OpenVPN and sing-box engines (vless, vmess, trojan, ss, hysteria2, tuic), grouped configs with urltest, kill-switch, VpnService permission flow |
+| 🛹 **Zapret / GoodbyeDPI** | root daemons `nfqws` and `goodbyedpi` share one NFQUEUE chain (`ZAPP_DPI`), strategy presets, auto-strategy picker, both run at the same time, auto-restart on crash |
+| 📊 **Speed plaque** | live counters plus the active modes in brackets -- `(T\|V\|Z\|GDPI)`; the same line goes to the notification shade |
 | 🧱 **Shared UI** | Compose Multiplatform module `:composeApp` compiled for Android and JVM desktop |
 | 🧭 **Navigation** | bottom bar with five tabs; the traffic monitor opens as a separate window |
 | 🎨 **Design system** | one dark colour scheme, typography, shapes, spacing scale, ripples, starfield/glass background |
 | 🌗 **Theme** | dark only -- there is no light scheme and nothing to switch to |
-| ⚙️ **Settings** | config model per section, presets with import/export, debounced save to disk |
+| ⚙️ **Settings** | 11 sections, presets with import/export, debounced save to disk |
 | 📶 **Traffic monitor** | system counters, speed graph, session summary; native C++ reader on Android with a Kotlin fallback |
-| 📦 **Packaging** | APK, MSI, `.deb`, AppImage and a cross-platform uber-JAR |
-| 🧪 **Tests** | 22 cases in `desktopTest`: 6 component contrast + 4 palette contrast + 12 locale resolution |
+| 📦 **Packaging** | local APK/MSI/`.deb`/AppImage builds; GitHub Actions builds the same on push to `main` and on `v*` tags and publishes a release |
+| 🧪 **Tests** | 131 cases in `desktopTest` across 16 classes: WCAG contrast, locale resolution, config codecs, link parsing, sing-box config, bridge selection |
 
 ### 🧭 Architecture
 
@@ -145,10 +149,10 @@ take the desktop packages from CI, which builds them on `ubuntu` and `windows`.
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-22 test cases, all green: `ComponentsTest` (6) checks each component colour pair against
-the WCAG contrast ratios, `ThemeTest` (4) does the same for the palette, and `I18nTest`
-(12) checks that the system locale maps to the right language, including the country part
-of a locale tag. `--rerun-tasks` matters: without it
+131 test cases across 16 classes, all green: WCAG contrast for component and palette
+colour pairs, system locale mapping (including the country part of a locale tag),
+config codecs (`AppConfig`, `VpnConfig`), proxy link parsing, sing-box config
+generation, bridge selection and traffic sampling. `--rerun-tasks` matters: without it
 an unchanged task reports `UP-TO-DATE` and the test count is not recomputed.
 
 The palette tests are not decoration. Replace `outline` with `#D4D4D8` and `ThemeTest`
@@ -163,23 +167,28 @@ for a short, abstract description.
 - [x] **0** KMP skeleton, `ui/theme/`, background, ripple
 - [x] **1** `ui/components/` -- design-system components with contrast tests
 - [x] **2** `ui/nav/` -- bottom bar, five tabs, traffic monitor as a separate window
-- [ ] **3** `data/` -- DTO, repositories, `UiState`, ViewModel
-- [ ] **4** onboarding: `DeviceProfile`, capability probe, root/DIVERT/loopback requests
-- [ ] **5** `core/` parsers: vless / vmess / trojan / ss / hysteria2 / wireguard
-- [ ] **6** config collection: sources, cache, background polling, deduplication
-- [ ] **7** liveness check by handshake, 10-minute cache
-- [ ] **8** connect: WireGuard/AmneziaWG + Xray/sing-box
-- [ ] **9** Zapret: strategies, presets, root path, WinDivert, fallback
-- [ ] **10** GoodbyeDPI: TLS splitter, root daemon, Windows without rights, VpnService
-- [ ] **11** GPS: test provider, scenarios, map (Android)
-- [ ] **12** packaging: APK/AAB, MSI/exe, `.deb`, Nix, PKGBUILD
-- [ ] **13** contrast, polish, i18n EN/RU/ZH, signed APK
+- [x] **3** state and storage -- `AppState`, `ConfigStore`, `AppLog` instead of a separate `data/` layer
+- [x] **4** onboarding: welcome tour, permission requests, icon that follows the connection state
+- [x] **5** `core/` parsers: vless / vmess / trojan / ss / hysteria2 / wireguard
+- [x] **6** config collection: bridge sources (built-in repos, custom URLs), background refresh, deduplication
+- [x] **7** liveness: ping and archive of bridges, fastest-bridge auto-pick
+- [x] **8** connect: WireGuard/AmneziaWG, OpenVPN, sing-box, Tor via bridges, kill-switch
+- [x] **9** Zapret: strategies, presets, root path, auto-strategy picker; WinDivert (Windows) is out of scope for now
+- [x] **10** GoodbyeDPI: root daemon running next to zapret on one NFQUEUE chain
+- [ ] **11** GPS: the settings page exists, scenarios and map are not built
+- [ ] **12** packaging: APK/MSI/AppImage/`.deb` build locally and in CI; Nix and PKGBUILD are not
+- [ ] **13** contrast, polish, i18n EN/RU/ZH -- done; signed release APK -- not yet
 
 ### 🌿 Branches
 
 | Branch | Purpose |
 |---|---|
 | `main` | **stable** - released |
+| `develop` | integration - everything merges here first |
+| `feature/data-layer` | stage 3 leftovers and storage work |
+| `feature/gps` | stage 11: scenarios and map |
+| `feature/packaging` | stage 12: Nix, PKGBUILD, signed APK |
+| `release/v0.2.0` | next release stabilization |
 
 ### 📚 Docs
 
@@ -226,14 +235,18 @@ compliance with the laws that apply to you.
 
 | Область | Что есть |
 |---|---|
+| 🛡️ **Tor** | встроенные источники мостов (top-100 и свои URL), автовыбор самого быстрого моста по пингу, фейловер на резервный пул, bootstrap до 100%, локальный SOCKS 9050, pluggable-транспорты через lyrebird |
+| 🌐 **VPN** | WireGuard / AmneziaWG, OpenVPN и движок sing-box (vless, vmess, trojan, ss, hysteria2, tuic), групповые конфиги с urltest, kill-switch, запрос разрешения VpnService |
+| 🛹 **Zapret / GoodbyeDPI** | root-демоны `nfqws` и `goodbyedpi` на одной NFQUEUE-цепочке (`ZAPP_DPI`), пресеты стратегий, автоподбор стратегии, работают одновременно, автоперезапуск после падения |
+| 📊 **Плашка скорости** | живые счётчики и активные режимы в скобках -- `(T\|V\|Z\|GDPI)`; та же строка уходит в уведомление |
 | 🧱 **Общий UI** | модуль Compose Multiplatform `:composeApp`, собирается под Android и JVM-десктоп |
 | 🧭 **Навигация** | нижняя панель из пяти разделов; мониторинг трафика открывается отдельным окном |
 | 🎨 **Дизайн-система** | одна тёмная цветовая схема, типографика, формы, шкала отступов, ripple, фон «звёздное небо» со стеклом |
 | 🌗 **Тема** | только тёмная: светлой схемы нет и переключаться не на что |
-| ⚙️ **Настройки** | модель настроек по разделам, пресеты с импортом и выгрузкой, отложенная запись на диск |
+| ⚙️ **Настройки** | 11 разделов, пресеты с импортом и выгрузкой, отложенная запись на диск |
 | 📶 **Мониторинг трафика** | системные счётчики, график скорости, сводка за сессию; на Android -- нативный C++ с откатом на Kotlin |
-| 📦 **Упаковка** | APK, MSI, `.deb`, AppImage и кроссплатформенный uber-JAR |
-| 🧪 **Тесты** | 22 кейса в `desktopTest`: 6 на контраст компонентов + 4 на контраст палитры + 12 на разбор локали |
+| 📦 **Упаковка** | локальные сборки APK/MSI/`.deb`/AppImage; GitHub Actions собирает то же самое на пуш в `main` и теги `v*` и публикует релиз |
+| 🧪 **Тесты** | 131 кейс в `desktopTest` в 16 классах: контраст WCAG, разбор локали, кодеки конфигов, разбор ссылок, конфиг sing-box, выбор мостов |
 
 ### 🧭 Архитектура
 
@@ -321,10 +334,10 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-22 тестовых кейса, все зелёные: `ComponentsTest` (6) проверяет каждую пару цветов
-компонента на контраст по WCAG, `ThemeTest` (4) -- то же самое для палитры,
-`I18nTest` (12) -- что локаль системы, включая страну в теге, отображается в правильный
-язык приложения. `--rerun-tasks` обязателен: без него
+131 тестовый кейс в 16 классах, все зелёные: контраст пар цветов компонентов и
+палитры по WCAG, отображение локали системы (включая страну в теге), кодеки
+конфигов (`AppConfig`, `VpnConfig`), разбор ссылок протоколов, генерация конфига
+sing-box, выбор мостов и сэмплирование трафика. `--rerun-tasks` обязателен: без него
 неизменившаяся задача отдаёт `UP-TO-DATE`, и счётчик тестов не пересчитывается.
 
 Тесты палитры -- не для галочки. Подставьте вместо `outline` цвет `#D4D4D8`, и `ThemeTest`
@@ -339,23 +352,28 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 - [x] **0** каркас KMP, `ui/theme/`, фон, ripple
 - [x] **1** `ui/components/` -- компоненты дизайн-системы с тестами контраста
 - [x] **2** `ui/nav/` -- нижняя панель, пять разделов, мониторинг трафика отдельным окном
-- [ ] **3** `data/` -- DTO, репозитории, `UiState`, ViewModel
-- [ ] **4** онбординг: `DeviceProfile`, разведка, запрос прав (root / DIVERT / loopback)
-- [ ] **5** `core/` парсеры: vless / vmess / trojan / ss / hysteria2 / wireguard
-- [ ] **6** сбор конфигов: источники, кэш, фоновый опрос, дедупликация
-- [ ] **7** проверка живости рукопожатием, кэш 10 минут
-- [ ] **8** подключение: WireGuard/AmneziaWG + Xray/sing-box
-- [ ] **9** Zapret: стратегии, пресеты, root-путь, WinDivert, fallback
-- [ ] **10** GoodbyeDPI: TLS-сплиттер, root-демон, Windows-без-прав, VpnService
-- [ ] **11** GPS: test-provider, сценарии, карта (Android)
-- [ ] **12** упаковка: APK/AAB, MSI/exe, `.deb`, Nix, PKGBUILD
-- [ ] **13** контрасты, полировка, i18n EN/RU/ZH, подписанный APK
+- [x] **3** состояние и хранение: `AppState`, `ConfigStore`, `AppLog` вместо отдельного слоя `data/`
+- [x] **4** онбординг: приветственный тур, запрос разрешений, иконка, следующая за состоянием подключения
+- [x] **5** `core/` парсеры: vless / vmess / trojan / ss / hysteria2 / wireguard
+- [x] **6** сбор конфигов: источники мостов (встроенные репозитории, свои URL), фоновое обновление, дедупликация
+- [x] **7** проверка живости: пинг и архив мостов, автовыбор самого быстрого
+- [x] **8** подключение: WireGuard/AmneziaWG, OpenVPN, sing-box, Tor через мосты, kill-switch
+- [x] **9** Zapret: стратегии, пресеты, root-путь, автоподбор; WinDivert (Windows) пока вне скоупа
+- [x] **10** GoodbyeDPI: root-демон рядом с zapret на одной NFQUEUE-цепочке
+- [ ] **11** GPS: страница настроек есть, сценарии и карта не сделаны
+- [ ] **12** упаковка: APK/MSI/AppImage/`.deb` собираются локально и в CI; Nix и PKGBUILD нет
+- [ ] **13** контрасты, полировка, i18n EN/RU/ZH -- сделано; подписанный release-APK -- нет
 
 ### 🌿 Ветки
 
 | Ветка | Назначение |
 |---|---|
 | `main` | **stable** -- релизная |
+| `develop` | интеграционная -- всё сливается сюда в первую очередь |
+| `feature/data-layer` | остатки этапа 3 и работа со хранилищем |
+| `feature/gps` | этап 11: сценарии и карта |
+| `feature/packaging` | этап 12: Nix, PKGBUILD, подписанный APK |
+| `release/v0.2.0` | стабилизация следующего релиза |
 
 ### 📚 Документы
 
@@ -402,15 +420,18 @@ ZAPP предоставляется «КАК ЕСТЬ», без гарантий
 
 | 领域 | 内容 |
 |---|---|
+| 🛡️ **Tor** | 内置桥接来源（top-100 与自定义 URL）、按延迟自动选最快桥、备份桥池故障转移、bootstrap 到 100%、本地 SOCKS 9050、lyrebird 可插拔传输 |
+| 🌐 **VPN** | WireGuard / AmneziaWG、OpenVPN 与 sing-box 引擎（vless、vmess、trojan、ss、hysteria2、tuic）、带 urltest 的分组配置、kill-switch、VpnService 授权流程 |
+| 🛹 **Zapret / GoodbyeDPI** | root 守护进程 `nfqws` 与 `goodbyedpi` 共用一条 NFQUEUE 链（`ZAPP_DPI`）、策略预设、自动挑选策略、可同时运行、崩溃后自动重启 |
+| 📊 **速度标牌** | 实时计数器加括号里的活动模式 -- `(T\|V\|Z\|GDPI)`；同一行也出现在通知栏 |
 | 🧱 **共享 UI** | Compose Multiplatform 模块 `:composeApp`，同时编译到 Android 和 JVM 桌面端 |
 | 🧭 **导航** | 底部五个标签页；流量监控以独立窗口打开 |
 | 🎨 **设计系统** | 单一深色配色、字体、形状、间距刻度、ripple、星点玻璃背景 |
 | 🌗 **主题** | 只有深色：没有浅色方案，也没有可切换的对象 |
-| ⚙️ **设置** | 分区的配置模型、预设导入导出、写盘防抖 |
+| ⚙️ **设置** | 11 个分区、预设导入导出、写盘防抖 |
 | 📶 **流量监控** | 系统计数、速度曲线、会话汇总；Android 上优先使用原生 C++，失败时退回 Kotlin |
-| 📦 **打包** | APK、MSI、`.deb`、AppImage 以及跨平台 uber-JAR |
-| 🧪 **测试** | `desktopTest` 共 22 个用例：6 个组件对比度 + 4 个调色板对比度 + 12 个语言环境解析 |
-| 🌐 **语言** | 英文、俄文、中文 |
+| 📦 **打包** | 本地构建 APK/MSI/`.deb`/AppImage；GitHub Actions 在推送 `main` 与 `v*` 标签时构建同样的产物并发布 release |
+| 🧪 **测试** | `desktopTest` 共 131 个用例、16 个类：WCAG 对比度、语言环境解析、配置编解码、链接解析、sing-box 配置生成、桥接选择 |
 
 ### 🧭 架构
 
@@ -496,9 +517,9 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-22 个测试用例，全部通过：`ComponentsTest`（6 个）按 WCAG 对比度检查组件的每一对颜色，
-`ThemeTest`（4 个）对调色板做同样的检查，`I18nTest`（12 个）检查系统语言环境（含地区部分）
-是否映射到正确的界面语言。
+131 个测试用例、16 个类，全部通过：组件与调色板配色的 WCAG 对比度、系统语言环境
+（含地区部分）映射、配置编解码（`AppConfig`、`VpnConfig`）、代理链接解析、
+sing-box 配置生成、桥接选择与流量采样。
 `--rerun-tasks` 很关键：没有它，未变更的任务会报 `UP-TO-DATE`，测试计数不会重新统计。
 
 调色板测试不是摆设。把 `outline` 换成 `#D4D4D8`，`ThemeTest` 会失败，这正是它该做的：
@@ -512,23 +533,28 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 - [x] **0** KMP 骨架、`ui/theme/`、背景、ripple
 - [x] **1** `ui/components/` -- 设计系统组件及其对比度测试
 - [x] **2** `ui/nav/` -- 底部导航五个标签页，流量监控独立窗口
-- [ ] **3** `data/` -- DTO、仓储、`UiState`、ViewModel
-- [ ] **4** 引导流程：`DeviceProfile`、能力探测、root/DIVERT/loopback 权限申请
-- [ ] **5** `core/` 解析器：vless / vmess / trojan / ss / hysteria2 / wireguard
-- [ ] **6** 配置收集：来源、缓存、后台轮询、去重
-- [ ] **7** 握手存活检查，10 分钟缓存
-- [ ] **8** 连接：WireGuard/AmneziaWG + Xray/sing-box
-- [ ] **9** Zapret：策略、预设、root 路径、WinDivert、降级
-- [ ] **10** GoodbyeDPI：TLS 分流器、root 守护进程、Windows 免提权、VpnService
-- [ ] **11** GPS：测试提供者、场景、地图（Android）
-- [ ] **12** 打包：APK/AAB、MSI/exe、`.deb`、Nix、PKGBUILD
-- [ ] **13** 对比度、打磨、多语言 EN/RU/ZH、已签名 APK
+- [x] **3** 状态与存储：`AppState`、`ConfigStore`、`AppLog`，替代独立的 `data/` 层
+- [x] **4** 引导流程：欢迎导览、权限申请、随连接状态变化的图标
+- [x] **5** `core/` 解析器：vless / vmess / trojan / ss / hysteria2 / wireguard
+- [x] **6** 配置收集：桥接来源（内置仓库、自定义 URL）、后台刷新、去重
+- [x] **7** 存活检查：桥接测速与归档、自动选最快桥
+- [x] **8** 连接：WireGuard/AmneziaWG、OpenVPN、sing-box、经桥接的 Tor、kill-switch
+- [x] **9** Zapret：策略、预设、root 路径、自动选策略；WinDivert（Windows）暂时不在范围内
+- [x] **10** GoodbyeDPI：与 zapret 共用一条 NFQUEUE 链的 root 守护进程
+- [ ] **11** GPS：设置页已有，场景与地图未做
+- [ ] **12** 打包：APK/MSI/AppImage/`.deb` 本地与 CI 均可构建；Nix 与 PKGBUILD 未做
+- [ ] **13** 对比度、打磨、多语言 EN/RU/ZH -- 已完成；已签名 release APK -- 未做
 
 ### 🌿 分支
 
 | 分支 | 用途 |
 |---|---|
 | `main` | **stable** -- 稳定分支 |
+| `develop` | 集成分支 -- 一切先进这里 |
+| `feature/data-layer` | 第 3 阶段余量与存储相关工作 |
+| `feature/gps` | 第 11 阶段：场景与地图 |
+| `feature/packaging` | 第 12 阶段：Nix、PKGBUILD、签名 APK |
+| `release/v0.2.0` | 下一个版本的稳定化 |
 
 ### 📚 文档
 

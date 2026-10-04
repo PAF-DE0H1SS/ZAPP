@@ -12,7 +12,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.theme.AzraelCornerMd
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
@@ -29,6 +36,10 @@ import xyz.azraellab.zapp.ui.theme.AzraelSpace
  * Material не знает про `AzraelDanger` и про разницу тёмной и светлой схемы,
  * поэтому «опасная» кнопка на светлой теме получила бы чёрный текст на
  * светло-розовом и потеряла читаемость.
+ *
+ * Текст в кнопке всегда одна строка: перенос слов запрещён. Если не влезает --
+ * шрифт уменьшается шагом полпункта (см. [ButtonLabel]); обрезка остаётся
+ * только крайним страховочным случаем, когда и на минимуме текст не проходит.
  */
 @Composable
 fun ZappButton(
@@ -59,7 +70,7 @@ fun ZappButton(
             ),
             modifier = modifier.defaultMinSize(minHeight = AzraelSpace.controlHeight)
         ) {
-            Text(text = text, style = MaterialTheme.typography.labelLarge)
+            ButtonLabel(text)
         }
         return
     }
@@ -80,8 +91,40 @@ fun ZappButton(
         ),
         modifier = modifier.defaultMinSize(minHeight = AzraelSpace.controlHeight)
     ) {
-        Text(text = text, style = MaterialTheme.typography.labelLarge)
+        ButtonLabel(text)
     }
+}
+
+/** Минимальный кегль подписи кнопки: ниже -- уже нечитаемо. */
+private const val BUTTON_FONT_MIN_SP = 10f
+
+/**
+ * Подпись кнопки: одна строка, без переноса, с автоподгонкой кегля.
+ *
+ * Перенос слов в кнопках запрещён -- двухстрочная кнопка ломает всю сетку
+ * высот. Если текст не влезает в отведённую ширину (короткая кнопка в
+ * ряду), кегль уменьшается до тех пор, пока не влезет или не упрётся в
+ * [BUTTON_FONT_MIN_SP]. `remember(text)` сбрасывает подгонку при смене
+ * текста -- динамические подписи («Проверить 0/420») подгоняются заново.
+ */
+@Composable
+private fun ButtonLabel(text: String) {
+    val base = MaterialTheme.typography.labelLarge
+    var fontSize by remember(text) { mutableStateOf(base.fontSize) }
+    val style: TextStyle = if (fontSize == base.fontSize) base else base.copy(fontSize = fontSize)
+
+    Text(
+        text = text,
+        style = style,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+        onTextLayout = { result ->
+            if (result.didOverflowWidth && fontSize.value > BUTTON_FONT_MIN_SP) {
+                fontSize = (fontSize.value - 0.5f).coerceAtLeast(BUTTON_FONT_MIN_SP).sp
+            }
+        }
+    )
 }
 
 /**

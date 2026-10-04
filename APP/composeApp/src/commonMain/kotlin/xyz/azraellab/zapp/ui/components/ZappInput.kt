@@ -148,7 +148,10 @@ fun <T> ZappChoiceRow(
                 FilterChip(
                     selected = isSelected,
                     onClick = { onSelect(option.value) },
-                    label = { Text(option.label) },
+                    // Чип -- кнопка: одна строка без переноса. В FlowRow
+                    // ширина у чипа естественная, поэтому текст влезает,
+                    // и перенос здесь не понадобился бы даже теоретически.
+                    label = { Text(option.label, maxLines = 1, softWrap = false) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primary,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimary

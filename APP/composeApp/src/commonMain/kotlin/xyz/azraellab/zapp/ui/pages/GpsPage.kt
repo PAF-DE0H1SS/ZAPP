@@ -23,6 +23,7 @@ import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
 import xyz.azraellab.zapp.ui.components.ZappEmptyState
+import xyz.azraellab.zapp.ui.components.ZappExpandableCard
 import xyz.azraellab.zapp.ui.components.ZappNumberField
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.components.ZappTextField
@@ -205,26 +206,27 @@ fun GpsPage(state: AppState) {
             }
         }
 
-        // --- Журнал ---
-        PageGroup(tr(Str.ENGINE_LOG)) {
-            ZappCard {
-                if (gpsLog.isEmpty()) {
+        // --- Журнал: свёрнут, пока его не откроют ---
+        ZappExpandableCard(
+            title = tr(Str.ENGINE_LOG),
+            badge = if (gpsLog.isEmpty()) null else gpsLog.size.toString()
+        ) {
+            if (gpsLog.isEmpty()) {
+                Text(
+                    text = tr(Str.ENGINE_LOG_EMPTY),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                // Последние строки ближе к низу карточки: свежее событие
+                // важнее старого, и глазу не нужно скроллить назад.
+                gpsLog.takeLast(LOG_VISIBLE).forEach { event ->
+                    val suffix = if (event.arg.isEmpty()) "" else " ${event.arg}"
                     Text(
-                        text = tr(Str.ENGINE_LOG_EMPTY),
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = tr(event.text) + suffix,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                } else {
-                    // Последние строки ближе к низу карточки: свежее событие
-                    // важнее старого, и глазу не нужно скроллить назад.
-                    gpsLog.takeLast(LOG_VISIBLE).forEach { event ->
-                        val suffix = if (event.arg.isEmpty()) "" else " ${event.arg}"
-                        Text(
-                            text = tr(event.text) + suffix,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
             }
         }

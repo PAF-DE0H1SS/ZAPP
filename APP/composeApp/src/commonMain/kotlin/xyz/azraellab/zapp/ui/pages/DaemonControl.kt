@@ -19,6 +19,7 @@ import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappCard
+import xyz.azraellab.zapp.ui.components.ZappExpandableCard
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.tr
 
@@ -89,6 +90,9 @@ fun DaemonControlCard(
  *
  * Переводятся только собственные события; вывод демона остаётся как есть --
  * это текст инструмента, и подделывать его переводом нельзя.
+ *
+ * Секция свёрнута: журнал читают, когда что-то не работает, а не каждый
+ * день, и развёрнутая лента строк съедает половину главного экрана.
  */
 @Composable
 fun DaemonLogCard(engine: DaemonEngine) {
@@ -102,42 +106,33 @@ fun DaemonLogCard(engine: DaemonEngine) {
             event.raw
         }
     }
-    JournalCard(lines)
-}
 
-/**
- * Журнал из готовых строк: общая колонка для демонов и туннеля.
- *
- * Последние строки внизу -- свежее событие важнее старого, и глазу не
- * нужно скроллить назад.
- */
-@Composable
-fun JournalCard(lines: List<String>) {
-    PageGroup(tr(Str.ENGINE_LOG)) {
-        ZappCard {
-            if (lines.isEmpty()) {
-                Text(
-                    text = tr(Str.ENGINE_LOG_EMPTY),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(AzraelSpace.xs)) {
-                    lines.takeLast(JOURNAL_VISIBLE).forEach { line ->
-                        // Ошибка -- цветом: причину надо видеть, не читая всё.
-                        val isError = line.startsWith("error") ||
-                            line.contains("failed", ignoreCase = true) ||
-                            line.contains("panic", ignoreCase = true)
-                        Text(
-                            text = line,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isError) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                        )
-                    }
+    ZappExpandableCard(
+        title = tr(Str.ENGINE_LOG),
+        badge = if (lines.isEmpty()) null else lines.size.toString()
+    ) {
+        if (lines.isEmpty()) {
+            Text(
+                text = tr(Str.ENGINE_LOG_EMPTY),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(AzraelSpace.xs)) {
+                lines.takeLast(JOURNAL_VISIBLE).forEach { line ->
+                    // Ошибка -- цветом: причину надо видеть, не читая всё.
+                    val isError = line.startsWith("error") ||
+                        line.contains("failed", ignoreCase = true) ||
+                        line.contains("panic", ignoreCase = true)
+                    Text(
+                        text = line,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isError) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
                 }
             }
         }
@@ -165,40 +160,45 @@ fun StrategyProbeCard(state: AppState, target: String) {
         ZappButton(
             text = if (running) tr(Str.VPN_CHECKING) else tr(Str.STRATEGY_PROBE),
             enabled = !running,
-            onClick = { state.autoPickStrategy(target) }
+            onClick = { state.autoPickStrategy(target) },
+            modifier = Modifier.fillMaxWidth()
         )
 
-        steps.forEach { step ->
-            val probeStep = current?.report?.steps?.firstOrNull { it.id == step.id }
-            val result = probeStep?.result
-            val symbol = when (result) {
-                AutoStrategy.ProbeResult.Pass -> "✓"
-                AutoStrategy.ProbeResult.Blocked -> "✗"
-                else -> "?"
-            }
-            val color = when (result) {
-                AutoStrategy.ProbeResult.Pass -> scheme.primary
-                AutoStrategy.ProbeResult.Blocked -> scheme.error
-                else -> scheme.onSurfaceVariant
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AzraelSpace.md),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = symbol, style = MaterialTheme.typography.bodyLarge, color = color)
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = step.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = scheme.onSurface
-                    )
-                    if (probeStep?.detail != null && probeStep.detail.isNotEmpty()) {
+        // Шаги видны только во время проверки и после неё: постоянный список
+        // «? ? ?» до нажатия -- это пустая стена, а не информация.
+        if (running || current != null) {
+            steps.forEach { step ->
+                val probeStep = current?.report?.steps?.firstOrNull { it.id == step.id }
+                val result = probeStep?.result
+                val symbol = when (result) {
+                    AutoStrategy.ProbeResult.Pass -> "✓"
+                    AutoStrategy.ProbeResult.Blocked -> "✗"
+                    else -> "?"
+                }
+                val color = when (result) {
+                    AutoStrategy.ProbeResult.Pass -> scheme.primary
+                    AutoStrategy.ProbeResult.Blocked -> scheme.error
+                    else -> scheme.onSurfaceVariant
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AzraelSpace.md),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = symbol, style = MaterialTheme.typography.bodyLarge, color = color)
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = probeStep.detail,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = scheme.onSurfaceVariant
+                            text = step.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = scheme.onSurface
                         )
+                        if (probeStep?.detail != null && probeStep.detail.isNotEmpty()) {
+                            Text(
+                                text = probeStep.detail,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -222,7 +222,8 @@ fun StrategyProbeCard(state: AppState, target: String) {
                 ZappButton(
                     text = tr(Str.COMMON_CLOSE),
                     role = ButtonRole.GHOST,
-                    onClick = { state.clearStrategyOutcome() }
+                    onClick = { state.clearStrategyOutcome() },
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }

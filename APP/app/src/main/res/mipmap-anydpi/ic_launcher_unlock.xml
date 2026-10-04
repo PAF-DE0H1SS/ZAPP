@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Основная иконка продукта — открытый замок. Сюда смотрит манифест
+    (уведомления, настройки) и лаунчер на системах без подмены иконки:
+    динамику умеет только Android, и то не каждый лаунчер обновляет её
+    вовремя, поэтому в сомнительных случаях остаётся unlock.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_unlock_glyph" />
+    <monochrome android:drawable="@drawable/ic_unlock_glyph" />
+</adaptive-icon>

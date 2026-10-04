@@ -16,6 +16,7 @@ enum class Str {
     APP_NAME,
 
     /** Разделы нижней навигации. */
+    TAB_TOR,
     TAB_VPN,
     TAB_ZAPRET,
     TAB_GOODBYE_DPI,
@@ -23,6 +24,25 @@ enum class Str {
     TAB_TRAFFIC,
     TAB_SETTINGS,
     SETTINGS,
+
+    /**
+     * Короткие метки для нижней панели: полные названия в парных кнопках
+     * не помещаются, поэтому в панель идут однобуквенные сокращения.
+     * Язык не различается: аббревиатуры -- те же во всех переводах.
+     */
+    TAB_TOR_SHORT,
+    TAB_VPN_SHORT,
+    TAB_ZAPRET_SHORT,
+    TAB_GOODBYE_DPI_SHORT,
+
+    /** Вкладка Tor. */
+    TOR_PAGE_HINT,
+    TOR_BRIDGES,
+    TOR_CONNECT,
+    TOR_NO_BRIDGES,
+    TOR_ACTIVE_HINT,
+    TOR_BRIDGE_SOURCE,
+    TOR_SOURCES,
 
     /** Действия. */
     COMMON_CONNECT,
@@ -157,6 +177,7 @@ enum class Str {
     DAEMON_LOG_STOPPED,
     DAEMON_LOG_EXIT,
     DAEMON_NO_BINARY,
+    DAEMON_FILES_FAILED,
     DAEMON_NO_SNI,
     DAEMON_BINARY,
 
@@ -206,12 +227,47 @@ enum class Str {
     WELCOME_NEXT,
     WELCOME_DONE,
     WELCOME_STEP_HINTS,
+    WELCOME_HINT_TOR,
     WELCOME_HINT_VPN,
     WELCOME_HINT_ZAPRET,
     WELCOME_HINT_DPI,
     WELCOME_HINT_GPS,
     WELCOME_HINT_LOG,
     WELCOME_PERMISSIONS,
+    WELCOME_GRANT_ALL,
+    WELCOME_AUTO_TITLE,
+    WELCOME_AUTO_HINT,
+    WELCOME_AUTO_SOURCES,
+    WELCOME_AUTO_PING,
+    WELCOME_AUTO_STRATEGY,
+    WELCOME_AUTO_COMPONENTS,
+    WELCOME_AUTO_UPDATES,
+    WELCOME_AUTO_PERF,
+    WELCOME_SKIP,
+
+    /** Мини-опросник о характере использования (шаг автонастройки). */
+    WELCOME_Q_TITLE,
+    WELCOME_Q_PURPOSE,
+    WELCOME_Q_DEVICE,
+    WELCOME_Q_PRIORITY,
+    Q_PURPOSE_VIDEO,
+    Q_PURPOSE_GAMES,
+    Q_PURPOSE_CHAT,
+    Q_PURPOSE_PRIVACY,
+    Q_DEVICE_LOW,
+    Q_DEVICE_MID,
+    Q_DEVICE_HIGH,
+    Q_PRIORITY_SPEED,
+    Q_PRIORITY_STABILITY,
+    Q_PRIORITY_BATTERY,
+
+    /** Настройки производительности. */
+    SETTINGS_PERF,
+    PERF_BG_ANIM,
+    PERF_BG_FPS,
+    PERF_LIST_PAGE,
+    PERF_LIST_PAGE_HINT,
+    SETTINGS_REPLAY_WELCOME,
 
     /** Кнопки навигации. */
     COMMON_BACK,
@@ -328,6 +384,7 @@ enum class Str {
     VPN_STATUS_UNKNOWN,
     VPN_GROUP_MODE,
     VPN_TOR_ENABLED,
+    VPN_TOR_SHOW,
     VPN_ADD_LINKS,
     VPN_IMPORT_NONE,
     VPN_SORT_PING,
@@ -345,6 +402,10 @@ enum class Str {
     VPN_TOR_SOCKS,
     VPN_AUTOSTART,
     VPN_ROUTING_HINT_DNS,
+    VPN_ROUTING,
+    VPN_SHOW_MORE,
+    VPN_ONLY_ALIVE,
+    VPN_SEARCH,
 
     /** Автоподбор стратегии обхода. */
     STRATEGY_PROBE,
@@ -368,7 +429,34 @@ enum class Str {
     fun of(lang: AppLang): String = when (this) {
         APP_NAME -> "ZAPP"
 
+        TAB_TOR -> pick(lang, "Tor", "Tor", "Tor")
         TAB_VPN -> pick(lang, "VPN", "VPN", "VPN")
+        TAB_TOR_SHORT -> pick(lang, "T", "T", "T")
+        TAB_VPN_SHORT -> pick(lang, "V", "V", "V")
+        TAB_ZAPRET_SHORT -> pick(lang, "Z", "Z", "Z")
+        TAB_GOODBYE_DPI_SHORT -> pick(lang, "GDPI", "GDPI", "GDPI")
+        TOR_PAGE_HINT -> pick(
+            lang,
+            "Tor wraps your traffic in bridges: the app picks a bridge and tunnels everything through it.",
+            "Tor заворачивает трафик в мосты: приложение выбирает мост и пускает через него весь трафик.",
+            "Tor 通过桥接封装流量：应用选择桥接并经其传输全部流量。"
+        )
+        TOR_BRIDGES -> pick(lang, "Tor bridges", "Мосты Tor", "Tor 桥接")
+        TOR_CONNECT -> pick(lang, "Connect via Tor", "Подключить через Tor", "通过 Tor 连接")
+        TOR_NO_BRIDGES -> pick(
+            lang,
+            "No Tor bridges: refresh the sources below or add a bridge subscription.",
+            "Нет Tor-мостов: обновите источники ниже или добавьте подписку с мостами.",
+            "没有 Tor 桥接：请刷新下方来源或添加桥接订阅。"
+        )
+        TOR_ACTIVE_HINT -> pick(
+            lang,
+            "Traffic goes through this bridge; SOCKS port below is for other apps.",
+            "Трафик идёт через этот мост; SOCKS-порт ниже -- для других приложений.",
+            "流量经此桥接传输；下方 SOCKS 端口供其他应用使用。"
+        )
+        TOR_BRIDGE_SOURCE -> pick(lang, "Source", "Источник", "来源")
+        TOR_SOURCES -> pick(lang, "Bridge sources", "Источники мостов", "桥接来源")
         TAB_ZAPRET -> pick(lang, "Zapret", "Zapret", "Zapret")
         TAB_GOODBYE_DPI -> pick(lang, "GoodbyeDPI", "GoodbyeDPI", "GoodbyeDPI")
         TAB_GPS -> pick(lang, "GPS", "GPS", "GPS")
@@ -508,6 +596,12 @@ enum class Str {
         WELCOME_NEXT -> pick(lang, "Next", "Далее", "下一步")
         WELCOME_DONE -> pick(lang, "Get started", "Начать", "开始使用")
         WELCOME_STEP_HINTS -> pick(lang, "What the tabs do", "Что делают вкладки", "各标签页的功能")
+        WELCOME_HINT_TOR -> pick(
+            lang,
+            "Tor: route traffic through bridges -- a separate tab right before VPN.",
+            "Tor: трафик через мосты -- отдельная вкладка сразу перед VPN.",
+            "Tor：经桥接传输流量——紧邻 VPN 之前的独立标签页。"
+        )
         WELCOME_HINT_VPN -> pick(
             lang,
             "VPN: import links or sources, pick a live connect, press START.",
@@ -543,6 +637,101 @@ enum class Str {
             "Grant the permissions so the app works. You can review them later in Settings.",
             "Выдайте разрешения, чтобы приложение работало. Позже их можно проверить в настройках.",
             "请授予权限以便应用正常运行。之后可在设置中查看。"
+        )
+        WELCOME_GRANT_ALL -> pick(
+            lang,
+            "All permissions must be granted to continue",
+            "Для продолжения нужно выдать все разрешения",
+            "需授予全部权限才能继续"
+        )
+        WELCOME_AUTO_TITLE -> pick(
+            lang,
+            "Initial setup",
+            "Первоначальная настройка",
+            "初始设置"
+        )
+        WELCOME_AUTO_HINT -> pick(
+            lang,
+            "ZAPP will update connection sources, check them and pick a bypass strategy. This takes a minute.",
+            "ZAPP обновит источники коннектов, проверит их и подберёт стратегию обхода. Это займёт минуту.",
+            "ZAPP 将更新连接源、检查它们并选择绕过策略。大约需要一分钟。"
+        )
+        WELCOME_AUTO_SOURCES -> pick(lang, "Updating sources", "Обновление источников", "更新源")
+        WELCOME_AUTO_PING -> pick(lang, "Checking connections", "Проверка коннектов", "检查连接")
+        WELCOME_AUTO_STRATEGY -> pick(
+            lang,
+            "Picking bypass strategy",
+            "Подбор стратегии обхода",
+            "选择绕过策略"
+        )
+        WELCOME_SKIP -> pick(lang, "Skip", "Пропустить", "跳过")
+        WELCOME_AUTO_COMPONENTS -> pick(
+            lang,
+            "Checking components",
+            "Проверка компонентов",
+            "检查组件"
+        )
+        WELCOME_AUTO_UPDATES -> pick(
+            lang,
+            "Checking for updates",
+            "Проверка обновлений",
+            "检查更新"
+        )
+        WELCOME_AUTO_PERF -> pick(
+            lang,
+            "Applying performance profile",
+            "Профиль производительности",
+            "应用性能配置"
+        )
+        WELCOME_Q_TITLE -> pick(
+            lang,
+            "A few words about you",
+            "Пара слов о вас",
+            "关于您的几个问题"
+        )
+        WELCOME_Q_PURPOSE -> pick(
+            lang,
+            "What is it mainly for?",
+            "Для чего в основном?",
+            "主要用途？"
+        )
+        WELCOME_Q_DEVICE -> pick(
+            lang,
+            "Device class",
+            "Класс устройства",
+            "设备级别"
+        )
+        WELCOME_Q_PRIORITY -> pick(
+            lang,
+            "What matters most?",
+            "Что важнее всего?",
+            "什么最重要？"
+        )
+        Q_PURPOSE_VIDEO -> pick(lang, "Video and streams", "Видео и стримы", "视频与直播")
+        Q_PURPOSE_GAMES -> pick(lang, "Games", "Игры", "游戏")
+        Q_PURPOSE_CHAT -> pick(lang, "Chats and messengers", "Чаты и мессенджеры", "聊天与通讯")
+        Q_PURPOSE_PRIVACY -> pick(lang, "Privacy", "Приватность", "隐私")
+        Q_DEVICE_LOW -> pick(lang, "Budget", "Слабое", "入门")
+        Q_DEVICE_MID -> pick(lang, "Mid-range", "Среднее", "中端")
+        Q_DEVICE_HIGH -> pick(lang, "Flagship", "Мощное", "旗舰")
+        Q_PRIORITY_SPEED -> pick(lang, "Speed", "Скорость", "速度")
+        Q_PRIORITY_STABILITY -> pick(lang, "Stability", "Стабильность", "稳定")
+        Q_PRIORITY_BATTERY -> pick(lang, "Battery", "Батарея", "续航")
+        SETTINGS_PERF -> pick(lang, "Performance", "Производительность", "性能")
+        PERF_BG_ANIM -> pick(lang, "Animated background", "Анимация фона", "动态背景")
+        PERF_BG_FPS -> pick(lang, "Background frame rate", "Частота кадров фона", "背景帧率")
+        PERF_LIST_PAGE -> pick(lang, "Connection list page", "Страница списка коннектов", "连接列表分页")
+        PERF_LIST_PAGE_HINT -> pick(
+            lang,
+            "Fewer rows render less: smoother scroll on weak devices.",
+            "Меньше строк -- меньше отрисовка: плавнее скролл на слабых устройствах.",
+            "行数越少渲染越少：低端设备滚动更流畅。"
+        )
+        SETTINGS_REPLAY_WELCOME -> pick(
+            lang,
+            "Run the welcome tour again",
+            "Пройти приветствие заново",
+            "重新运行欢迎引导"
         )
         ABOUT_VERSION -> pick(lang, "Version", "Версия", "版本")
         ABOUT_LICENSE -> pick(lang, "License", "Лицензия", "许可")
@@ -587,6 +776,12 @@ enum class Str {
         DAEMON_LOG_STOPPED -> pick(lang, "Stopped", "Остановлен", "已停止")
         DAEMON_LOG_EXIT -> pick(lang, "Exit code", "Код выхода", "退出码")
         DAEMON_NO_BINARY -> pick(lang, "Binary not found", "Бинарь не найден", "找不到可执行文件")
+        DAEMON_FILES_FAILED -> pick(
+            lang,
+            "Daemon files were not written",
+            "Файлы демона не записаны",
+            "守护进程文件写入失败"
+        )
         DAEMON_NO_SNI -> pick(lang, "Fake SNI mode needs a domain", "Режиму Fake SNI нужен домен", "Fake SNI 模式需要域名")
         DAEMON_BINARY -> pick(lang, "Binary path", "Путь к бинарю", "可执行文件路径")
         LIST_EMPTY_PROFILES -> pick(lang, "No profiles", "Профилей нет", "没有配置")
@@ -695,6 +890,12 @@ enum class Str {
         VPN_STATUS_UNKNOWN -> pick(lang, "Not checked", "Не проверялся", "未检查")
         VPN_GROUP_MODE -> pick(lang, "Auto-pick best", "Автовыбор лучшего", "自动选择最优")
         VPN_TOR_ENABLED -> pick(lang, "Tor bridges", "Мосты Tor", "Tor 桥接")
+        VPN_TOR_SHOW -> pick(
+            lang,
+            "Also show them in the general VPN list",
+            "Показывать их и в общем списке VPN",
+            "同时在 VPN 总列表中显示"
+        )
         VPN_ADD_LINKS -> pick(lang, "Add links", "Добавить ссылки", "添加链接")
         VPN_IMPORT_NONE -> pick(lang, "Nothing recognized", "Текст не распознан", "无法识别文本")
         VPN_SORT_PING -> pick(lang, "By ping", "По пингу", "按延迟")
@@ -716,6 +917,10 @@ enum class Str {
             "Перехват DNS работает на движке sing-box; ядерный WireGuard оставляет системный резолвер",
             "DNS 拦截仅在 sing-box 引擎生效；内核 WireGuard 使用系统解析器"
         )
+        VPN_ROUTING -> pick(lang, "Routing and DNS", "Маршруты и DNS", "路由与 DNS")
+        VPN_SHOW_MORE -> pick(lang, "Show more", "Показать ещё", "显示更多")
+        VPN_ONLY_ALIVE -> pick(lang, "Alive only", "Только живые", "仅存活")
+        VPN_SEARCH -> pick(lang, "Search", "Поиск", "搜索")
 
         STRATEGY_PROBE -> pick(lang, "Detect strategy", "Подобрать стратегию", "检测策略")
         STRATEGY_APPLIED -> pick(lang, "Strategy applied", "Стратегия применена", "策略已应用")

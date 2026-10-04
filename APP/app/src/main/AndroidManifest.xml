@@ -49,15 +49,44 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.ZAPP">
+        <!--
+            Единственная Activity сама LAUNCHER-фильтра не держит: точка
+            входа — два activity-alias с разными иконками. Логика проста —
+            подключено -> unlock, всё остальное -> lock; переключение
+            делает LauncherIcon. Если лаунчер не умеет подменять иконку,
+            остаётся enabled-alias, а основная иконка приложения — unlock.
+        -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true" />
+
+        <activity-alias
+            android:name=".LauncherLock"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_lock"
+            android:roundIcon="@mipmap/ic_launcher_round_lock"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherUnlock"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_unlock"
+            android:roundIcon="@mipmap/ic_launcher_round_unlock"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!--
             VPN-туннель. BIND_VPN_SERVICE держит привязку у системы:

@@ -19,14 +19,17 @@ import xyz.azraellab.zapp.ui.welcome.WelcomeScreen
  */
 @Composable
 fun App() {
-    val state = remember { AppState() }
+    // Синглтон процесса: Activity может пересоздаться (смена иконки,
+    // поворот), а состояние -- нет. Повторный AppState означал бы второй
+    // туннель и драку демонов за порт.
+    val state = remember { AppState.obtain() }
 
     LaunchedEffect(Unit) {
         state.load()
     }
 
     AppThemeRoot {
-        GlassBackground {
+        GlassBackground(perf = state.config.perf.sanitized()) {
             // Первый запуск: приветствие с туров и разрешениями.
             if (state.config.welcomeDone) {
                 AppRoot(state = state)

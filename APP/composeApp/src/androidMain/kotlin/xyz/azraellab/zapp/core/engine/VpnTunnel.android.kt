@@ -65,6 +65,11 @@ actual object VpnTunnel {
     actual fun close() {
         pending = null
         params = null
+        // Система держит сервис биндингом, пока жив туннель: один только
+        // stopService сервис не уничтожает, fd /dev/tun остаётся открытым,
+        // и мёртвый tun0 перехватывает весь трафик устройства (чёрная
+        // дыра). Сначала рвём fd сами, затем снимаем сервис.
+        runCatching { ZappVpnService.instance?.teardown() }
         val context = AndroidCtx.current ?: return
         runCatching { context.stopService(Intent(context, ZappVpnService::class.java)) }
     }

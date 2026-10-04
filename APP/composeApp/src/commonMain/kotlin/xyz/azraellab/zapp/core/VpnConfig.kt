@@ -193,7 +193,13 @@ data class VpnConfig(
     val sources: List<VpnSource> = defaultSources(),
 
     // --- Tor ---
-    /** Показывать Tor-мосты и профили Tor; снимок галочки -- выкл без удаления. */
+    /**
+     * Исторический флаг «показывать мосты в общем списке VPN».
+     *
+     * Мосты теперь живут отдельной вкладкой Tor и в списки VPN не
+     * попадают никогда, поэтому флаг ничего не решает; поле оставлено,
+     * чтобы старые конфиги читались без ошибки десериализации.
+     */
     val torEnabled: Boolean = true,
     /** Локальный SOCKS-порт tor'а; через него box и пускает трафик. */
     val torSocksPort: Int = 9050,
@@ -213,13 +219,24 @@ data class VpnConfig(
 
     fun profileById(id: String): VpnProfile? = profiles.firstOrNull { it.id == id }
 
-    /** Коннекты, которые не спрятаны в архив: живые и ещё не проверенные. */
+    /**
+     * Коннекты VPN-страницы: живые и ещё не проверенные.
+     *
+     * Мосты Tor сюда не входят никогда: VPN -- только VPN, тор живёт на
+     * своей вкладке со своими списками. Раньше решал флаг [torEnabled],
+     * теперь разделение жёсткое.
+     */
     fun visibleProfiles(): List<VpnProfile> = profiles.filter {
-        it.health.alive != false && (torEnabled || it.protocol != VpnProtocol.TOR.code)
+        it.health.alive != false && it.protocol != VpnProtocol.TOR.code
     }
 
-    /** Архив: коннекты, признанные мёртвыми последней проверкой. */
-    fun archivedProfiles(): List<VpnProfile> = profiles.filter { it.health.alive == false }
+    /**
+     * Архив VPN: коннекты, признанные мёртвыми последней проверкой.
+     * Мёртвые мосты остаются на вкладке Tor -- в архив VPN не идут.
+     */
+    fun archivedProfiles(): List<VpnProfile> = profiles.filter {
+        it.health.alive == false && it.protocol != VpnProtocol.TOR.code
+    }
 
     /** Коннекты активного источника. */
     fun profilesOfSource(sourceId: String): List<VpnProfile> =

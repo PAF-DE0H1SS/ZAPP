@@ -36,6 +36,15 @@ android {
             )
         }
     }
+
+    lint {
+        // Приложение само выступает провайдером имитации местоположения
+        // (GPS-сценарии). Чтобы оно появилось в списке «Приложение для
+        // имитации местоположения» в настройках разработчика,
+        // ACCESS_MOCK_LOCATION обязан быть объявлен и в release-манифесте,
+        // а не только в debug -- правило MockLocation здесь не применимо.
+        disable += "MockLocation"
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

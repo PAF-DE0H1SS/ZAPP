@@ -30,6 +30,10 @@
         поэтому runtime-диалог запрашивается только для гео.
     -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- С 12-го Android вместе с FINE обязано быть объявлено и COARSE:
+         пользователь может выдать только точное или только грубое,
+         и приложение должно работать в обоих случаях. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION" />
 
     <!--

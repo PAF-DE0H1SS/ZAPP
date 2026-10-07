@@ -47,6 +47,7 @@ fun ZappExpandableCard(
     subtitle: String? = null,
     initiallyExpanded: Boolean = false,
     actions: @Composable RowScope.() -> Unit = {},
+    path: String? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
@@ -63,6 +64,7 @@ fun ZappExpandableCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { expanded = !expanded }
+                .debugPath(path ?: "expand:$title")
                 .padding(AzraelSpace.cardPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(AzraelSpace.md)

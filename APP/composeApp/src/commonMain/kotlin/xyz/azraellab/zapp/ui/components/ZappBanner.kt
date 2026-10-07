@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.ui.theme.AzraelCornerMd
@@ -77,13 +78,16 @@ fun ZappSettingRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    subtitle: String? = null
+    subtitle: String? = null,
+    path: String? = null,
+    enabled: Boolean = true
 ) {
     val scheme = MaterialTheme.colorScheme
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = AzraelSpace.sm),
+            .padding(vertical = AzraelSpace.sm)
+            .alpha(if (enabled) 1f else 0.45f),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AzraelSpace.md)
     ) {
@@ -99,7 +103,7 @@ fun ZappSettingRow(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = if (enabled) onCheckedChange else null,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = scheme.onPrimary,
                 checkedTrackColor = scheme.primary,
@@ -108,7 +112,9 @@ fun ZappSettingRow(
                 uncheckedTrackColor = scheme.surfaceContainerHigh,
                 uncheckedBorderColor = scheme.outline
             ),
-            modifier = Modifier.padding(vertical = AzraelSpace.xs)
+            modifier = Modifier
+                .padding(vertical = AzraelSpace.xs)
+                .debugPath(path ?: "switch:$title")
         )
     }
 }

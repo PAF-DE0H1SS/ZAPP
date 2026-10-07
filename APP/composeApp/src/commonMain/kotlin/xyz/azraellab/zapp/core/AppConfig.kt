@@ -44,11 +44,20 @@ data class AppConfig(
      */
     val usage: UsageProfile = UsageProfile(),
 
+    /**
+     * Регион/страна пользователя (ISO 3166-1 alpha-2, например "RU").
+     *
+     * Один из факторов автонастройки: для части регионов есть политика
+     * (скрытые протоколы, принудительные механизмы). Пусто -- страна не
+     * выбрана, ведёт себя как нейтральный регион.
+     */
+    val region: String = "",
+
     /** Схема версии: нужна для миграций при чтении старых файлов. */
     val version: Int = CURRENT_VERSION
 ) {
     companion object {
-        const val CURRENT_VERSION: Int = 1
+        const val CURRENT_VERSION: Int = 2
     }
 }
 
@@ -162,8 +171,9 @@ object UsageTuner {
  * Именованный пресет настроек.
  *
  * Пресет хранит только то, что имеет смысл переносить между устройствами:
- * правила обхода и профили VPN. Мониторинг трафика и язык сюда не входят,
- * потому что это свойства устройства, а не конфигурация обхода.
+ * правила обхода, профили VPN и регион (от региона зависит, какие протоколы
+ * показывать). Мониторинг трафика и язык сюда не входят, потому что это
+ * свойства устройства, а не конфигурация обхода.
  */
 @Serializable
 data class Preset(
@@ -171,18 +181,21 @@ data class Preset(
     val name: String = "",
     val description: String = "",
     val createdAtMs: Long = 0L,
+    val region: String = "",
     val zapret: ZapretConfig = ZapretConfig(),
     val goodbyeDpi: GoodbyeDpiConfig = GoodbyeDpiConfig(),
     val vpn: VpnConfig = VpnConfig(),
     val gps: GpsConfig = GpsConfig()
 ) {
     /** Применяет пресет к настройкам, не трогая устройственные поля. */
-    fun applyTo(config: AppConfig): AppConfig = config.copy(
-        zapret = zapret,
-        goodbyeDpi = goodbyeDpi,
-        vpn = vpn,
-        gps = gps
-    )
+    fun applyTo(config: AppConfig): AppConfig =
+        RegionTuner.apply(config.copy(
+            zapret = zapret,
+            goodbyeDpi = goodbyeDpi,
+            vpn = vpn,
+            gps = gps,
+            region = region
+        ), region)
 
     fun validate(): List<String> {
         val problems = mutableListOf<String>()
@@ -215,6 +228,7 @@ data class Preset(
         fun from(config: AppConfig, name: String, nowMs: Long): Preset = Preset(
             name = name,
             createdAtMs = nowMs,
+            region = config.region,
             zapret = config.zapret,
             goodbyeDpi = config.goodbyeDpi,
             vpn = config.vpn,

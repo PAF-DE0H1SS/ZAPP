@@ -16,6 +16,7 @@ import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.GpsMode
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.gps.GpsState
+import xyz.azraellab.zapp.core.log.isError
 import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.Choice
@@ -85,18 +86,31 @@ fun GpsPage(state: AppState) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    // Причина сбоя -- под статусом: «Ошибка» без строки под
+                    // ним ничего не объясняет, а причину приложение знает.
+                    if (gpsState == GpsState.ERROR) {
+                        gpsLog.gpsErrorReason()?.let { reason ->
+                            Text(
+                                text = reason,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
                 }
                 val running = gpsState == GpsState.ACTIVE || gpsState == GpsState.STARTING
                 if (running) {
                     ZappButton(
                         text = tr(Str.COMMON_STOP),
                         role = ButtonRole.DANGER,
-                        onClick = { state.stopGps() }
+                        onClick = { state.stopGps() },
+                        path = "gps.stop"
                     )
                 } else {
                     ZappButton(
                         text = tr(Str.COMMON_START),
-                        onClick = { state.startGps() }
+                        onClick = { state.startGps() },
+                        path = "gps.start"
                     )
                 }
             }
@@ -111,7 +125,8 @@ fun GpsPage(state: AppState) {
                     selected = config.mode,
                     onSelect = { code ->
                         state.mutate { it.copy(gps = it.gps.copy(mode = code)) }
-                    }
+                    },
+                    path = "gps.mode"
                 )
                 // Режим VPN не имеет своих полей: всё решает адрес шлюза,
                 // а о найденной точке страница сообщает сверху.
@@ -136,7 +151,8 @@ fun GpsPage(state: AppState) {
                         onValueChange = { v ->
                             state.mutate { it.copy(gps = it.gps.copy(latitude = v?.toDouble() ?: 0.0)) }
                         },
-                        placeholder = "55.7558"
+                        placeholder = "55.7558",
+                        path = "gps.latitude"
                     )
                     ZappNumberField(
                         label = tr(Str.GPS_LONGITUDE),
@@ -145,7 +161,8 @@ fun GpsPage(state: AppState) {
                         onValueChange = { v ->
                             state.mutate { it.copy(gps = it.gps.copy(longitude = v?.toDouble() ?: 0.0)) }
                         },
-                        placeholder = "37.6173"
+                        placeholder = "37.6173",
+                        path = "gps.longitude"
                     )
                     ZappNumberField(
                         label = tr(Str.GPS_ACCURACY),
@@ -153,14 +170,16 @@ fun GpsPage(state: AppState) {
                         onValueChange = { v ->
                             state.mutate { it.copy(gps = it.gps.copy(accuracyMeters = (v ?: 5).toDouble())) }
                         },
-                        placeholder = "10"
+                        placeholder = "10",
+                        path = "gps.accuracy"
                     )
                     ZappNumberField(
                         label = tr(Str.GPS_ALTITUDE),
                         value = config.altitudeMeters.toLong().toInt(),
                         onValueChange = { v ->
                             state.mutate { it.copy(gps = it.gps.copy(altitudeMeters = (v ?: 0).toDouble())) }
-                        }
+                        },
+                        path = "gps.altitude"
                     )
                 }
             }
@@ -177,7 +196,8 @@ fun GpsPage(state: AppState) {
                             state.mutate { it.copy(gps = it.gps.copy(route = v)) }
                         },
                         supportingText = tr(Str.GPS_ROUTE_FORMAT),
-                        singleLine = false
+                        singleLine = false,
+                        path = "gps.route"
                     )
                     ZappNumberField(
                         label = tr(Str.GPS_ROUTE_SPEED),
@@ -185,7 +205,8 @@ fun GpsPage(state: AppState) {
                         onValueChange = { v ->
                             state.mutate { it.copy(gps = it.gps.copy(speedMps = (v ?: 0).toDouble())) }
                         },
-                        placeholder = "20"
+                        placeholder = "20",
+                        path = "gps.route_speed"
                     )
                     ZappNumberField(
                         label = tr(Str.GPS_ROUTE_INTERVAL),
@@ -193,14 +214,16 @@ fun GpsPage(state: AppState) {
                         onValueChange = { v ->
                             state.mutate { it.copy(gps = it.gps.copy(routeDwellSeconds = v ?: 0)) }
                         },
-                        placeholder = "1"
+                        placeholder = "1",
+                        path = "gps.route_interval"
                     )
                     ZappSettingRow(
                         title = tr(Str.GPS_ROUTE_LOOP),
                         checked = config.routeLoop,
                         onCheckedChange = { on ->
                             state.mutate { it.copy(gps = it.gps.copy(routeLoop = on)) }
-                        }
+                        },
+                        path = "gps.route_loop"
                     )
                 }
             }
@@ -209,7 +232,8 @@ fun GpsPage(state: AppState) {
         // --- Журнал: свёрнут, пока его не откроют ---
         ZappExpandableCard(
             title = tr(Str.ENGINE_LOG),
-            badge = if (gpsLog.isEmpty()) null else gpsLog.size.toString()
+            badge = if (gpsLog.isEmpty()) null else gpsLog.size.toString(),
+            path = "gps.log.expand"
         ) {
             if (gpsLog.isEmpty()) {
                 Text(
@@ -221,11 +245,16 @@ fun GpsPage(state: AppState) {
                 // Последние строки ближе к низу карточки: свежее событие
                 // важнее старого, и глазу не нужно скроллить назад.
                 gpsLog.takeLast(LOG_VISIBLE).forEach { event ->
-                    val suffix = if (event.arg.isEmpty()) "" else " ${event.arg}"
                     Text(
-                        text = tr(event.text) + suffix,
+                        text = event.rendered(),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        // Сбой -- цветом: причину видно, не разворачивая
+                        // журнал и не дочитывая его до конца.
+                        color = if (event.isError()) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                 }
             }

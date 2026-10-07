@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.LinkSpeedBus
+import xyz.azraellab.zapp.core.PingBus
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.VpnConnects
 import xyz.azraellab.zapp.core.VpnProfile
@@ -29,7 +30,9 @@ import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.VpnSource
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.engine.TunnelState
-import xyz.azraellab.zapp.core.toDisplayString
+import xyz.azraellab.zapp.core.log.errorLine
+import xyz.azraellab.zapp.core.log.looksLikeErrorLine
+import xyz.azraellab.zapp.core.statusLine
 import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
@@ -87,40 +90,24 @@ fun VpnPage(state: AppState) {
                         ZappButton(
                             text = tr(Str.COMMON_STOP),
                             role = ButtonRole.DANGER,
-                            onClick = { state.disconnectVpn() }
+                            onClick = { state.disconnectVpn() },
+                            path = "vpn.stop"
                         )
                     } else {
                         ZappButton(
                             text = tr(Str.COMMON_START),
-                            onClick = { state.connectVpn() }
+                            onClick = { state.connectVpn() },
+                            path = "vpn.start"
                         )
                     }
                 }
-                // Скорость туннеля и активные режимы: живут, пока
-                // подключены, обновляются раз в секунду отдельным опросом
-                // счётчиков. Режимы -- только работающие: неактивные в
-                // строку не попадают вовсе.
-                val linkSpeed by LinkSpeedBus.current.collectAsState()
-                val modes = activeModes(state, tunnelState)
-                val speedLine = when {
-                    tunnelState == TunnelState.CONNECTED && modes.isNotEmpty() ->
-                        (linkSpeed?.toDisplayString() ?: "↓ …  ↑ …") + "  ($modes)"
-                    tunnelState == TunnelState.CONNECTED ->
-                        linkSpeed?.toDisplayString() ?: "↓ …  ↑ …"
-                    modes.isNotEmpty() -> "($modes)"
-                    else -> ""
-                }
-                if (speedLine.isNotEmpty()) {
-                    Text(
-                        text = speedLine,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                // Скорость туннеля, пинг и активные режимы: живут, пока
+                // подключены, обновляются фоновыми опросами. Режимы --
+                // только работающие: неактивные в строку не попадают.
+                SpeedLine(state, tunnelState)
                 // Причина сбоя -- под статусом, не только в журнале внизу.
                 if (tunnelState == TunnelState.ERROR) {
-                    val reason = tunnelLog.lastOrNull { it.startsWith("error") || it.startsWith("box failed") }
-                        ?: tunnelLog.lastOrNull()
+                    val reason = tunnelLog.errorLine()
                     if (reason != null) {
                         Text(
                             text = reason,
@@ -143,7 +130,8 @@ fun VpnPage(state: AppState) {
                     ZappButton(
                         text = tr(Str.COMMON_CLOSE),
                         role = ButtonRole.GHOST,
-                        onClick = { state.clearVpnNotice() }
+                        onClick = { state.clearVpnNotice() },
+                        path = "vpn.notice_close"
                     )
                 }
             )
@@ -159,6 +147,7 @@ fun VpnPage(state: AppState) {
             state = state,
             title = Str.VPN_SOURCES,
             kind = "proxy",
+            prefix = "vpn",
             sources = remember(config.sources) {
                 VpnConnects.sourcesByKind(config.sources, "proxy")
             }
@@ -216,7 +205,8 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
     ZappExpandableCard(
         title = tr(Str.VPN_PROFILES),
         badge = if (alive > 0) alive.toString() else null,
-        subtitle = subtitle
+        subtitle = subtitle,
+        path = "vpn.profiles.expand"
     ) {
         // Выбранный коннект -- одной строкой: понятно, чем подключимся.
         active?.let { a ->
@@ -233,11 +223,12 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
         ZappCard {
             ZappSettingRow(
                 title = tr(Str.VPN_GROUP_MODE),
-                subtitle = tr(Str.VPN_ALIVE_COUNT),
+                subtitle = tr(Str.VPN_GROUP_MODE_SUB),
                 checked = config.groupMode,
                 onCheckedChange = { on ->
                     state.mutate { it.copy(vpn = it.vpn.copy(groupMode = on)) }
-                }
+                },
+                path = "vpn.autoselect"
             )
         }
 
@@ -250,18 +241,21 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
                 Choice(false, tr(Str.VPN_SORT_NAME))
             ),
             selected = byPing,
-            onSelect = { byPing = it }
+            onSelect = { byPing = it },
+            path = "vpn.sort"
         )
         ZappSettingRow(
             title = tr(Str.VPN_ONLY_ALIVE),
             checked = onlyAlive,
-            onCheckedChange = { onlyAlive = it }
+            onCheckedChange = { onlyAlive = it },
+            path = "vpn.only_alive"
         )
         ZappTextField(
             label = tr(Str.VPN_SEARCH),
             value = query,
             onValueChange = { query = it; limit = pageSize },
-            placeholder = "Sweden, Moscow, ..."
+            placeholder = "Sweden, Moscow, ...",
+            path = "vpn.search"
         )
 
         ZappButtonRow {
@@ -273,20 +267,23 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
                 },
                 enabled = !checkProgress.running,
                 onClick = { state.checkAllVisible() },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                path = "vpn.check_all"
             )
             ZappButton(
                 text = tr(Str.VPN_ADD_LINKS),
                 role = ButtonRole.SECONDARY,
                 onClick = { importOpen = !importOpen },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                path = "vpn.add_links"
             )
         }
         ZappButton(
             text = tr(Str.VPN_ADD_PROFILE),
             role = ButtonRole.GHOST,
             onClick = { addProfile(state) },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            path = "vpn.add_profile"
         )
 
         if (importOpen) {
@@ -297,7 +294,8 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
                     onValueChange = { importText = it },
                     singleLine = false,
                     minLines = 3,
-                    placeholder = "vless://... \ntrojan://... \n[Interface] ..."
+                    placeholder = "vless://... \ntrojan://... \n[Interface] ...",
+                    path = "vpn.import_text"
                 )
                 ZappButton(
                     text = tr(Str.COMMON_IMPORT),
@@ -306,7 +304,8 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
                         importText = ""
                         importOpen = false
                         scope.launch { state.importVpnText(text) }
-                    }
+                    },
+                    path = "vpn.import"
                 )
             }
         }
@@ -317,7 +316,11 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
                     title = tr(Str.LIST_EMPTY_PROFILES),
                     body = tr(Str.VPN_SOURCE_EMPTY),
                     action = {
-                        ZappButton(text = tr(Str.VPN_ADD_LINKS), onClick = { importOpen = true })
+                        ZappButton(
+                            text = tr(Str.VPN_ADD_LINKS),
+                            onClick = { importOpen = true },
+                            path = "vpn.add_links_empty"
+                        )
                     }
                 )
             }
@@ -328,7 +331,8 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
                         profile = profile,
                         active = profile.id == config.activeProfileId,
                         lang = lang,
-                        onClick = { state.selectProfile(profile.id) }
+                        onClick = { state.selectProfile(profile.id) },
+                        path = "vpn.connect.${profile.id}"
                     )
                 }
             }
@@ -337,7 +341,8 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
                     text = tr(Str.VPN_SHOW_MORE) + " (${filtered.size - shown.size})",
                     role = ButtonRole.GHOST,
                     onClick = { limit += pageSize },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    path = "vpn.show_more"
                 )
             }
         }
@@ -350,7 +355,8 @@ internal fun ConnectRow(
     profile: VpnProfile,
     active: Boolean,
     lang: AppLang,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    path: String? = null
 ) {
     val protocol = VpnProtocol.of(profile.protocol)
     val status = when (profile.health.alive) {
@@ -376,7 +382,8 @@ internal fun ConnectRow(
                     null -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
             )
-        }
+        },
+        path = path
     )
 }
 
@@ -396,6 +403,7 @@ internal fun SourcesExpandable(
     state: AppState,
     title: Str,
     kind: String,
+    prefix: String = "sources",
     sources: List<VpnSource>
 ) {
     val sourceStatus by state.sourceStatus.collectAsState()
@@ -406,20 +414,23 @@ internal fun SourcesExpandable(
     ZappExpandableCard(
         title = tr(title),
         badge = sources.size.toString(),
-        subtitle = sources.count { it.enabled }.toString()
+        subtitle = sources.count { it.enabled }.toString(),
+        path = "$prefix.sources.expand"
     ) {
         ZappButtonRow {
             ZappButton(
                 text = tr(Str.VPN_SOURCE_ADD),
                 role = if (adding) ButtonRole.GHOST else ButtonRole.SECONDARY,
                 onClick = { adding = !adding },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                path = "$prefix.sources.add"
             )
             ZappButton(
                 text = tr(Str.VPN_SOURCE_REFRESH),
                 role = ButtonRole.SECONDARY,
                 onClick = { state.refreshSources() },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                path = "$prefix.sources.refresh_all"
             )
         }
 
@@ -428,13 +439,15 @@ internal fun SourcesExpandable(
                 ZappTextField(
                     label = tr(Str.VPN_SOURCE_NAME),
                     value = newName,
-                    onValueChange = { newName = it }
+                    onValueChange = { newName = it },
+                    path = "$prefix.sources.name"
                 )
                 ZappTextField(
                     label = tr(Str.VPN_SOURCE_URL),
                     value = newUrl,
                     onValueChange = { newUrl = it },
-                    placeholder = "https://example.com/sub.txt"
+                    placeholder = "https://example.com/sub.txt",
+                    path = "$prefix.sources.url"
                 )
                 ZappButtonRow {
                     ZappButton(
@@ -446,13 +459,15 @@ internal fun SourcesExpandable(
                                 adding = false
                             }
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        path = "$prefix.sources.apply"
                     )
                     ZappButton(
                         text = tr(Str.COMMON_CLOSE),
                         role = ButtonRole.GHOST,
                         onClick = { adding = false },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        path = "$prefix.sources.close"
                     )
                 }
             }
@@ -465,20 +480,23 @@ internal fun SourcesExpandable(
                     title = source.name,
                     subtitle = sourceSubtitle(status),
                     checked = source.enabled,
-                    onCheckedChange = { on -> state.setSourceEnabled(source.id, on) }
+                    onCheckedChange = { on -> state.setSourceEnabled(source.id, on) },
+                    path = "$prefix.sources.toggle.${source.id}"
                 )
                 ZappButtonRow {
                     ZappButton(
                         text = tr(Str.VPN_SOURCE_REFRESH),
                         role = ButtonRole.GHOST,
                         onClick = { state.refreshSource(source.id) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        path = "$prefix.sources.refresh.${source.id}"
                     )
                     ZappButton(
                         text = tr(Str.COMMON_DELETE),
                         role = ButtonRole.GHOST,
                         onClick = { state.removeSource(source.id) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        path = "$prefix.sources.delete.${source.id}"
                     )
                 }
             }
@@ -512,19 +530,22 @@ private fun ArchiveExpandable(state: AppState) {
     val lang = AppLangState.current
     ZappExpandableCard(
         title = tr(Str.VPN_ARCHIVE),
-        badge = archived.size.toString()
+        badge = archived.size.toString(),
+        path = "vpn.archive.expand"
     ) {
         ZappButtonRow {
             ZappButton(
                 text = tr(Str.VPN_RECHECK),
                 onClick = { state.recheckArchive() },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                path = "vpn.archive.recheck"
             )
             ZappButton(
                 text = tr(Str.COMMON_DELETE),
                 role = ButtonRole.GHOST,
                 onClick = { state.deleteProfiles(archived.map { it.id }) },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                path = "vpn.archive.delete"
             )
         }
         ZappCard {
@@ -543,10 +564,11 @@ private fun ArchiveExpandable(state: AppState) {
 
 /** Журнал туннеля: раскрывается по нажатию, последние строки внизу. */
 @Composable
-internal fun JournalExpandable(tunnelLog: List<String>) {
+internal fun JournalExpandable(tunnelLog: List<String>, path: String = "log.expand") {
     ZappExpandableCard(
         title = tr(Str.ENGINE_LOG),
-        badge = if (tunnelLog.isEmpty()) null else tunnelLog.size.toString()
+        badge = if (tunnelLog.isEmpty()) null else tunnelLog.size.toString(),
+        path = path
     ) {
         if (tunnelLog.isEmpty()) {
             Text(
@@ -556,9 +578,7 @@ internal fun JournalExpandable(tunnelLog: List<String>) {
             )
         } else {
             tunnelLog.takeLast(12).forEach { line ->
-                val isError = line.startsWith("error") ||
-                    line.contains("failed", ignoreCase = true) ||
-                    line.contains("panic", ignoreCase = true)
+                val isError = looksLikeErrorLine(line)
                 Text(
                     text = line,
                     style = MaterialTheme.typography.bodySmall,
@@ -593,6 +613,33 @@ internal fun TunnelState.labelKey(): Str = when (this) {
     TunnelState.CONNECTING -> Str.ENGINE_STATE_CONNECTING
     TunnelState.CONNECTED -> Str.ENGINE_STATE_CONNECTED
     TunnelState.ERROR -> Str.ENGINE_STATE_ERROR
+}
+
+/**
+ * Строка под статусом: скорость, пинг и активные режимы.
+ *
+ * Общая для вкладок VPN и Tor: строки статуса у них разные, а эта --
+ * нет, и расхождение в буквах или разделителях читалось бы как баг.
+ * Данные приходят из общих каналов ([LinkSpeedBus], [PingBus]), а
+ * сборка строки -- чистая ([statusLine]) и покрыта тестами.
+ */
+@Composable
+internal fun SpeedLine(state: AppState, tunnelState: TunnelState) {
+    val linkSpeed by LinkSpeedBus.current.collectAsState()
+    val ping by PingBus.current.collectAsState()
+    val line = statusLine(
+        connected = tunnelState == TunnelState.CONNECTED,
+        speed = linkSpeed,
+        pingMs = ping,
+        modes = activeModes(state, tunnelState)
+    )
+    if (line.isNotEmpty()) {
+        Text(
+            text = line,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
 }
 
 /**

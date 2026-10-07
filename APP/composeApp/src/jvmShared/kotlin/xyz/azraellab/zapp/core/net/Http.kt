@@ -12,7 +12,11 @@ import java.net.URL
  * Таймауты жёсткие во всех трёх точках: обновления и геолокация -- фоновые
  * операции, и зависший запрос не должен держать корутину вечно.
  */
-fun httpGet(url: String, timeoutMs: Int = HTTP_TIMEOUT_MS): String? {
+fun httpGet(
+    url: String,
+    timeoutMs: Int = HTTP_TIMEOUT_MS,
+    headers: Map<String, String> = emptyMap()
+): String? {
     val connection = runCatching { URL(url).openConnection() as HttpURLConnection }.getOrNull()
         ?: return null
     return try {
@@ -22,6 +26,7 @@ fun httpGet(url: String, timeoutMs: Int = HTTP_TIMEOUT_MS): String? {
         connection.instanceFollowRedirects = true
         connection.setRequestProperty("Accept", "application/json")
         connection.setRequestProperty("User-Agent", "zapp")
+        headers.forEach { (key, value) -> connection.setRequestProperty(key, value) }
         val code = connection.responseCode
         if (code !in 200..299) return null
         connection.inputStream.bufferedReader().use { it.readText() }

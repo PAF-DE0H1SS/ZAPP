@@ -166,6 +166,8 @@ enum class Str {
     GPS_LOG_ROUTE_EMPTY,
     GPS_LOG_ROUTE_DONE,
     GPS_LOG_PROVIDER_ERROR,
+    GPS_LOG_START_FAILED,
+    GPS_LOG_NO_PROVIDER,
 
     /** Демоны zapret и goodbyedpi: состояния и события журналов. */
     DAEMON_STATE_STOPPED,
@@ -220,6 +222,10 @@ enum class Str {
     LOG_CLEAR,
     LOG_EMPTY,
     LOG_FILE_HINT,
+    LOG_ERRORS,
+    LOG_ERRORS_EMPTY,
+    LOG_ERRORS_CLEAR,
+    LOG_ERRORS_FILE_HINT,
 
     /** Приветствие и подсказки. */
     WELCOME_TITLE,
@@ -244,6 +250,13 @@ enum class Str {
     WELCOME_AUTO_UPDATES,
     WELCOME_AUTO_PERF,
     WELCOME_SKIP,
+    WELCOME_LOAD_PRESET,
+    WELCOME_LOAD_PRESET_HINT,
+    WELCOME_AUTO_OFF,
+    WELCOME_Q_REGION,
+    WELCOME_Q_REGION_HINT,
+    WELCOME_REGION_ANYWHERE,
+    WELCOME_Q_ANSWER_CARD,
 
     /** Мини-опросник о характере использования (шаг автонастройки). */
     WELCOME_Q_TITLE,
@@ -275,6 +288,15 @@ enum class Str {
     /** Пустые состояния. */
     LIST_EMPTY_PROFILES,
     LIST_EMPTY_PRESETS,
+
+    /** Причина блокировки параметра (консистентность настроек). */
+    LOCK_DNS_CONFLICT,
+    LOCK_REGION_DNS,
+    LOCK_REGION_HIDDEN,
+    LOCK_PRIORITY_BATTERY,
+    LOCK_KILLSWITCH_PRIVACY,
+    LOCK_TRAFFIC_OFF,
+    LOCK_PERF_CASCADE,
 
     /** Ошибки. */
     ERR_NO_ROOT,
@@ -383,6 +405,7 @@ enum class Str {
     VPN_STATUS_DEAD,
     VPN_STATUS_UNKNOWN,
     VPN_GROUP_MODE,
+    VPN_GROUP_MODE_SUB,
     VPN_TOR_ENABLED,
     VPN_TOR_SHOW,
     VPN_ADD_LINKS,
@@ -423,7 +446,34 @@ enum class Str {
     NOTIFY_GPS_OFF,
     NOTIFY_GPS_ERROR,
     NOTIFY_UPDATE,
-    NOTIFY_VPN_ON;
+    NOTIFY_VPN_ON,
+
+    /**
+     * Для разработчиков: самопроверка приложения.
+     *
+     * Секция видна только в debug-сборке (см. `isDebugBuild`), в релизе
+     * не показывается вовсе. Строки переведены все -- debug-сборку тоже
+     * читают на трёх языках.
+     */
+    SETTINGS_DEV,
+    DEV_TESTS,
+    DEV_TESTS_HINT,
+    DEV_RUN_SELECTED,
+    DEV_RUN_ALL,
+    DEV_SAVE_LOG,
+    DEV_LOG_PATH,
+    DEV_RUNNING,
+    DEV_IDLE,
+    DEV_OK,
+    DEV_FAILED,
+    DEV_NO_FAILURES,
+    DEV_TOTAL,
+
+    /** Заголовки категорий тестов, для которых готового ключа нет. */
+    DEV_CAT_THEME,
+    DEV_CAT_CONFIG,
+    DEV_CAT_PARSERS,
+    DEV_CAT_UI;
 
     /** Перевод для языка. */
     fun of(lang: AppLang): String = when (this) {
@@ -586,6 +636,15 @@ enum class Str {
         LOG_CLEAR -> pick(lang, "Clear log", "Очистить журнал", "清空日志")
         LOG_EMPTY -> pick(lang, "Nothing logged yet", "Записей пока нет", "暂无记录")
         LOG_FILE_HINT -> pick(lang, "Saved to file zapp.log", "Сохраняется в файл zapp.log", "保存到文件 zapp.log")
+        LOG_ERRORS -> pick(lang, "Errors", "Ошибки", "错误")
+        LOG_ERRORS_EMPTY -> pick(lang, "No failures recorded", "Сбоев не зафиксировано", "暂无故障记录")
+        LOG_ERRORS_CLEAR -> pick(lang, "Clear errors", "Очистить ошибки", "清空错误")
+        LOG_ERRORS_FILE_HINT -> pick(
+            lang,
+            "Saved to file zapp-errors.log",
+            "Сохраняется в файл zapp-errors.log",
+            "保存到文件 zapp-errors.log"
+        )
         WELCOME_TITLE -> pick(lang, "Welcome to ZAPP", "Добро пожаловать в ZAPP", "欢迎使用 ZAPP")
         WELCOME_SUBTITLE -> pick(
             lang,
@@ -665,6 +724,28 @@ enum class Str {
             "选择绕过策略"
         )
         WELCOME_SKIP -> pick(lang, "Skip", "Пропустить", "跳过")
+        WELCOME_LOAD_PRESET -> pick(lang, "Load preset", "Загрузить пресет", "加载预设")
+        WELCOME_LOAD_PRESET_HINT -> pick(
+            lang,
+            "Instead of automatic setup, apply a preset file you have.",
+            "Вместо автоматической настройки применить свой файл пресета.",
+            "不进行自动设置，而是应用已有的预设文件。"
+        )
+        WELCOME_AUTO_OFF -> pick(
+            lang,
+            "Auto setup is off: a preset was applied. Change it in Settings.",
+            "Автонастройка выключена: применён пресет. Изменить можно в настройках.",
+            "自动设置已关闭：已应用预设。可在设置中修改。"
+        )
+        WELCOME_Q_REGION -> pick(lang, "Country", "Страна", "国家/地区")
+        WELCOME_Q_REGION_HINT -> pick(
+            lang,
+            "Country is a factor of auto setup: some protocols and mechanisms adapt to the region.",
+            "Страна -- фактор автонастройки: некоторые протоколы и механизмы подстраиваются под регион.",
+            "国家/地区是自动设置的一个因素：部分协议和机制会按地区调整。"
+        )
+        WELCOME_REGION_ANYWHERE -> pick(lang, "Anywhere / not set", "Не выбран", "未设置")
+        WELCOME_Q_ANSWER_CARD -> pick(lang, "Quick answers", "Быстрые ответы", "快速回答")
         WELCOME_AUTO_COMPONENTS -> pick(
             lang,
             "Checking components",
@@ -766,6 +847,13 @@ enum class Str {
         GPS_LOG_ROUTE_EMPTY -> pick(lang, "Route has no points", "Маршрут не содержит точек", "路线没有点")
         GPS_LOG_ROUTE_DONE -> pick(lang, "Route completed", "Маршрут пройден", "路线已完成")
         GPS_LOG_PROVIDER_ERROR -> pick(lang, "Provider rejected the fix", "Провайдер отклонил координаты", "提供者拒绝坐标")
+        GPS_LOG_START_FAILED -> pick(lang, "Start failed", "Старт не удался", "启动失败")
+        GPS_LOG_NO_PROVIDER -> pick(
+            lang,
+            "Location service unavailable",
+            "Служба геолокации недоступна",
+            "定位服务不可用"
+        )
 
         DAEMON_STATE_STOPPED -> pick(lang, "Stopped", "Остановлен", "已停止")
         DAEMON_STATE_STARTING -> pick(lang, "Starting", "Запуск", "启动中")
@@ -786,6 +874,48 @@ enum class Str {
         DAEMON_BINARY -> pick(lang, "Binary path", "Путь к бинарю", "可执行文件路径")
         LIST_EMPTY_PROFILES -> pick(lang, "No profiles", "Профилей нет", "没有配置")
         LIST_EMPTY_PRESETS -> pick(lang, "No presets", "Пресетов нет", "没有预设")
+        LOCK_DNS_CONFLICT -> pick(
+            lang,
+            "Conflicts with fake-IP mode. Turn it off first.",
+            "Конфликтует с режимом fake-IP. Сначала выключите его.",
+            "与假IP模式冲突，请先关闭。"
+        )
+        LOCK_REGION_DNS -> pick(
+            lang,
+            "Fixed by the selected region: DNS always through the tunnel.",
+            "Зафиксировано выбранной страной: DNS всегда через туннель.",
+            "由所选地区固定：DNS始终通过隧道。"
+        )
+        LOCK_REGION_HIDDEN -> pick(
+            lang,
+            "Hidden by the selected region: this protocol is unreliable there.",
+            "Скрыт выбранной страной: этот протокол там ненадёжен.",
+            "因所选地区而隐藏：该地区此协议不可靠。"
+        )
+        LOCK_PRIORITY_BATTERY -> pick(
+            lang,
+            "Fixed by the questionnaire: battery priority disables it.",
+            "Зафиксировано опросником: приоритет «батарея» его отключает.",
+            "由问卷固定：电池优先会关闭它。"
+        )
+        LOCK_KILLSWITCH_PRIVACY -> pick(
+            lang,
+            "Fixed by the questionnaire: privacy requires the kill switch.",
+            "Зафиксировано опросником: для приватности нужен kill switch.",
+            "由问卷固定：隐私需要全局开关。"
+        )
+        LOCK_TRAFFIC_OFF -> pick(
+            lang,
+            "Traffic monitor is off.",
+            "Мониторинг трафика выключен.",
+            "流量监控已关闭。"
+        )
+        LOCK_PERF_CASCADE -> pick(
+            lang,
+            "Disabled together with the parent option.",
+            "Выключено вместе с родительским параметром.",
+            "随父级选项一起禁用。"
+        )
 
         ERR_NO_ROOT -> pick(lang, "Root access required", "Нужны права root", "需要 root 权限")
         ERR_TUNNEL_FAILED -> pick(lang, "Tunnel failed to start", "Не удалось поднять туннель", "隧道启动失败")
@@ -889,6 +1019,12 @@ enum class Str {
         VPN_STATUS_DEAD -> pick(lang, "Dead", "Мёртв", "失效")
         VPN_STATUS_UNKNOWN -> pick(lang, "Not checked", "Не проверялся", "未检查")
         VPN_GROUP_MODE -> pick(lang, "Auto-pick best", "Автовыбор лучшего", "自动选择最优")
+        VPN_GROUP_MODE_SUB -> pick(
+            lang,
+            "Auto-picks and switches to a faster node",
+            "Сам выбирает и переключает на более быстрый",
+            "自动选择并切换到更快的节点"
+        )
         VPN_TOR_ENABLED -> pick(lang, "Tor bridges", "Мосты Tor", "Tor 桥接")
         VPN_TOR_SHOW -> pick(
             lang,
@@ -934,6 +1070,29 @@ enum class Str {
         COMPONENTS_REINSTALL -> pick(lang, "Reinstall", "Переустановить", "重新安装")
         COMPONENTS_ABSENT -> pick(lang, "Not installed", "Не установлены", "未安装")
         DAEMON_AUTOSTART -> pick(lang, "Start on launch", "Старт при запуске", "启动时自动运行")
+
+        SETTINGS_DEV -> pick(lang, "For developers", "Для разработчиков", "开发者选项")
+        DEV_TESTS -> pick(lang, "Tests", "Тесты", "测试")
+        DEV_TESTS_HINT -> pick(
+            lang,
+            "Self-check: run categories or everything at once. The detailed log is saved to a file.",
+            "Самопроверка: запуск по категориям или всё сразу. Подробный лог сохраняется в файл.",
+            "自检：按类别或全部运行。详细日志保存到文件。"
+        )
+        DEV_RUN_SELECTED -> pick(lang, "Run selected", "Запустить выбранные", "运行所选")
+        DEV_RUN_ALL -> pick(lang, "Run all", "Запустить всё", "全部运行")
+        DEV_SAVE_LOG -> pick(lang, "Save log", "Сохранить лог", "保存日志")
+        DEV_LOG_PATH -> pick(lang, "Log saved to", "Лог сохранён в", "日志已保存至")
+        DEV_RUNNING -> pick(lang, "Running...", "Выполняется...", "运行中...")
+        DEV_IDLE -> pick(lang, "Not run yet", "Ещё не запускалось", "尚未运行")
+        DEV_OK -> pick(lang, "Passed", "Прошло", "通过")
+        DEV_FAILED -> pick(lang, "Failed", "Ошибки", "失败")
+        DEV_NO_FAILURES -> pick(lang, "All tests passed", "Все тесты прошли", "全部测试通过")
+        DEV_TOTAL -> pick(lang, "Total", "Всего", "总计")
+        DEV_CAT_THEME -> pick(lang, "Theme and colors", "Тема и цвета", "主题与颜色")
+        DEV_CAT_CONFIG -> pick(lang, "Settings and presets", "Настройки и пресеты", "设置与预设")
+        DEV_CAT_PARSERS -> pick(lang, "Parsers and formats", "Парсеры и форматы", "解析与格式")
+        DEV_CAT_UI -> pick(lang, "Interface", "Интерфейс", "界面")
     }
 
     /**

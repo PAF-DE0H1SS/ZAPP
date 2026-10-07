@@ -4,6 +4,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.log.ErrorLog
+import xyz.azraellab.zapp.core.log.isError
 
 /** Какой именно демон запускается: у каждого свой каталог файлов. */
 enum class DaemonId(val defaultBinary: String) {
@@ -117,6 +119,14 @@ interface DaemonEngine {
      * возникают там, где отдельного движка нет.
      */
     fun note(event: DaemonEvent)
+
+    /**
+     * Пишет причину сбоя и ставит ERROR.
+     *
+     * Для ошибок, пойманных вне движка: состояние «Ошибка» обязано иметь
+     * строку причины рядом, иначе пользователь видит только слово «Ошибка».
+     */
+    fun fail(message: String)
 }
 
 /** Базовая реализация с буфером журнала и общим состоянием. */
@@ -130,6 +140,11 @@ abstract class BaseDaemonEngine : DaemonEngine {
 
     override fun note(event: DaemonEvent) = log(event)
 
+    override fun fail(message: String) {
+        log(DaemonEvent(raw = message))
+        setState(DaemonState.ERROR)
+    }
+
     protected fun setState(value: DaemonState) {
         _state.value = value
     }
@@ -137,6 +152,17 @@ abstract class BaseDaemonEngine : DaemonEngine {
     protected fun log(event: DaemonEvent) {
         val next = _log.value + event
         _log.value = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
+        // Причина сбоя уходит в отдельный журнал ошибок. Сырой вывод
+        // предпочтительнее: он объясняет больше, чем «Exit code 1», а
+        // событие-причина (только ключ [Str]) берём, когда строк нет.
+        if (event.isError()) {
+            val raw = event.raw.ifBlank { null }
+            if (raw != null) {
+                ErrorLog.note("daemon", raw)
+            } else {
+                event.text?.let { ErrorLog.noteStr("daemon", it) }
+            }
+        }
         onEvent(event)
     }
 

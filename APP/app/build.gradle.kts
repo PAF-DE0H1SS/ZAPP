@@ -19,13 +19,35 @@ android {
         applicationId = "xyz.azraellab.zapp"
         minSdk = 33
         targetSdk = 36
-        versionCode = 2
+        versionCode = 3
         versionName = zappVersion
 
         // STL не отключаем. `ANDROID_STL=none` убирает libc++ из sysroot, и
         // тогда даже `<cstdint>` не находится: счётчик читает /proc через
         // std::string и std::vector, то есть без STL он не компилируется.
         // По умолчанию NDK берёт c++_static, что и нужно.
+    }
+
+    // Два билда с одинаковым applicationId и разными механизмами:
+    //   root   -- текущее поведение (su, iptables, NFQUEUE, ядро WireGuard);
+    //   noroot -- ни одной root-команды (RootShell принудительно Mode.NONE,
+    //            демоны под uid приложения, tun/box вместо ядра и iptables).
+    // Флаг ZAPP_ROOT из BuildConfig читает MainActivity и кладёт в
+    // composeApp.BuildMode ДО первого кадра.
+    flavorDimensions += "mode"
+    productFlavors {
+        create("root") {
+            dimension = "mode"
+            buildConfigField("boolean", "ZAPP_ROOT", "true")
+        }
+        create("noroot") {
+            dimension = "mode"
+            buildConfigField("boolean", "ZAPP_ROOT", "false")
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     // Подпись release-сборки. keystore и пароли живут в signing/ (в .gitignore,
@@ -95,6 +117,27 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
+        }
+    }
+}
+
+// Имена APK по условиям задачи:
+//   ZAPP-ROOT-<version>.apk / ZAPP-<version>.apk (release),
+//   с суффиксом -debug для debug-сборок.
+// Одинаковый applicationId -- установка одного поверх другого сохраняет данные.
+androidComponents {
+    onVariants(selector().withFlavor("mode" to "root")) { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set(
+                "ZAPP-ROOT-$zappVersion${if (variant.name.endsWith("Debug")) "-debug" else ""}.apk"
+            )
+        }
+    }
+    onVariants(selector().withFlavor("mode" to "noroot")) { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set(
+                "ZAPP-$zappVersion${if (variant.name.endsWith("Debug")) "-debug" else ""}.apk"
+            )
         }
     }
 }

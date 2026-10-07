@@ -84,6 +84,73 @@ object VpnConnects {
     }
 
     /**
+     * Коннект, чей пинг показывать в плашке подключённого туннеля.
+     *
+     * Ручной режим -- просто активный коннект: в него и вышли, и его
+     * задержка единственная, о которой что-то известно.
+     *
+     * Групповой ([VpnConfig.groupMode]) -- движок поднял urltest-группу
+     * и конкретного узла не знает, поэтому показываем верхний по пингу
+     * из тех же коннектов, что уходят в группу: sing-box выбирает по
+     * своей задержке, а верх списка по нашему пингу -- лучшая оценка
+     * того, во что реально вышли. Исключение -- мост Tor: при
+     * групповом режиме тор поднимается раньше urltest и работает
+     * ровно с тем мостом, что активен.
+     *
+     * null -- нечего показывать: активного нет, а в группу не попал
+     * ни один коннект (только wg и ovpn, у которых свой бэкенд).
+     */
+    fun pingProfile(vpn: VpnConfig): VpnProfile? {
+        val active = vpn.activeProfile()
+        if (!vpn.groupMode) return active
+        if (active != null && active.protocol == VpnProtocol.TOR.code) return active
+        return sort(groupMembers(vpn.profiles), byPing = true).firstOrNull()
+    }
+
+    /**
+     * Коннекты, которые sing-box берёт в urltest-группу.
+     *
+     * Повторяет фильтр `boxGroup` движка: живые (или ещё не
+     * проверенные) не-мосты со ссылкой `scheme://...`. WireGuard и
+     * `.ovpn` в группу не идут -- у них свой бэкенд, -- а значит их
+     * пинг в групповом режиме в плашку не попадает. Разбор самой
+     * ссылки (`ProxyUri.parse`) здесь не нужен: промах редок, а функция
+     * -- оценка для строки статуса, а не сборка конфига.
+     */
+    fun groupMembers(profiles: List<VpnProfile>): List<VpnProfile> = profiles.filter { p ->
+        p.health.alive != false &&
+            p.protocol !in GROUP_EXCLUDED &&
+            "://" in p.rawConfig
+    }
+
+    /**
+     * Кандидат на автопереключение: заметно лучше текущего, либо null.
+     *
+     * Спорят только свежие замеры: кандидат обязан быть живым с
+     * измеренным откликом, иначе «быстрее» ничего не значит. Текущий
+     * мёртв -- меняем на живого без оглядки на пинг; текущий жив --
+     * переподключение стоит обрыва, поэтому нужны [minGainMs] выигрыша
+     * (гистерезис против метания между двумя близкими мостами).
+     * Замерить текущий не удалось (`latencyMs < 0`) -- базы для
+     * сравнения нет, и гадать не станем.
+     */
+    fun betterBridge(
+        current: VpnProfile?,
+        candidates: List<VpnProfile>,
+        minGainMs: Int
+    ): VpnProfile? {
+        val pool = candidates.filter { it.id != current?.id }
+        val best = pool
+            .filter { it.health.alive == true && it.health.latencyMs >= 0 }
+            .minByOrNull { it.health.latencyMs }
+            ?: return null
+        if (current == null || current.health.alive == false) return best
+        val currentMs = current.health.latencyMs
+        if (currentMs < 0) return null
+        return best.takeIf { currentMs - it.health.latencyMs >= minGainMs }
+    }
+
+    /**
      * Источники-подписки: [kind] -- как в [VpnSource].
      *
      * Мостовые подписки (`kind == "tor"`) показываются на вкладке Tor,
@@ -92,4 +159,14 @@ object VpnConnects {
      */
     fun sourcesByKind(sources: List<VpnSource>, kind: String): List<VpnSource> =
         sources.filter { it.kind == kind }
+
+    /** Протоколы, которых нет в urltest-группе (см. [groupMembers]). */
+    private val GROUP_EXCLUDED = setOf(
+        VpnProtocol.TOR.code,
+        VpnProtocol.WIREGUARD.code,
+        VpnProtocol.AMNEZIA_WG.code,
+        VpnProtocol.OPENVPN.code,
+        VpnProtocol.SINGBOX.code,
+        VpnProtocol.XRAY.code
+    )
 }

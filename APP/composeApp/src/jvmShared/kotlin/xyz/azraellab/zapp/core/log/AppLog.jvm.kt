@@ -9,17 +9,17 @@ internal actual fun platformNowMs(): Long = System.currentTimeMillis()
 /** Каталог данных приложения (лог, временные файлы). */
 internal expect fun appDataDir(): File
 
-internal actual fun appendToFile(line: String) {
+internal actual fun appendToFile(fileName: String, line: String) {
     runCatching {
         val dir = appDataDir()
         dir.mkdirs()
-        File(dir, "zapp.log").appendText(line + "\n")
+        File(dir, fileName).appendText(line + "\n")
     }
 }
 
-internal actual fun clearFile() {
+internal actual fun clearFile(fileName: String) {
     runCatching {
-        val file = File(appDataDir(), "zapp.log")
+        val file = File(appDataDir(), fileName)
         if (file.exists()) file.writeText("")
     }
 }

@@ -16,6 +16,7 @@ import xyz.azraellab.zapp.core.AutoStrategy
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.daemon.DaemonEngine
 import xyz.azraellab.zapp.core.daemon.DaemonState
+import xyz.azraellab.zapp.core.log.isError
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappCard
@@ -34,19 +35,19 @@ import xyz.azraellab.zapp.ui.tr
 fun DaemonControlCard(
     engine: DaemonEngine,
     onStart: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    path: String = "daemon"
 ) {
     val state by engine.state.collectAsState()
     val log by engine.log.collectAsState()
 
     if (!engine.supported) return
 
-    // Причина сбоя -- прямо в карточке, а не только в журнале ниже.
-    val reason = if (state == DaemonState.ERROR) {
-        log.lastOrNull()?.let { if (it.text != null) tr(it.text) + " ${it.arg}" else it.raw }
-    } else {
-        null
-    }
+    // Причина сбоя -- прямо в карточке, а не только в журнале ниже:
+    // «Ошибка» без строки под ним ничего не объясняет. Выбор строки --
+    // общий с журналом (core.log): сырой вывод демона важнее события
+    // «Exit code», потому что объясняет, а не констатирует.
+    val reason = if (state == DaemonState.ERROR) log.errorReason() else null
 
     ZappCard {
         Row(
@@ -77,9 +78,18 @@ fun DaemonControlCard(
             // В состоянии ERROR кнопка «Старт» перезапускает процесс, а не
             // показывает прошлую ошибку повторно.
             if (state == DaemonState.RUNNING || state == DaemonState.STARTING) {
-                ZappButton(text = tr(Str.COMMON_STOP), role = ButtonRole.DANGER, onClick = onStop)
+                ZappButton(
+                    text = tr(Str.COMMON_STOP),
+                    role = ButtonRole.DANGER,
+                    onClick = onStop,
+                    path = "$path.stop"
+                )
             } else {
-                ZappButton(text = tr(Str.COMMON_START), onClick = onStart)
+                ZappButton(
+                    text = tr(Str.COMMON_START),
+                    onClick = onStart,
+                    path = "$path.start"
+                )
             }
         }
     }
@@ -95,21 +105,16 @@ fun DaemonControlCard(
  * день, и развёрнутая лента строк съедает половину главного экрана.
  */
 @Composable
-fun DaemonLogCard(engine: DaemonEngine) {
+fun DaemonLogCard(engine: DaemonEngine, path: String = "daemon.log.expand") {
     val log by engine.log.collectAsState()
-    // map инлайновый, поэтому вызовы tr здесь допустимы и выполняются
+    // rendered() инлайновый, поэтому вызовы tr здесь допустимы и выполняются
     // в момент композиции, а не при сборке списка.
-    val lines = log.map { event ->
-        if (event.text != null) {
-            tr(event.text) + if (event.arg.isEmpty()) "" else " ${event.arg}"
-        } else {
-            event.raw
-        }
-    }
+    val lines = log.map { it.rendered() to it.isError() }
 
     ZappExpandableCard(
         title = tr(Str.ENGINE_LOG),
-        badge = if (lines.isEmpty()) null else lines.size.toString()
+        badge = if (lines.isEmpty()) null else lines.size.toString(),
+        path = path
     ) {
         if (lines.isEmpty()) {
             Text(
@@ -119,11 +124,8 @@ fun DaemonLogCard(engine: DaemonEngine) {
             )
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(AzraelSpace.xs)) {
-                lines.takeLast(JOURNAL_VISIBLE).forEach { line ->
+                lines.takeLast(JOURNAL_VISIBLE).forEach { (line, isError) ->
                     // Ошибка -- цветом: причину надо видеть, не читая всё.
-                    val isError = line.startsWith("error") ||
-                        line.contains("failed", ignoreCase = true) ||
-                        line.contains("panic", ignoreCase = true)
                     Text(
                         text = line,
                         style = MaterialTheme.typography.bodySmall,
@@ -161,7 +163,8 @@ fun StrategyProbeCard(state: AppState, target: String) {
             text = if (running) tr(Str.VPN_CHECKING) else tr(Str.STRATEGY_PROBE),
             enabled = !running,
             onClick = { state.autoPickStrategy(target) },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            path = "$target.probe"
         )
 
         // Шаги видны только во время проверки и после неё: постоянный список
@@ -223,7 +226,8 @@ fun StrategyProbeCard(state: AppState, target: String) {
                     text = tr(Str.COMMON_CLOSE),
                     role = ButtonRole.GHOST,
                     onClick = { state.clearStrategyOutcome() },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    path = "$target.probe_close"
                 )
             }
         }

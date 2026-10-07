@@ -20,8 +20,9 @@ import androidx.compose.ui.graphics.Color
  *   или как границу поля ввода. Здесь WCAG 1.4.11 требует 3:1, и обе схемы его дают
  *   (3.77/4.20 на фоне страницы).
  *
- * Проверки контраста живут в `desktopTest/.../ui/theme/Contrast.kt` и
- * `ThemeTest`/`ComponentsTest` - палитра и компоненты не должны разъезжаться снова.
+ * Формулы контраста живут в `ui/theme/Contrast.kt` (общий код: их же
+ * используют in-app тесты «Тема»), а проверки -- в `ThemeTest`/`ComponentsTest`
+ * и в реестре разработчика: палитра и компоненты не должны разъезжаться снова.
  */
 val AzraelPrimary = Color(0xFF4ADE80)
 val AzraelOnPrimary = Color(0xFF07170C)

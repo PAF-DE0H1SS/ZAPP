@@ -36,7 +36,8 @@ fun GoodbyeDpiPage(state: AppState) {
         DaemonControlCard(
             engine = state.dpiDaemon,
             onStart = { state.startDpi() },
-            onStop = { state.stopDpi() }
+            onStop = { state.stopDpi() },
+            path = "gdpi"
         )
 
         // --- Режим и автоподбор ---
@@ -47,7 +48,8 @@ fun GoodbyeDpiPage(state: AppState) {
                 selected = config.mode,
                 onSelect = { code ->
                     state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(mode = code)) }
-                }
+                },
+                path = "gdpi.mode"
             )
             // Fake SNI без домена не стартует: --fake-with-sni обязателен
             // для аргумента. Предупреждение здесь, а не в журнале после
@@ -71,7 +73,8 @@ fun GoodbyeDpiPage(state: AppState) {
                     state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(domains = v)) }
                 },
                 placeholder = "example.com, youtube.com",
-                supportingText = tr(Str.LIST_DOMAINS) + ": ${config.domainList().size}"
+                supportingText = tr(Str.LIST_DOMAINS) + ": ${config.domainList().size}",
+                path = "gdpi.domains"
             )
         }
 
@@ -92,7 +95,7 @@ fun GoodbyeDpiPage(state: AppState) {
         }
 
         // --- Журнал ---
-        DaemonLogCard(engine = state.dpiDaemon)
+        DaemonLogCard(engine = state.dpiDaemon, path = "gdpi.log.expand")
     }
 }
 

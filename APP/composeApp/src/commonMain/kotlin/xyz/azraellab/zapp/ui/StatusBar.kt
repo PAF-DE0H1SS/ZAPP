@@ -28,6 +28,7 @@ import xyz.azraellab.zapp.core.gps.GpsState
 import xyz.azraellab.zapp.core.permissions.PermissionId
 import xyz.azraellab.zapp.core.permissions.PermissionState
 import xyz.azraellab.zapp.core.update.UpdateState
+import xyz.azraellab.zapp.ui.components.debugPath
 
 /**
  * Строка состояния над нижней навигацией.
@@ -95,7 +96,8 @@ fun StatusBar(state: AppState) {
             StatusItem(
                 color = MaterialTheme.colorScheme.primary,
                 label = tr(Str.UPD_STATE_AVAILABLE),
-                onClick = { state.openReleasePage() }
+                onClick = { state.openReleasePage() },
+                path = "status.update"
             )
         }
     }
@@ -103,15 +105,19 @@ fun StatusBar(state: AppState) {
 
 /** Точка с подписью; с кликом обновление открывает страницу релиза. */
 @Composable
-private fun StatusItem(color: androidx.compose.ui.graphics.Color, label: String, onClick: (() -> Unit)? = null) {
+private fun StatusItem(
+    color: androidx.compose.ui.graphics.Color,
+    label: String,
+    onClick: (() -> Unit)? = null,
+    path: String? = null
+) {
+    val base = Modifier
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = if (onClick != null) {
-            Modifier.clickable(onClick = onClick)
-        } else {
-            Modifier
-        }
+        modifier = base
+            .let { if (path != null) it.debugPath(path) else it }
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
     ) {
         Box(
             modifier = Modifier

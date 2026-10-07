@@ -11,7 +11,9 @@ actual fun createGpsEngine(): GpsEngine = object : BaseGpsEngine() {
     override val supported: Boolean = false
 
     override fun start(config: xyz.azraellab.zapp.core.GpsConfig, vpnGateway: String) {
-        setState(GpsState.ERROR)
+        // Заглушка тоже с причиной: ERROR без строки в журнале -- та же
+        // «голая ошибка», что и на Android.
+        fail(GpsEvent(xyz.azraellab.zapp.core.Str.GPS_LOG_NO_PROVIDER))
     }
 
     override fun stop() {

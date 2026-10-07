@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import xyz.azraellab.zapp.core.GpsConfig
 import xyz.azraellab.zapp.core.RoutePoint
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.log.ErrorLog
+import xyz.azraellab.zapp.core.log.isError
 
 /** Состояние подмены геолокации. */
 enum class GpsState {
@@ -79,6 +81,15 @@ interface GpsEngine {
      * ссылку: пересобирать цикл ради смены точности -- лишняя работа.
      */
     fun applyConfig(config: GpsConfig)
+
+    /**
+     * Записывает сбой в журнал и ставит ERROR.
+     *
+     * Единая точка для ошибок, пойманных вне движка (UI-обработчики,
+     * оборачивающие вызовы): статус без причины -- та же «голая ошибка»,
+     * что и без статуса.
+     */
+    fun fail(event: GpsEvent)
 }
 
 /** Базовая реализация с буфером журнала и общим состоянием. */
@@ -100,6 +111,9 @@ abstract class BaseGpsEngine : GpsEngine {
     protected fun log(event: GpsEvent) {
         val next = _log.value + event
         _log.value = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
+        // Сбой подмены -- в отдельный журнал ошибок: событие хранит ключ,
+        // перевод по текущему языку делает сам ErrorLog.
+        if (event.isError()) ErrorLog.noteStr("gps", event.text, event.arg)
         onEvent(event)
     }
 
@@ -113,6 +127,11 @@ abstract class BaseGpsEngine : GpsEngine {
 
     protected fun setFix(value: GpsFix?) {
         _fix.value = value
+    }
+
+    override fun fail(event: GpsEvent) {
+        log(event)
+        setState(GpsState.ERROR)
     }
 
     private companion object {

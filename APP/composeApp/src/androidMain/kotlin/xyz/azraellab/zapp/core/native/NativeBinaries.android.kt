@@ -29,7 +29,8 @@ private const val TAG = "ZAPP-INSTALL"
  */
 actual object NativeBinaries {
 
-    actual val tools: List<String> = listOf("nfqws", "goodbyedpi", "wg", "box", "openvpn", "tor", "lyrebird")
+    actual val tools: List<String> =
+        listOf("nfqws", "goodbyedpi", "wg", "box", "openvpn", "tor", "lyrebird", "ovpntun")
 
     private val mutex = Mutex()
 

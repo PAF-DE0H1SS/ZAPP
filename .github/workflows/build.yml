@@ -83,8 +83,7 @@ jobs:
         with:
           name: zapp-android-apks
           path: |
-            APP/app/build/outputs/apk/debug/app-debug.apk
-            APP/app/build/outputs/apk/release/*.apk
+            APP/app/build/outputs/apk/**/*.apk
 
   windows:
     name: Windows 10/11 MSI installer
@@ -209,16 +208,20 @@ jobs:
             exit 1
           fi
           # Подписанный production APK идёт к релизу вместе с десктопными
-          # образами. upload-artifact сохраняет структуру каталогов
-          # (release/app-release.apk), поэтому ищем рекурсивно. CI-сборка
-          # пока без native/ (jniLibs в .gitignore, ~300 МБ) и не содержит
-          # демонов -- такой APK в релиз не добавляем: признак полной сборки
-          # -- libbox.so в архиве.
-          apk=$(find artifacts -type f -name 'app-release.apk' | head -1 || true)
-          if [ -n "$apk" ] && unzip -l "$apk" | grep -q 'libbox\.so'; then
-            cp "$apk" "zapp-$TAG_NAME.apk"
-            files+=("zapp-$TAG_NAME.apk")
-          else
+          # образами. upload-artifact сохраняет структуру каталогов,
+          # поэтому ищем рекурсивно. Имена flavor'ов заданы в
+          # app/build.gradle.kts: ZAPP-ROOT-<version>.apk и
+          # ZAPP-<version>.apk (оба -- финальные имена пользовательских
+          # файлов). APK публикуется, только если в нём есть нативные
+          # демоны (признак полной сборки -- libbox.so) и он не debug.
+          while IFS= read -r apk; do
+            [ -n "$apk" ] || continue
+            unzip -l "$apk" | grep -q 'libbox\.so' || continue
+            base=$(basename "$apk")
+            cp "$apk" "$base"
+            files+=("$base")
+          done < <(find artifacts -type f -name 'ZAPP-*.apk' ! -name '*-debug.apk' ! -name '*unsigned*' -print)
+          if ! printf '%s\n' "${files[@]}" | grep -q '^ZAPP-.*\.apk$'; then
             echo "CI-APK без нативных демонов -- в релиз не добавляем"
           fi
           gh release create "$TAG_NAME" \

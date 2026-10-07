@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.core.AppState
+import xyz.azraellab.zapp.ui.components.debugPath
 import xyz.azraellab.zapp.ui.pages.GoodbyeDpiPage
 import xyz.azraellab.zapp.ui.pages.GpsPage
 import xyz.azraellab.zapp.ui.pages.SettingsPage
@@ -136,7 +137,11 @@ fun AppRoot(state: AppState) {
                     ) {
                     navRow.NavigationBarItem(
                         selected = isSelected,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .debugPath(
+                                "nav." + slot.joinToString(".") { it.name.lowercase() }
+                            ),
                         onClick = {
                             state.setTrafficWindowOpen(false)
                             val next = when {

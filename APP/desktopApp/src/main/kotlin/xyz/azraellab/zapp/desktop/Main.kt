@@ -10,6 +10,7 @@ import kotlin.system.exitProcess
 import xyz.azraellab.zapp.App
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.createConfigStore
+import xyz.azraellab.zapp.core.daemon.DpiOverlay
 import xyz.azraellab.zapp.core.net.ProxyUri
 import xyz.azraellab.zapp.core.net.SingboxConfig
 
@@ -32,8 +33,9 @@ fun main(args: Array<String>) {
  * Dev-инструмент: собрать конфиг sing-box из настроек и прогнать
  * `box check` -- валидацию схемы настоящим бинарём из native/out.
  *
- * Аргументы: [profileId | --group] [путь к box]. Без аргументов --
+ * Аргументы: [profileId | --group | --dpi] [путь к box]. Без аргументов --
  * активный профиль и путь `native/out/x86_64/box` относительно CWD.
+ * Режим `--dpi` собирает пассивную DPI-сессию без профиля.
  * Отдельный режим приложения, а не юнит-тест: заменить живой валидатор
  * стабом -- значит проверить не то.
  */
@@ -42,14 +44,21 @@ private fun checkConfig(args: List<String>): Int {
     val boxPath = args.getOrNull(1) ?: "native/out/x86_64/box"
 
     val config = runCatching { createConfigStore().readConfig() }.getOrNull()
-    if (config == null) {
+    // --dpi собирается и без сохранённого конфига: свежая машина --
+    // не повод отказывать в проверке схемы.
+    if (config == null && profileArg != "--dpi") {
         System.err.println("check-config: cannot read app config")
         return 2
     }
-    val vpn = config.vpn
+    val vpn = config?.vpn ?: xyz.azraellab.zapp.core.VpnConfig()
 
     val built = try {
-        if (profileArg == "--group" || (profileArg == null && vpn.groupMode)) {
+        if (profileArg == "--dpi") {
+            // Принудительный обход: конфиг обязан валидироваться и на
+            // машине, где демоны сейчас выключены и порты пусты.
+            DpiOverlay.update(listOf("80", "443"), quicBlock = true)
+            SingboxConfig.buildDpi(vpn)
+        } else if (profileArg == "--group" || (profileArg == null && vpn.groupMode)) {
             val links = vpn.visibleProfiles().mapNotNull { profile ->
                 val raw = profile.rawConfig
                 if (raw.isBlank() || "://" !in raw) return@mapNotNull null

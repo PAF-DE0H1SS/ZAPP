@@ -47,12 +47,14 @@ fun ZappButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     role: ButtonRole = ButtonRole.PRIMARY,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    path: String? = null
 ) {
     val (container, content) = ComponentColors.button(MaterialTheme.colorScheme, role)
     val shape = RoundedCornerShape(AzraelCornerMd)
     val contentColor = if (enabled) content
     else ComponentColors.disabledText(MaterialTheme.colorScheme)
+    val modifierPath = modifier.debugPath(path ?: "button:$text")
 
     // Ghost рисуется контуром, а не заливкой: ему не нужна площадь, иначе
     // вторичное действие начинает спорить с основным.
@@ -68,7 +70,7 @@ fun ZappButton(
                 contentColor = contentColor,
                 containerColor = container
             ),
-            modifier = modifier.defaultMinSize(minHeight = AzraelSpace.controlHeight)
+            modifier = modifierPath.defaultMinSize(minHeight = AzraelSpace.controlHeight)
         ) {
             ButtonLabel(text)
         }
@@ -89,7 +91,7 @@ fun ZappButton(
             horizontal = AzraelSpace.xl,
             vertical = AzraelSpace.md
         ),
-        modifier = modifier.defaultMinSize(minHeight = AzraelSpace.controlHeight)
+        modifier = modifierPath.defaultMinSize(minHeight = AzraelSpace.controlHeight)
     ) {
         ButtonLabel(text)
     }

@@ -31,7 +31,8 @@ fun ZapretPage(state: AppState) {
         DaemonControlCard(
             engine = state.zapretDaemon,
             onStart = { state.startZapret() },
-            onStop = { state.stopZapret() }
+            onStop = { state.stopZapret() },
+            path = "zapret"
         )
 
         // --- Стратегия: автоподбор или ручной выбор ---
@@ -42,7 +43,8 @@ fun ZapretPage(state: AppState) {
                 checked = config.autoStrategy,
                 onCheckedChange = { on ->
                     state.mutate { it.copy(zapret = it.zapret.copy(autoStrategy = on)) }
-                }
+                },
+                path = "zapret.auto"
             )
             // Список стратегий показывается только при ручном выборе: при
             // автоподборе он всё равно будет перезаписан.
@@ -62,7 +64,8 @@ fun ZapretPage(state: AppState) {
                                 )
                             )
                         }
-                    }
+                    },
+                    path = "zapret.strategy"
                 )
             }
             StrategyProbeCard(state = state, target = "zapret")
@@ -75,7 +78,8 @@ fun ZapretPage(state: AppState) {
                 value = config.domains,
                 onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(domains = v)) } },
                 placeholder = "example.com, youtube.com",
-                supportingText = tr(Str.LIST_DOMAINS) + ": ${config.domainList().size}"
+                supportingText = tr(Str.LIST_DOMAINS) + ": ${config.domainList().size}",
+                path = "zapret.domains"
             )
         }
 
@@ -96,6 +100,6 @@ fun ZapretPage(state: AppState) {
         }
 
         // --- Журнал: причина запуска и смерти процесса ---
-        DaemonLogCard(engine = state.zapretDaemon)
+        DaemonLogCard(engine = state.zapretDaemon, path = "zapret.log.expand")
     }
 }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
@@ -18,6 +19,7 @@ import xyz.azraellab.zapp.core.daemon.DaemonId
 import xyz.azraellab.zapp.core.daemon.DaemonSpec
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.daemon.createDaemonEngine
+import xyz.azraellab.zapp.core.log.errorEvent
 import xyz.azraellab.zapp.core.net.ProxyUri
 import xyz.azraellab.zapp.core.net.SingboxConfig
 import xyz.azraellab.zapp.core.net.WireGuardIni
@@ -58,9 +60,20 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     private var torDaemon: DaemonEngine? = null
 
     private var killSwitchEndpoints: List<String> = emptyList()
+    private var uidZeroBypassOn = false
 
     @Volatile
     private var stopping = false
+
+    /**
+     * Режим пассивной DPI-сессии: туннель без прокси, только сплит-релей.
+     *
+     * Ставится [connectDpi] (демоны обхода живут, туннель нет) и снимается
+     * обычным [connect] (пользователь поднимает VPN/Tor) -- чужой режим
+     * начатого подключения переключать нельзя молча.
+     */
+    @Volatile
+    private var dpiMode = false
 
     private var watchJob: Job? = null
 
@@ -101,7 +114,13 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         // собственную обёртку вместе с детьми. Список бинариев в cmdline
         // не встречается подряд с префиксом каталога -- сам себя pkill
         // не находит.
-        val own = "/data/local/tmp/zapp/bin/(tor|box|openvpn|lyrebird|wg|nfqws|goodbyedpi)"
+        // Два префикса путей: root-сборка кладёт бинари в
+        // /data/local/tmp/zapp/bin, noroot-запускает их из nativeLibraryDir
+        // (jniLibs, lib<tool>.so). Паттерн в cmdline сам себя не находит:
+        // после префикса в собственной команде стоит скобка, а не имя
+        // бинаря.
+        val own = "(/data/local/tmp/zapp/bin/|/lib/[^ ]*lib)" +
+            "(tor|box|openvpn|lyrebird|wg|nfqws|goodbyedpi|ovpntun)"
         runCatching {
             RootShell.run("pkill -TERM -f '$own'; sleep 1; pkill -KILL -f '$own'", 4000)
         }
@@ -128,12 +147,53 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
             // performConnect бились бы за порт 9050 и за демон TUNNEL,
             // второй падал с «Address already in use» (и портит состояние
             // первому). Одна попытка -- одна, пока не закончится.
+            if (state.value == TunnelState.CONNECTING) return@launch
+            if (!inFlight.compareAndSet(false, true)) return@launch
+            stopping = false
+            // Обычное подключение всегда выигрывает у DPI-режима: юзер
+            // явно выбрал профиль, пассивной сессии больше нет места.
+            dpiMode = false
+            try {
+                // Живая DPI-сессия под пользовательским конфигом: старая
+                // снимается, новая поднимается -- иначе connect() молча
+                // проигрывал бы состоянию CONNECTED и VPN не стартовал бы.
+                if (state.value == TunnelState.CONNECTED) {
+                    log("reconnecting with new config")
+                    performDisconnect(userInitiated = false)
+                }
+                performConnect()
+            } finally {
+                inFlight.set(false)
+            }
+        }
+        connectJob = job
+    }
+
+    override fun connectDpi() {
+        val job = scope.launch {
             if (state.value == TunnelState.CONNECTING || state.value == TunnelState.CONNECTED) {
                 return@launch
             }
             if (!inFlight.compareAndSet(false, true)) return@launch
             stopping = false
+            dpiMode = true
             try {
+                performConnect()
+            } finally {
+                inFlight.set(false)
+            }
+        }
+        connectJob = job
+    }
+
+    override fun refreshDpi() {
+        val job = scope.launch {
+            if (state.value != TunnelState.CONNECTED) return@launch
+            if (!inFlight.compareAndSet(false, true)) return@launch
+            stopping = false
+            try {
+                log("dpi rules changed -- restarting session")
+                performDisconnect(userInitiated = false)
                 performConnect()
             } finally {
                 inFlight.set(false)
@@ -161,7 +221,11 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
 
         val vpn = config
         val profile = vpn.activeProfile()
-        if (profile == null && !vpn.groupMode) {
+        // DPI-режим игнорирует профиль: пассивной сессии нужен только
+        // туннель и конфиг обхода, а выбор пользователя применится при
+        // следующем обычном connect().
+        val dpiSession = dpiMode
+        if (!dpiSession && profile == null && !vpn.groupMode) {
             log("error: no active profile")
             setState(TunnelState.ERROR)
             return
@@ -170,6 +234,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         val protocol = VpnProtocol.of(profile?.protocol)
         try {
             when {
+                dpiSession -> boxDpi(vpn)
                 // Tor -- раньше groupMode: мост, выбранный на вкладке Tor,
                 // обязан вести в torUp, а не в urltest-группу остальных
                 // коннектов. groupMode -- режим списка VPN, он не отменяет
@@ -218,6 +283,14 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
 
     private suspend fun kernelWireGuard(profile: VpnProfile, awg: Boolean) {
         val vpn = config
+        // Noroot-сборка: ядерный интерфейс не поднимается, но профиль
+        // работает -- тем же конфигом через sing-box endpoint (wg/awg
+        // outbound). Механизм другой, результат для пользователя тот же.
+        if (!RootShell.available()) {
+            log("note: kernel mode unavailable -- sing-box endpoint")
+            boxBuilt(SingboxConfig.build(profile, vpn), vpn, profile)
+            return
+        }
         val binary = BinaryResolver.resolve("wg")
             ?: error("binary not found: wg")
         val name = ifaceName(profile)
@@ -225,9 +298,6 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         val confPath = writeSharedFile("wg/$name.conf", conf) ?: error("cannot write wg config")
         val keyPath = writeSharedFile("wg/$name.key", profile.privateKey) ?: error("cannot write key file")
 
-        if (!RootShell.available()) {
-            log("note: no root -- kernel WireGuard cannot be configured")
-        }
         // Старый интерфейс с тем же именем снимаем молча: переподключение.
         RootShell.run("ip link del dev $name", 2000)
 
@@ -339,6 +409,12 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         boxBuilt(SingboxConfig.Built(raw, listOf("engine: sing-box config as provided")), vpn, profile)
     }
 
+    /** Пассивная DPI-сессия: туннель поднимается, но прокси в нём нет. */
+    private suspend fun boxDpi(vpn: VpnConfig) {
+        log("dpi passthrough session (userland relay)")
+        boxBuilt(SingboxConfig.buildDpi(vpn), vpn, null)
+    }
+
     private suspend fun boxBuilt(built: SingboxConfig.Built, vpn: VpnConfig, profile: VpnProfile?) {
         built.notes.forEach { log(it) }
         if (vpn.killSwitch) enableKillSwitch(endpointsOf(profile), vpn)
@@ -352,6 +428,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         )
         if (stopping) error("connection stopped before tunnel start")
         val fd = tunnel?.let { VpnTunnel.establish(it) }
+        if (fd != null && RootShell.available()) enableUidZeroBypass()
 
         val daemon = createDaemonEngine(DaemonId.TUNNEL)
         boxDaemon = daemon
@@ -387,14 +464,54 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     private suspend fun openvpnUp(profile: VpnProfile) {
         val vpn = config
         check(profile.rawConfig.isNotBlank()) { "openvpn profile has no config text" }
+
+        // Noroot + Android: у приложения нет /dev/net/tun, туннель
+        // поднимает VpnService, а пакеты мостит бинарь ovpntun -- openvpn
+        // спавнит его сам как tun-ребёнка (--dev-node unix:...) и передаёт
+        // ему номер своей стороны socketpair. Root и desktop: openvpn
+        // открывает tun сам, как раньше.
+        val sockPath = VpnTunnel.fdSocketPath
+        val afunix = !RootShell.available() && sockPath != null
+        val tunnel = if (afunix) {
+            openvpnTunnelParams(profile, vpn) ?: error("openvpn profile has no ifconfig")
+        } else {
+            null
+        }
+        val bridge = if (afunix) {
+            BinaryResolver.resolve("ovpntun") ?: error("binary not found: ovpntun")
+        } else {
+            null
+        }
+
         if (vpn.killSwitch) enableKillSwitch(endpointsOf(profile), vpn)
+        if (tunnel != null) {
+            if (stopping) error("connection stopped before tunnel start")
+            VpnTunnel.establish(tunnel)
+        }
+
+        val extra = if (afunix) {
+            log("note: afunix -- tun via VpnService, bridge ovpntun")
+            listOf(
+                "--dev-node", "unix:$bridge",
+                // S_SCRIPT требует script-security >= 2; после --config,
+                // чтобы перебрать уровень, заданный в конфиге.
+                "--script-security", "2",
+                // Единственный путь переменной в окружение ребёнка:
+                // openvpn спавнит тун-ребёнка через execve из своих es,
+                // а не через наследуемый environ.
+                "--setenv", "ZAPP_TUN_SOCK", sockPath.orEmpty()
+            )
+        } else {
+            emptyList()
+        }
+
         val daemon = createDaemonEngine(DaemonId.TUNNEL)
         openvpnDaemon = daemon
         if (stopping) error("connection stopped before openvpn start")
         daemon.start(
             DaemonSpec(
                 binary = "openvpn",
-                args = listOf("--config", "{{config}}"),
+                args = listOf("--config", "{{config}}") + extra,
                 files = mapOf("config" to profile.rawConfig)
             )
         )
@@ -412,8 +529,18 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         val transport = BinaryResolver.resolve("lyrebird")
         val socksPort = vpn.torSocksPort.coerceIn(1024, 65535)
 
+        // Каталог состояния tor: с root -- общий /data/local/tmp (мир
+        // читает всех), без root -- приватный временный каталог приложения:
+        // tor пишет туда ключи и состояние и должен иметь права на запись.
+        val dataDir = if (RootShell.available()) {
+            "/data/local/tmp/zapp/tor-data"
+        } else {
+            File(File(System.getProperty("java.io.tmpdir")), "zapp/tor-data")
+                .apply { runCatching { mkdirs() } }.absolutePath
+        }
+
         val torrc = buildString {
-            appendLine("DataDirectory /data/local/tmp/zapp/tor-data")
+            appendLine("DataDirectory $dataDir")
             appendLine("SocksPort 127.0.0.1:$socksPort")
             appendLine("UseBridges 1")
             appendLine("ClientOnly 1")
@@ -449,7 +576,9 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
             }
         }
 
-        RootShell.run("mkdir -p /data/local/tmp/zapp/tor-data", 2000)
+        if (RootShell.available()) {
+            RootShell.run("mkdir -p ${RootShell.quote(dataDir)}", 2000)
+        }
 
         if (stopping) error("connection stopped before tor start")
         ensureSocksPortFree(socksPort)
@@ -527,27 +656,34 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     }
 
     /**
-     * Последняя осмысленная строка журнала демона для ошибки запуска.
+     * Последняя осмысленная причина сбоя журнала демона для ошибки запуска.
      *
-     * `lastOrNull().raw` у события без raw (text-событие) даёт пустую
-     * строку, и причина сбоя превращалась в «no output» -- ищем с конца
-     * то, из чего можно составить причину: raw-строку, затем текст.
+     * Выбор -- тот же, что в UI (`core.log.errorEvent`): сначала сырой
+     * вывод с явным признаком ошибки, затем событие-причина (код выхода,
+     * отсутствующий бинарь). Текст события рендерится по-английски: строки
+     * журнала туннеля -- технический текст, и «Exit code 1» читается
+     * лучше, чем имя ключа («DAEMON_LOG_EXIT 1»), которое раньше утекало
+     * в интерфейс как есть.
      */
     private fun daemonReason(daemon: DaemonEngine): String {
-        for (event in daemon.log.value.asReversed()) {
-            event.raw.takeIf { it.isNotBlank() }?.let { return it }
-            val text = event.text ?: continue
-            val rendered = "${text.name} ${event.arg}".trim()
-            if (rendered.isNotBlank()) return rendered
+        val event = daemon.log.value.errorEvent() ?: return "no output"
+        val text = event.text
+        return when {
+            event.raw.isNotBlank() -> event.raw
+            text != null -> (text.of(AppLang.EN) + " " + event.arg).trim()
+            else -> "no output"
         }
-        return "no output"
     }
 
     // --- Kill switch ---
 
     private fun enableKillSwitch(endpoints: List<String>, vpn: VpnConfig) {
         if (!RootShell.available()) {
-            log("note: kill switch requires root and was skipped")
+            // Noroot-сборка: эквивалент kill switch -- сама сессия
+            // VpnService: пока туннель поднят, весь трафик идёт в tun, а
+            // упавший бэкенд молча отбрасывает пакеты (чёрная дыра).
+            // iptables-цепочка здесь не нужна и не создаётся.
+            log("note: kill switch -- tun blackhole (session mode)")
             return
         }
         killSwitchEndpoints = endpoints
@@ -590,6 +726,32 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
             4000
         )
         log("kill switch: off")
+    }
+
+    /**
+     * Правила VpnService исключают из VPN только uid самого приложения
+     * (uidrange-дырка вокруг VPN-owner): демоны noroot (uid приложения)
+     * идут мимо туннеля сами, protect им не нужен. А вот демоны root
+     * сидят на uid0, которого эта дырка не покрывает: их дайлы уходят
+     * в собственный tun и зацикливаются (SYN-SENT на свой же адрес,
+     * urltest мёртв). Бит protectedFromVpn (0x10000) уводит пакеты
+     * uid0 в таблицу мимо VPN. Ставится только при поднятом
+     * VpnService-tun и только в root-билде.
+     */
+    private fun enableUidZeroBypass() {
+        if (uidZeroBypassOn) return
+        val add = "iptables -t mangle -I OUTPUT 1 -m owner --uid-owner 0 -j MARK --set-xmark 0x10000/0x10000"
+        val r = RootShell.run("iptables -t mangle -C OUTPUT -m owner --uid-owner 0 -j MARK --set-xmark 0x10000/0x10000 2>/dev/null || $add", 3000)
+        uidZeroBypassOn = r.ok
+        if (r.ok) log("uid0 bypass: daemon sockets protected from VPN")
+        else log("note: uid0 bypass unavailable")
+    }
+
+    private fun disableUidZeroBypass() {
+        if (!uidZeroBypassOn) return
+        uidZeroBypassOn = false
+        if (!RootShell.available()) return
+        RootShell.run("iptables -t mangle -D OUTPUT -m owner --uid-owner 0 -j MARK --set-xmark 0x10000/0x10000 2>/dev/null", 3000)
     }
 
     // --- Наблюдение и автопереподключение ---
@@ -654,6 +816,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         watchJob = null
 
         disableKillSwitch()
+        disableUidZeroBypass()
 
         val name = iface
         iface = null
@@ -676,6 +839,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
 
     private fun cleanupQuiet() {
         disableKillSwitch()
+        disableUidZeroBypass()
         val name = iface
         iface = null
         if (name != null) RootShell.run("ip link del dev $name", 3000)

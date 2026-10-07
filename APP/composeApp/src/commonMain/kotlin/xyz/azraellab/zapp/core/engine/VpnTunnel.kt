@@ -8,6 +8,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import xyz.azraellab.zapp.core.VpnConfig
+import xyz.azraellab.zapp.core.VpnProfile
 
 /**
  * Параметры туннеля, которые должна настроить платформа до запуска ядра.
@@ -113,4 +114,60 @@ private fun JsonObject.stringList(key: String): List<String>? {
     return array.mapNotNull { element ->
         (element as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
     }
+}
+
+/**
+ * Параметры туннеля для afunix-ветки openvpn: адресация из профиля.
+ *
+ * В afunix-режиме openvpn не трогает tun-интерфейс сам (и на Android
+ * не может: fd выдаёт VpnService), поэтому адрес и маску читаем из
+ * клиентской директивы `ifconfig local second` до establish. Пуш
+ * сервера не читается -- VpnService требует адрес до подключения, а
+ * пуш приходит после рукопожатия; конфиг без ifconfig честно
+ * получает `null`, и вызывающая сторона падает с понятной ошибкой.
+ *
+ * Второй аргумент ifconfig в топологии p2p бывает и пир-адресом
+ * (`ifconfig 10.8.0.6 10.8.0.5`), а не маской: маска обязана быть
+ * непрерывной, пир-адрес получает /32. Маршруты не разбираются --
+ * платформа кладёт в туннель всё (0.0.0.0/0), как и в конфиге box.
+ */
+fun openvpnTunnelParams(profile: VpnProfile, vpn: VpnConfig): VpnTunnelParams? {
+    val words = profile.rawConfig.lineSequence()
+        .map { it.trim().split(Regex("\\s+")) }
+        .firstOrNull { it.firstOrNull().equals("ifconfig", ignoreCase = true) }
+        ?: return null
+    if (words.size < 3) return null
+    val local = ipv4Octets(words[1]) ?: return null
+    val prefix = netmaskPrefix(words[2]) ?: 32
+    val dns = vpn.dnsList().filter { it.isNotBlank() }
+        .ifEmpty { listOf("8.8.8.8", "1.1.1.1") }
+    val bypass = if (vpn.routing.allowPerAppBypass) vpn.routing.bypassAppList() else emptyList()
+
+    return VpnTunnelParams(
+        session = profile.name.ifBlank { "ZAPP" },
+        addresses = listOf("${local.joinToString(".")}/$prefix"),
+        routes = listOf("0.0.0.0/0"),
+        dns = dns,
+        mtu = profile.mtu,
+        bypassApps = bypass
+    )
+}
+
+/** Четыре октета 0..255, либо null -- это не IPv4-адрес. */
+private fun ipv4Octets(value: String): List<Int>? {
+    val octets = value.split('.').map { it.toIntOrNull() ?: return null }
+    if (octets.size != 4 || octets.any { it !in 0..255 }) return null
+    return octets
+}
+
+/**
+ * Длина префикса, если второй аргумент ifconfig -- непрерывная маска
+ * (255...255,0...0); пир-адрес и прочий мусор дают null -> /32.
+ */
+private fun netmaskPrefix(value: String): Int? {
+    val octets = ipv4Octets(value) ?: return null
+    val bits = octets.joinToString("") { it.toString(2).padStart(8, '0') }
+    val firstZero = bits.indexOf('0')
+    if (firstZero >= 0 && bits.substring(firstZero).contains('1')) return null
+    return bits.count { it == '1' }.takeIf { it > 0 }
 }

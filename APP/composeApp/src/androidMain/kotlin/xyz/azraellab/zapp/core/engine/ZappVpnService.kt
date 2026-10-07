@@ -18,12 +18,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppLangStore
 import xyz.azraellab.zapp.core.LinkSpeedBus
+import xyz.azraellab.zapp.core.PingBus
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.toDisplayString
 import java.io.File
@@ -131,24 +132,29 @@ class ZappVpnService : VpnService() {
     }
 
     /**
-     * Плашка в уведомлении: пока подключены, в тексте живёт скорость
-     * туннеля (↓/↑, обновление раз в секунду от общего канала).
+     * Плашка в уведомлении: пока подключены, в тексте живут скорость
+     * туннеля (↓/↑, опрос раз в секунду) и пинг (раз в пять секунд).
      *
-     * Подписка, а не таймер: канал сам шлёт новое значение, а при
-     * отключении шлёт null -- уведомление возвращается к базовому
-     * тексту и сервис гаснет вместе с туннелем.
+     * Подписка, а не таймер: каналы сами шлют новые значения, а при
+     * отключении шлют null -- уведомление возвращается к базовому
+     * тексту и сервис гаснет вместе с туннелем. `combine` нужен, чтобы
+     * оба поля рисовались из одного снимка: два отдельных `map` давали
+     * бы перерисовку на каждое обновление пинга с устаревшей скоростью.
      */
     private fun startSpeedTicker() {
         if (speedJob?.isActive == true) return
         speedJob = speedScope.launch {
-            LinkSpeedBus.current
+            combine(LinkSpeedBus.current, PingBus.current) { speed, ping ->
+                val lang = AppLang.of(runCatching { AppLangStore.read() }.getOrNull()) ?: AppLang.EN
+                when {
+                    speed == null -> Str.NOTIFY_VPN_ON.of(lang)
+                    ping != null -> speed.toDisplayString() + " · $ping ms"
+                    else -> speed.toDisplayString()
+                }
+            }
                 // Уведомление перерисовывается только при смене текста:
                 // публикация новой скорости каждую секунду -- не повод
                 // дёргать системный UI, когда цифры не изменились.
-                .map { speed ->
-                    speed?.toDisplayString()
-                        ?: Str.NOTIFY_VPN_ON.of(AppLang.of(runCatching { AppLangStore.read() }.getOrNull()) ?: AppLang.EN)
-                }
                 .distinctUntilChanged()
                 .collect { text -> showNotification(text) }
         }

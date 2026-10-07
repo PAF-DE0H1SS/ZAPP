@@ -15,6 +15,7 @@ import kotlinx.serialization.json.put
 import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
+import xyz.azraellab.zapp.core.daemon.DpiOverlay
 
 /**
  * Сборка конфига sing-box (amnezia-box) из профиля и общих настроек.
@@ -158,6 +159,33 @@ object SingboxConfig {
         return assemble(VpnProfile(mtu = 1420), vpn, listOf(outbound), emptyList(), listOf("engine: sing-box (via tor socks:$socksPort)"))
     }
 
+    /**
+     * Пассивная DPI-сессия: туннель приложения без прокси -- для сборок
+     * без root, когда zapret/goodbyedpi не могут держать NFQUEUE.
+     *
+     * Весь TCP из фильтров обхода уходит на локальный релей
+     * ([DpiOverlay.RELAY_TAG]), который рвёт ClientHello на сегменты --
+     * то, что с root делает nfqws в ядре. Прочий трафик идёт напрямую:
+     * сессия не должна ломать ничего, кроме целевых портов обхода.
+     * QUIC блокируется отдельным правилом, когда обход трогает udp.
+     */
+    fun buildDpi(vpn: VpnConfig): Built {
+        val relay = buildJsonObject {
+            put("type", "socks")
+            put("tag", DpiOverlay.RELAY_TAG)
+            put("server", "127.0.0.1")
+            put("server_port", DpiOverlay.RELAY_PORT)
+            // Строка, а не число: поле version у sing-box -- string, и
+            // число валит конфиг целиком (проверено `box check`).
+            put("version", "5")
+        }
+        return assemble(
+            VpnProfile(mtu = 1420), vpn, listOf(relay), emptyList(),
+            listOf("engine: sing-box (dpi passthrough via relay:${DpiOverlay.RELAY_PORT})"),
+            finalTag = DIRECT_TAG
+        )
+    }
+
     // --- Сборка общей части ---
 
     private fun assemble(
@@ -165,16 +193,20 @@ object SingboxConfig {
         vpn: VpnConfig,
         outbounds: List<JsonObject>,
         endpoints: List<JsonObject>,
-        notes: List<String>
+        notes: List<String>,
+        finalTag: String? = null
     ): Built {
-        val finalTag = when {
+        val final = finalTag ?: when {
             endpoints.isNotEmpty() -> ENDPOINT_TAG
             outbounds.size > 1 -> URLTEST_TAG
             else -> tagOf(outbounds.first())
         }
 
-        val dns = dnsSection(vpn, profile, finalTag)
-        val route = routeSection(vpn, finalTag)
+        val dns = dnsSection(vpn, profile, final)
+        val route = routeSection(
+            vpn, final,
+            relayRules = outbounds.any { tagOf(it) == DpiOverlay.RELAY_TAG }
+        )
         val extraNotes = notes + buildList {
             if (vpn.killSwitch) add("kill-switch: applied by engine (iptables)")
             if (vpn.routing.allowPerAppBypass && vpn.routing.bypassAppList().isNotEmpty()) {
@@ -297,7 +329,7 @@ object SingboxConfig {
         }
     }
 
-    private fun routeSection(vpn: VpnConfig, finalTag: String): JsonObject {
+    private fun routeSection(vpn: VpnConfig, finalTag: String, relayRules: Boolean = false): JsonObject {
         val rules = buildJsonArray {
             // DNS на себя до маршрутизации: без этого запрос уходит в сеть
             // как обычный UDP и обходит и перехват, и fake-ip.
@@ -334,6 +366,32 @@ object SingboxConfig {
                         add(JsonPrimitive("ff00::/8"))
                     })
                     put("action", "reject")
+                })
+            }
+            // --- userland-обход (сборки без root) ---
+            // QUIC: десинхронизация udp из ядра недоступна, поэтому канал
+            // закрывается целиком -- приложение уходит в TCP, а TCP сплитит
+            // релей. После hijack-dns: DNS уже перехвачен первым правилом.
+            if (DpiOverlay.quicBlock) {
+                add(buildJsonObject {
+                    put("protocol", "quic")
+                    put("action", "reject")
+                })
+            }
+            // TCP-порты обхода -- на релей. Правило в конце: раньше стоят
+            // приватные сети и multicast, и локальный трафик мимо сплита.
+            if (relayRules && DpiOverlay.tcpPorts.isNotEmpty()) {
+                add(buildJsonObject {
+                    put("network", "tcp")
+                    put("port", buildJsonArray {
+                        DpiOverlay.tcpPorts.forEach { port ->
+                            // Схема sing-box ждёт числа; строка осталась бы
+                            // невалидной и роняла бы `box check`.
+                            val number = port.toIntOrNull()
+                            add(if (number != null) JsonPrimitive(number) else JsonPrimitive(port))
+                        }
+                    })
+                    put("outbound", DpiOverlay.RELAY_TAG)
                 })
             }
         }
@@ -427,7 +485,10 @@ object SingboxConfig {
     // --- Прокси-outbound'ы ---
 
     private fun outboundOf(p: ProxyConfig): JsonObject? = when (p.scheme) {
-        ProxyScheme.VLESS -> buildJsonObject {
+        // sing-box принимает только xtls-rprx-vision: неизвестный flow в
+        // одном outbound -- FATAL на старте всего сервиса. Ссылка с чужим
+        // flow считается неподдерживаемой.
+        ProxyScheme.VLESS -> if (p.flow.isNotBlank() && p.flow != "xtls-rprx-vision") null else buildJsonObject {
             put("type", "vless")
             putCommon(p)
             put("uuid", p.auth)
@@ -452,14 +513,16 @@ object SingboxConfig {
             transportOf(p)?.let { put("transport", it) }
             put("tls", tlsOf(p))
         }
-        ProxyScheme.SHADOWSOCKS -> buildJsonObject {
-            put("type", "shadowsocks")
-            putCommon(p)
-            put("method", p.cipher.ifBlank { "aes-256-gcm" })
-            put("password", p.auth)
-            p.params["plugin"]?.takeIf { it.isNotBlank() }?.let { plugin ->
-                put("plugin", plugin)
-                p.params["plugin-opts"]?.takeIf { it.isNotBlank() }?.let { put("plugin_opts", it) }
+        ProxyScheme.SHADOWSOCKS -> {
+            // SIP003-плагины (obfs-local и т.п.) -- внешние бинари, которых
+            // у нас нет: sing-box стартует плагиновым процессом и падает с
+            // «plugin not found», роняя весь конфиг -- и группу целиком.
+            // Ссылка с плагином считается неподдерживаемой.
+            if (p.params["plugin"]?.isNotBlank() == true) null else buildJsonObject {
+                put("type", "shadowsocks")
+                putCommon(p)
+                put("method", p.cipher.ifBlank { "aes-256-gcm" })
+                put("password", p.auth)
             }
         }
         ProxyScheme.HYSTERIA2 -> buildJsonObject {

@@ -14,6 +14,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.input.KeyboardType
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 
@@ -33,7 +34,8 @@ fun ZappTextField(
     placeholder: String? = null,
     singleLine: Boolean = true,
     minLines: Int = 1,
-    supportingText: String? = null
+    supportingText: String? = null,
+    path: String? = null
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -53,7 +55,9 @@ fun ZappTextField(
             supportingText = supportingText?.let { { Text(it) } },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
             shape = MaterialTheme.shapes.small,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .debugPath(path ?: "input:$label")
         )
     }
 }
@@ -76,7 +80,8 @@ fun ZappNumberField(
     onValueChange: (Int?) -> Unit,
     modifier: Modifier = Modifier,
     placeholder: String? = null,
-    supportingText: String? = null
+    supportingText: String? = null,
+    path: String? = null
 ) {
     val text = value?.toString() ?: ""
 
@@ -100,7 +105,9 @@ fun ZappNumberField(
             supportingText = supportingText?.let { { Text(it) } },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             shape = MaterialTheme.shapes.small,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .debugPath(path ?: "input:$label")
         )
     }
 }
@@ -126,12 +133,14 @@ fun <T> ZappChoiceRow(
     options: List<Choice<T>>,
     selected: T,
     onSelect: (T) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    path: String? = null,
+    enabled: Boolean = true
 ) {
     if (options.isEmpty()) return
 
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f),
         verticalArrangement = Arrangement.spacedBy(AzraelSpace.xs)
     ) {
         Text(
@@ -147,16 +156,15 @@ fun <T> ZappChoiceRow(
                 val isSelected = option.value == selected
                 FilterChip(
                     selected = isSelected,
-                    onClick = { onSelect(option.value) },
-                    // Чип -- кнопка: одна строка без переноса. В FlowRow
-                    // ширина у чипа естественная, поэтому текст влезает,
-                    // и перенос здесь не понадобился бы даже теоретически.
+                    onClick = { if (enabled) onSelect(option.value) },
                     label = { Text(option.label, maxLines = 1, softWrap = false) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primary,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                     ),
-                    modifier = Modifier.padding(vertical = AzraelSpace.xxs)
+                    modifier = Modifier
+                        .padding(vertical = AzraelSpace.xxs)
+                        .debugPath("${path ?: "choice:$label"}.${option.label}")
                 )
             }
         }

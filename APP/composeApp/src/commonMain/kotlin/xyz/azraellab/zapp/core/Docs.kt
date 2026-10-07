@@ -29,7 +29,7 @@ object Docs {
                 Item(
                     L("Connect", "Подключение", "连接"),
                     L(
-                        "Choose a connect from the list (or enable group mode for automatic selection) and press START. The button СТОП tears the tunnel down. The status and the reason for an error are shown right under the button.",
+                        "Choose a connect from the list (or enable group mode for automatic selection) and press START. The button STOP tears the tunnel down. The status and the reason for an error are shown right under the button.",
                         "Выберите коннект из списка (или включите режим группы для автовыбора) и нажмите СТАРТ. Кнопка СТОП рвёт туннель. Статус и причина ошибки видны прямо под кнопкой.",
                         "从列表中选择节点（或开启分组模式自动选择），点击启动。停止按钮会断开隧道。状态和错误原因直接显示在按钮下方。"
                     )

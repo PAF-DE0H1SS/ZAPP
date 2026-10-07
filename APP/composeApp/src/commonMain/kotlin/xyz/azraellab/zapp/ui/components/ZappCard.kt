@@ -62,10 +62,14 @@ fun ZappListRow(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    trailing: @Composable (() -> Unit)? = null
+    trailing: @Composable (() -> Unit)? = null,
+    path: String? = null
 ) {
     Row(
-        modifier = modifier.fillMaxWidth().padding(vertical = AzraelSpace.sm),
+        modifier = modifier
+            .fillMaxWidth()
+            .debugPath(path ?: "row:$title")
+            .padding(vertical = AzraelSpace.sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AzraelSpace.md)
     ) {

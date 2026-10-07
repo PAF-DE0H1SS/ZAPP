@@ -32,6 +32,8 @@ internal class AndroidTrafficSource : TrafficSource {
     private var rootCacheAtMs = 0L
     private var rootCache: List<InterfaceCounters> = emptyList()
     private var rootLogged = false
+    private var uidLogged = false
+    private var netdLogged = false
 
     override fun nowMs(): Long = android.os.SystemClock.elapsedRealtime() - start
 
@@ -43,10 +45,37 @@ internal class AndroidTrafficSource : TrafficSource {
         val proc = proc.readInterfaces()
         if (proc.isNotEmpty()) return TrafficSample(timestampMs = nowMs, interfaces = proc)
         val (at, root) = rootProc(nowMs)
-        return TrafficSample(timestampMs = at, interfaces = root)
+        if (root.isNotEmpty()) return TrafficSample(timestampMs = at, interfaces = root)
+        // Нет ни root, ни файлов: SELinux на части устройств (S24) закрывает
+        // uid'у и /proc/net/dev, и sysfs. У VPN-приложения остаётся
+        // TrafficStats: весь трафик, идущий через tun, Android считает на
+        // UID владельца -- этого достаточно для плашки скорости.
+        val uid = uidTraffic()
+        if (uid.isNotEmpty()) return TrafficSample(timestampMs = nowMs, interfaces = uid)
+        diagOnce()
+        return TrafficSample(timestampMs = nowMs, interfaces = emptyList())
     }
 
     override fun batteryDrainPercentPerMinute(): Double? = null
+
+    /**
+     * Одноразовая диагностика, когда ни один путь не отдал счётчиков: в
+     * журнал сырые значения, чтобы причина была видна без пересборки.
+     */
+    private var diagLogged = false
+    private fun diagOnce() {
+        if (diagLogged) return
+        diagLogged = true
+        val uid = android.os.Process.myUid()
+        val tsUidRx = runCatching { android.net.TrafficStats.getUidRxBytes(uid) }.getOrDefault(-1L)
+        val tsUidTx = runCatching { android.net.TrafficStats.getUidTxBytes(uid) }.getOrDefault(-1L)
+        val tsTotRx = runCatching { android.net.TrafficStats.getTotalRxBytes() }.getOrDefault(-1L)
+        val tsTotTx = runCatching { android.net.TrafficStats.getTotalTxBytes() }.getOrDefault(-1L)
+        AppLog.log(
+            "traffic",
+            "no counters: TrafficStats uid=$tsUidRx/$tsUidTx total=$tsTotRx/$tsTotTx"
+        )
+    }
 
     /**
      * Срез через `su`; пара -- метка времени САМОГО ЧТЕНИЯ, а не запроса.
@@ -68,10 +97,103 @@ internal class AndroidTrafficSource : TrafficSource {
             rootCacheAtMs = nowMs
             if (!rootLogged && list.isNotEmpty()) {
                 rootLogged = true
-                AppLog.log("traffic", "counters via su: /proc and sysfs denied for uid")
+                // Нейтральная формулировка: это успешный фолбэк, а не сбой.
+                // Слова «denied»/«error» уводили строку в журнал ошибок.
+                AppLog.log("traffic", "counters via su: root fallback used")
             }
             return nowMs to list
         }
+    }
+
+    /**
+     * Фолбэк без файлов и root: счётчики TrafficStats.
+     *
+     * Порядок: сначала UID VPN-приложения (туда Android складывает весь
+     * трафик через tun), затем суммарные по устройству -- на части прошивок
+     * UID-счётчики отдаются -1, а общие работают. Псевдоинтерфейсы с
+     * пометкой `tunnelled`: имя попадает в фильтр скорости, а на странице
+     * трафика их не показывают -- там работает отдельный источник per-app.
+     */
+    private fun uidTraffic(): List<InterfaceCounters> {
+        val uid = android.os.Process.myUid()
+        val rx = runCatching { android.net.TrafficStats.getUidRxBytes(uid) }.getOrDefault(-1L)
+        val tx = runCatching { android.net.TrafficStats.getUidTxBytes(uid) }.getOrDefault(-1L)
+        if (rx >= 0L && tx >= 0L) {
+            if (!uidLogged) {
+                uidLogged = true
+                AppLog.log("traffic", "counters via TrafficStats uid fallback")
+            }
+            return listOf(InterfaceCounters(name = "zapp-uid", rxBytes = rx, txBytes = tx, tunnelled = true))
+        }
+        // Samsung и прошивки с выключенным qtaguid: сингл-снапшот UID-счётчиков
+        // не выходит (все -1), а сетевой статистикой владеет netd. Свой UID
+        // приложение спрашивает вправе и без PACKAGE_USAGE_STATS.
+        val netd = netdUidCounters(uid)
+        if (netd != null) {
+            if (!uidLogged) {
+                uidLogged = true
+                netdLogged = true
+                AppLog.log("traffic", "counters via netd uid fallback")
+            }
+            return listOf(
+                InterfaceCounters(name = "zapp-uid", rxBytes = netd.first, txBytes = netd.second, tunnelled = true)
+            )
+        }
+        // При активном VPN почти весь трафик устройства идёт через tun, поэтому
+        // суммарные счётчики -- допустимая оценка скорости туннеля.
+        val totalRx = runCatching { android.net.TrafficStats.getTotalRxBytes() }.getOrDefault(-1L)
+        val totalTx = runCatching { android.net.TrafficStats.getTotalTxBytes() }.getOrDefault(-1L)
+        if (totalRx < 0L || totalTx < 0L) return emptyList()
+        if (!uidLogged && !netdLogged) {
+            uidLogged = true
+            AppLog.log("traffic", "counters via TrafficStats total fallback")
+        }
+        return listOf(InterfaceCounters(name = "zapp-net", rxBytes = totalRx, txBytes = totalTx, tunnelled = true))
+    }
+
+    /**
+     * UID-счётчики из netd через NetworkStatsManager; null, если API закрыто
+     * или сетевой статистики для процесса нет. Читается свой UID без прав.
+     *
+     * Свой туннель (box/tor) на noroot работает в uid приложения и ходит
+     * через интерфейс tun0 с типом VPN (type=17), поэтому кроме мобильной
+     * и wifi-сети запрашивается TYPE_NONE -- он покрывает произвольные
+     * транспорты, включая VPN.
+     */
+    private fun netdUidCounters(uid: Int): Pair<Long, Long>? {
+        val context = AndroidCtx.current ?: return null
+        return runCatching {
+            val manager = context.getSystemService(android.content.Context.NETWORK_STATS_SERVICE)
+                as android.app.usage.NetworkStatsManager
+            val now = System.currentTimeMillis()
+            val begin = now - NETD_WINDOW_MS
+            var rx = 0L
+            var tx = 0L
+            for (flavor in intArrayOf(
+                // -1 = без фильтра по типу (TYPE_NONE удалён из новых SDK);
+                // на части прошивок падает -- обёртка ниже пропустит.
+                -1,
+                android.net.ConnectivityManager.TYPE_MOBILE,
+                android.net.ConnectivityManager.TYPE_WIFI
+            )) {
+                // Каждый запрос сам по себе: на части прошивок один тип может
+                // бросать, а остальные -- отдавать данные.
+                val bucket = runCatching {
+                    manager.queryDetailsForUid(flavor, null, begin, now, uid)
+                }.getOrNull()
+                if (bucket == null) continue
+                val item = android.app.usage.NetworkStats.Bucket()
+                bucket.use {
+                    while (bucket.hasNextBucket()) {
+                        if (bucket.getNextBucket(item)) {
+                            rx += item.rxBytes
+                            tx += item.txBytes
+                        }
+                    }
+                }
+            }
+            rx to tx
+        }.getOrNull()
     }
 
     /** Срез по приложениям; пустой список, если файла с UID-статистикой нет. */
@@ -88,6 +210,8 @@ internal class AndroidTrafficSource : TrafficSource {
     private companion object {
         const val ROOT_CACHE_MS = 500L
         const val ROOT_TIMEOUT_MS = 1500L
+        /** Окно netd-запроса: 60 суток. Дельты считаются между соседними срезами. */
+        const val NETD_WINDOW_MS = 5_184_000_000L
     }
 }
 

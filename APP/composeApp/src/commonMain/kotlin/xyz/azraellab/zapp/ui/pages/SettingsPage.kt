@@ -4,7 +4,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,11 +29,16 @@ import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.Docs
 import xyz.azraellab.zapp.core.GoodbyeDpiMode
+import xyz.azraellab.zapp.core.RegionTuner
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.ZapretFamily
 import xyz.azraellab.zapp.core.ZapretMode
 import xyz.azraellab.zapp.core.ZapretStrategy
+import xyz.azraellab.zapp.core.consistency.SettingKeys
+import xyz.azraellab.zapp.core.dev.isDebugBuild
 import xyz.azraellab.zapp.core.log.AppLog
+import xyz.azraellab.zapp.core.log.ErrorLog
+import xyz.azraellab.zapp.core.log.looksLikeErrorLine
 import xyz.azraellab.zapp.core.native.NativeBinaries
 import xyz.azraellab.zapp.core.permissions.PermissionId
 import xyz.azraellab.zapp.core.permissions.PermissionState
@@ -51,6 +58,12 @@ import xyz.azraellab.zapp.ui.components.ZappNumberField
 import xyz.azraellab.zapp.ui.components.ZappSectionTitle
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.components.ZappTextField
+import xyz.azraellab.zapp.ui.components.debugPath
+import xyz.azraellab.zapp.ui.components.RegionDropdown
+import xyz.azraellab.zapp.ui.consistency.forcedValue
+import xyz.azraellab.zapp.ui.consistency.isLocked
+import xyz.azraellab.zapp.ui.consistency.lockReason
+import xyz.azraellab.zapp.ui.consistency.settingLocks
 import xyz.azraellab.zapp.ui.nav.ZappBackHandler
 import xyz.azraellab.zapp.ui.tr
 
@@ -68,7 +81,11 @@ fun SettingsPage(state: AppState) {
 
     // Системная кнопка «назад» закрывает открытое подокно, а не всё
     // приложение: из окна категории возвращаемся в список категорий.
-    ZappBackHandler(enabled = section != null) { section = null }
+    // «Тесты» -- вторая ступень внутри «Для разработчиков», поэтому назад
+    // из неё ведёт в раздел, а не мимо, в корень.
+    ZappBackHandler(enabled = section != null) {
+        section = if (section == "devtests") "dev" else null
+    }
 
     when (section) {
         null -> SettingsRoot(
@@ -128,6 +145,17 @@ fun SettingsPage(state: AppState) {
             LogSection(state)
         }
 
+        // Только debug-сборка: в релизе этих строк нет вовсе (см. isDebugBuild).
+        "dev" -> SubPage(Str.SETTINGS_DEV, back = { section = null }) {
+            ZappCard {
+                CategoryRow(tr(Str.DEV_TESTS), path = "settings.dev.tests") { section = "devtests" }
+            }
+        }
+
+        "devtests" -> SubPage(Str.DEV_TESTS, back = { section = "dev" }) {
+            DevTestsSection()
+        }
+
         "docs" -> SubPage(Str.SETTINGS_DOCS, back = { section = null }) {
             DocsSection()
         }
@@ -144,35 +172,40 @@ fun SettingsPage(state: AppState) {
 private fun SettingsRoot(state: AppState, onOpen: (String) -> Unit) {
     PageScaffold(title = tr(Str.TAB_SETTINGS)) {
         ZappCard {
-            CategoryRow(tr(Str.SETTINGS_SECTION_GENERAL)) { onOpen("general") }
-            CategoryRow(tr(Str.SETTINGS_PERMISSIONS)) { onOpen("permissions") }
-            CategoryRow(tr(Str.SETTINGS_DEVICE)) { onOpen("device") }
-            CategoryRow(tr(Str.SETTINGS_UPDATES)) { onOpen("updates") }
-            CategoryRow(tr(Str.TAB_TRAFFIC)) { onOpen("traffic") }
-            CategoryRow(tr(Str.SETTINGS_PRESETS)) { onOpen("presets") }
-            CategoryRow(tr(Str.SETTINGS_PERF)) { onOpen("perf") }
-            CategoryRow(tr(Str.TAB_VPN)) { onOpen("vpn") }
-            CategoryRow(tr(Str.TAB_TOR)) { onOpen("tor") }
+            CategoryRow(tr(Str.SETTINGS_SECTION_GENERAL), path = "settings.general") { onOpen("general") }
+            CategoryRow(tr(Str.SETTINGS_PERMISSIONS), path = "settings.permissions") { onOpen("permissions") }
+            CategoryRow(tr(Str.SETTINGS_DEVICE), path = "settings.device") { onOpen("device") }
+            CategoryRow(tr(Str.SETTINGS_UPDATES), path = "settings.updates") { onOpen("updates") }
+            CategoryRow(tr(Str.TAB_TRAFFIC), path = "settings.traffic") { onOpen("traffic") }
+            CategoryRow(tr(Str.SETTINGS_PRESETS), path = "settings.presets") { onOpen("presets") }
+            CategoryRow(tr(Str.SETTINGS_PERF), path = "settings.perf") { onOpen("perf") }
+            CategoryRow(tr(Str.TAB_VPN), path = "settings.vpn") { onOpen("vpn") }
+            CategoryRow(tr(Str.TAB_TOR), path = "settings.tor") { onOpen("tor") }
             if (NativeBinaries.installed().isNotEmpty()) {
-                CategoryRow(tr(Str.TAB_ZAPRET)) { onOpen("zapret") }
-                CategoryRow(tr(Str.TAB_GOODBYE_DPI)) { onOpen("dpi") }
+                CategoryRow(tr(Str.TAB_ZAPRET), path = "settings.zapret") { onOpen("zapret") }
+                CategoryRow(tr(Str.TAB_GOODBYE_DPI), path = "settings.gdpi") { onOpen("dpi") }
             }
             if (NativeBinaries.installed().isNotEmpty()) {
-                CategoryRow(tr(Str.COMPONENTS)) { onOpen("components") }
+                CategoryRow(tr(Str.COMPONENTS), path = "settings.components") { onOpen("components") }
             }
-            CategoryRow(tr(Str.SETTINGS_LOG)) { onOpen("log") }
-            CategoryRow(tr(Str.SETTINGS_DOCS)) { onOpen("docs") }
-            CategoryRow(tr(Str.SETTINGS_ABOUT)) { onOpen("about") }
+            CategoryRow(tr(Str.SETTINGS_LOG), path = "settings.log") { onOpen("log") }
+            CategoryRow(tr(Str.SETTINGS_DOCS), path = "settings.docs") { onOpen("docs") }
+            CategoryRow(tr(Str.SETTINGS_ABOUT), path = "settings.about") { onOpen("about") }
+            // Разработка: только debug, в релизе строка не рисуется.
+            if (isDebugBuild()) {
+                CategoryRow(tr(Str.SETTINGS_DEV), path = "settings.dev") { onOpen("dev") }
+            }
         }
     }
 }
 
 /** Строка категории: нажимается целиком, хвост -- стрелка «открыть». */
 @Composable
-private fun CategoryRow(title: String, onClick: () -> Unit) {
+private fun CategoryRow(title: String, path: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .debugPath(path)
             .clickable(onClick = onClick)
             .padding(vertical = MaterialTheme.typography.bodyLarge.fontSize.value.dp / 2),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -198,7 +231,8 @@ private fun SubPage(title: Str, back: () -> Unit, content: @Composable () -> Uni
         ZappButton(
             text = tr(Str.COMMON_BACK),
             role = ButtonRole.GHOST,
-            onClick = back
+            onClick = back,
+            path = "settings.back"
         )
         content()
     }
@@ -215,6 +249,20 @@ private fun GeneralSection(state: AppState) {
                 options = AppLang.entries.map { Choice(it.code, labelOf(it)) },
                 selected = AppLangState.current.code,
                 onSelect = { code -> AppLangState.set(AppLang.of(code)) }
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = tr(Str.WELCOME_Q_REGION_HINT),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            RegionDropdown(
+                selected = state.config.region,
+                onSelect = { code ->
+                    state.mutate { RegionTuner.apply(it, code) }
+                    AppLog.log("app", "region set to $code")
+                },
+                path = "settings.region"
             )
         }
     }
@@ -244,11 +292,16 @@ private fun GeneralSection(state: AppState) {
 @Composable
 private fun PerfSection(state: AppState) {
     val perf = state.config.perf.sanitized()
+    val locks = settingLocks(state)
+    val bgAnimForced = forcedValue(locks, SettingKeys.BG_ANIM)
+    val bgAnimChecked = bgAnimForced ?: perf.animatedBackground
     PageGroup(tr(Str.SETTINGS_PERF)) {
         ZappCard {
             ZappSettingRow(
                 title = tr(Str.PERF_BG_ANIM),
-                checked = perf.animatedBackground,
+                checked = bgAnimChecked,
+                enabled = !isLocked(locks, SettingKeys.BG_ANIM),
+                subtitle = lockReason(locks, SettingKeys.BG_ANIM),
                 onCheckedChange = { on ->
                     state.mutate { it.copy(perf = it.perf.copy(animatedBackground = on).sanitized()) }
                 }
@@ -257,12 +310,20 @@ private fun PerfSection(state: AppState) {
                 label = tr(Str.PERF_BG_FPS),
                 options = listOf(15, 30, 60).map { Choice(it.toString(), "$it fps") },
                 selected = perf.backgroundFps.toString(),
+                enabled = !isLocked(locks, SettingKeys.BG_FPS),
                 onSelect = { code ->
                     state.mutate {
                         it.copy(perf = it.perf.copy(backgroundFps = code.toInt()).sanitized())
                     }
                 }
             )
+            if (locks[SettingKeys.BG_FPS] != null) {
+                Text(
+                    text = lockReason(locks, SettingKeys.BG_FPS) ?: "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             ZappChoiceRow(
                 label = tr(Str.PERF_LIST_PAGE),
                 options = listOf(15, 30, 60, 120).map { Choice(it.toString(), it.toString()) },
@@ -297,7 +358,8 @@ private fun PermissionsSection(state: AppState) {
                 statuses.forEach { status ->
                     PermissionRow(
                         status = status,
-                        onAction = { state.permissions.request(status.id) {} }
+                        onAction = { state.permissions.request(status.id) {} },
+                        path = "settings.permission.${status.id.name.lowercase()}"
                     )
                 }
             }
@@ -331,6 +393,17 @@ private fun UpdatesSection(state: AppState) {
         ZappCard {
             InfoRow(tr(Str.ABOUT_VERSION), state.appVersion)
             InfoRow(tr(Str.UPD_CHECK), tr(updateState.labelKey()))
+            // Причина неудачи -- под строкой состояния: «Не удалось
+            // проверить» без текста исключения ничего не объясняет.
+            if (updateState == UpdateState.ERROR) {
+                state.updateError?.takeIf { it.isNotBlank() }?.let { cause ->
+                    Text(
+                        text = cause,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
             ZappButtonRow(modifier = Modifier.fillMaxWidth()) {
                 ZappButton(
                     text = tr(Str.UPD_CHECK),
@@ -837,7 +910,7 @@ private fun ComponentsSection(state: AppState) {
     }
 }
 
-// --- Журнал: детальный лог с тумблером ---
+// --- Журнал: ошибки и детальный лог с тумблером ---
 
 @Composable
 private fun LogSection(state: AppState) {
@@ -861,6 +934,8 @@ private fun LogSection(state: AppState) {
                 modifier = Modifier.fillMaxWidth()
             )
         }
+
+        ErrorLogCard()
         ZappCard {
             if (lines.isEmpty()) {
                 Text(
@@ -872,9 +947,8 @@ private fun LogSection(state: AppState) {
                 // Хвост ленты: новые записи внизу, экран показывает последние.
                 lines.takeLast(100).forEach { line ->
                     // Ошибка -- цветом, чтобы её было видно с ходу.
-                    val isError = "[err" in line ||
-                        line.contains("error", ignoreCase = true) ||
-                        line.contains("fail", ignoreCase = true)
+                    // Признаки общие с журналами демонов (core.log).
+                    val isError = looksLikeErrorLine(line)
                     Text(
                         text = line,
                         style = MaterialTheme.typography.labelSmall,
@@ -887,6 +961,57 @@ private fun LogSection(state: AppState) {
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Журнал ошибок: ровно то, что нужно для багрепорта.
+ *
+ * Стоит отдельной карточкой, а не фильтром общего лога: причины сбоев
+ * должны читаться одним списком, без строк «connect requested» между
+ * ними. Пустое состояние -- не «ничего не записано», а «сбоев не было»,
+ * поэтому строка своя и обнадёживающая.
+ */
+@Composable
+private fun ErrorLogCard() {
+    val errors by ErrorLog.lines.collectAsState()
+    ZappCard {
+        ZappListRow(
+            title = tr(Str.LOG_ERRORS),
+            subtitle = tr(Str.LOG_ERRORS_FILE_HINT),
+            trailing = if (errors.isEmpty()) null else {
+                {
+                    Text(
+                        text = errors.size.toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        )
+        if (errors.isEmpty()) {
+            Text(
+                text = tr(Str.LOG_ERRORS_EMPTY),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            // Только хвост: журнал и так ограничен, а экран -- про последние.
+            errors.takeLast(50).forEach { line ->
+                Text(
+                    text = line,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            ZappButton(
+                text = tr(Str.LOG_ERRORS_CLEAR),
+                role = ButtonRole.DANGER,
+                onClick = { ErrorLog.clear() },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -977,11 +1102,12 @@ private fun platformName(state: AppState): String =
 
 /** Строка разрешения: статус, подсказка и кнопка, если действие есть. */
 @Composable
-fun PermissionRow(status: PermissionStatus, onAction: () -> Unit) {
+fun PermissionRow(status: PermissionStatus, onAction: () -> Unit, path: String) {
     val granted = status.state == PermissionState.GRANTED
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .debugPath(path)
             .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1019,7 +1145,8 @@ fun PermissionRow(status: PermissionStatus, onAction: () -> Unit) {
                     }
                 ),
                 role = ButtonRole.SECONDARY,
-                onClick = onAction
+                onClick = onAction,
+                path = "$path.button"
             )
         }
     }

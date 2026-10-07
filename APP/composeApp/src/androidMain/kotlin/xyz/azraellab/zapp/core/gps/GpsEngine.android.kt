@@ -5,6 +5,7 @@ import android.app.AppOpsManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.SystemClock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -63,21 +64,32 @@ private class AndroidGpsEngine : BaseGpsEngine() {
         log(GpsEvent(Str.GPS_LOG_STARTING, config.mode))
 
         loopJob = scope.launch {
-            val target = resolveTarget(config, vpnGateway) ?: run {
-                setState(GpsState.ERROR)
-                return@launch
-            }
-            if (!installProvider()) {
-                setState(GpsState.ERROR)
-                return@launch
-            }
-            log(GpsEvent(Str.GPS_LOG_PROVIDER))
-            setState(GpsState.ACTIVE)
-            runLoop(target)
-            // runLoop вернулся: кончился маршрут, упала система или нас остановили.
-            if (isActive) {
-                // Самостоятельный выход (маршрут без зацикливания) -- это стоп.
-                stopInternal(notifyStopped = true)
+            // Любое исключение внутри (сеть в geolocate, отказ системы в
+            // установке провайдера) иначе улетало в CoroutineExceptionHandler
+            // и роняло приложение. Здесь оно становится строкой в журнале и
+            // состоянием ERROR: причина обязана быть видна, а не гадать.
+            try {
+                val target = resolveTarget(config, vpnGateway) ?: run {
+                    setState(GpsState.ERROR)
+                    return@launch
+                }
+                if (!installProvider()) {
+                    setState(GpsState.ERROR)
+                    return@launch
+                }
+                log(GpsEvent(Str.GPS_LOG_PROVIDER))
+                setState(GpsState.ACTIVE)
+                runLoop(target)
+                // runLoop вернулся: кончился маршрут, упала система или нас остановили.
+                if (isActive) {
+                    // Самостоятельный выход (маршрут без зацикливания) -- это стоп.
+                    stopInternal(notifyStopped = true)
+                }
+            } catch (e: CancellationException) {
+                // Остановка отменила цикл -- это не сбой.
+                throw e
+            } catch (e: Exception) {
+                fail(GpsEvent(Str.GPS_LOG_START_FAILED, e.message ?: e::class.simpleName.orEmpty()))
             }
         }
     }
@@ -135,7 +147,12 @@ private class AndroidGpsEngine : BaseGpsEngine() {
 
     /** Настраивает тест-провайдер. false, если разрешения или сервиса нет. */
     private fun installProvider(): Boolean {
-        val context = AndroidCtx.current ?: return false
+        // Каждый отказ -- со строкой в журнале: состояние ERROR без причины
+        // заставляет гадать, чего именно не хватило.
+        val context = AndroidCtx.current ?: run {
+            log(GpsEvent(Str.GPS_LOG_NO_PROVIDER))
+            return false
+        }
 
         // Проверка через AppOps, а не через разрешение: доступ к имитации
         // выдаётся флагом «приложение для имитации местоположения», и сам
@@ -154,8 +171,10 @@ private class AndroidGpsEngine : BaseGpsEngine() {
             return false
         }
 
-        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-            ?: return false
+        val manager = (context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager) ?: run {
+            log(GpsEvent(Str.GPS_LOG_NO_PROVIDER))
+            return false
+        }
 
         // Провайдер мог остаться от прошлого запуска -- это не ошибка.
         runCatching {

@@ -185,7 +185,9 @@ data class VpnConfig(
     val dnsBackup: String = "",
 
     // --- Мониторинг (clash-api у sing-box) ---
-    val clashApiEnabled: Boolean = false,
+    // Включён по умолчанию: это локальный loopback-эндпоинт, по которому
+    // приложение читает счётчики трафика для плашки скорости (root не нужен).
+    val clashApiEnabled: Boolean = true,
     val clashApiPort: Int = 9090,
     val clashApiSecret: String = "",
 

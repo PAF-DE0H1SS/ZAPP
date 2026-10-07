@@ -16,7 +16,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/out"
 DEST="$HERE/../APP/app/src/main/jniLibs"
-TOOLS=(nfqws goodbyedpi wg box openvpn tor lyrebird)
+TOOLS=(nfqws goodbyedpi wg box openvpn tor lyrebird ovpntun)
 ABIS=(arm64-v8a armeabi-v7a x86 x86_64)
 
 rm -rf "$DEST"

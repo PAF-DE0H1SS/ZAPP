@@ -39,6 +39,7 @@ import xyz.azraellab.zapp.core.TrafficFormat
 import xyz.azraellab.zapp.core.TrafficPoint
 import xyz.azraellab.zapp.core.TrafficSummary
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
+import xyz.azraellab.zapp.ui.components.debugPath
 import xyz.azraellab.zapp.ui.tr
 
 /**
@@ -67,7 +68,7 @@ fun TrafficWindow(state: AppState, onBack: () -> Unit) {
             TopAppBar(
                 title = { Text(tr(Str.TAB_TRAFFIC)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(modifier = Modifier.debugPath("traffic.back"), onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 }

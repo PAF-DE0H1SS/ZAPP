@@ -23,17 +23,23 @@ import xyz.azraellab.zapp.core.daemon.DaemonId
 import xyz.azraellab.zapp.core.daemon.DaemonSpec
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.daemon.DpiFirewall
+import xyz.azraellab.zapp.core.daemon.DpiOverlay
 import xyz.azraellab.zapp.core.daemon.createDaemonEngine
 import xyz.azraellab.zapp.core.engine.TunnelEngine
 import xyz.azraellab.zapp.core.engine.TunnelState
 import xyz.azraellab.zapp.core.engine.createTunnelEngine
 import xyz.azraellab.zapp.core.gps.GpsEngine
+import xyz.azraellab.zapp.core.gps.GpsEvent
 import xyz.azraellab.zapp.core.gps.GpsState
 import xyz.azraellab.zapp.core.gps.createGpsEngine
 import xyz.azraellab.zapp.core.log.AppLog
+import xyz.azraellab.zapp.core.log.errorEvent
 import xyz.azraellab.zapp.core.native.NativeBinaries
 import xyz.azraellab.zapp.core.net.ConfigImport
+import xyz.azraellab.zapp.core.net.ClashTraffic
 import xyz.azraellab.zapp.core.net.LinkProbe
+import xyz.azraellab.zapp.core.net.LinkTarget
+import xyz.azraellab.zapp.core.net.fetchClashTraffic
 import xyz.azraellab.zapp.core.net.NetworkProbe
 import xyz.azraellab.zapp.core.net.StrategyReport
 import xyz.azraellab.zapp.core.net.httpGetText
@@ -106,6 +112,28 @@ class AppState(
         /** Через сколько результатов писать их в список: плавность против шума. */
         const val CHECK_FLUSH_BATCH: Int = 8
 
+        /** Как часто пингуем активное подключение для плашки. */
+        const val PING_TICK_MS: Long = 5_000L
+
+        /** Таймаут одного замера пинга: дольше -- это уже мёртвый узел. */
+        const val PING_TIMEOUT_MS: Int = 2_000
+
+        /** Сколько кандидатов группы пробуем, пока не найдётся живой. */
+        const val GROUP_PING_CANDIDATES: Int = 4
+
+        /** Как часто автовыбор пересматривает мосты Tor. */
+        const val TOR_SWITCH_TICK_MS: Long = 60_000L
+
+        /** Сколько ближайших кандидатов меряем за один пересмотр. */
+        const val TOR_SWITCH_PROBES: Int = 4
+
+        /**
+         * Выигрыш пинга, ради которого имеет смысл обрывать соединение.
+         * Больше гистерезиса sing-box urltest (10 ms): тор-мосты прыгают
+         * сами по себе, и переподключение на 12 ms дешевле не станет.
+         */
+        const val TOR_SWITCH_TOLERANCE_MS: Int = 50
+
         /** Пауза перед автоперезапуском упавшего демона. */
         const val DAEMON_RESTART_DELAY_MS: Long = 3_000L
     }
@@ -151,6 +179,16 @@ class AppState(
     private val _updateState = MutableStateFlow(UpdateState.UNKNOWN)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
+    /**
+     * Причина неудачной проверки обновлений.
+     *
+     * Состояние ERROR само по себе ничего не говорит: «Не удалось
+     * проверить» без текста исключения -- та же голая ошибка, что и
+     * «Ошибка» без причины. Пусто, если проверка не падала.
+     */
+    var updateError: String? by mutableStateOf(null)
+        private set
+
     private val _release = MutableStateFlow<ReleaseInfo?>(null)
     val release: StateFlow<ReleaseInfo?> = _release.asStateFlow()
 
@@ -170,6 +208,11 @@ class AppState(
     // сохранённую ссылку нулём -- опрос скорости нельзя потерять так.
     private var linkJob: Job? = null
 
+    // Те же два правила, что и у linkJob: объявлены до init, чтобы ранняя
+    // подписка не обнулила только что созданные job'ы.
+    private var pingJob: Job? = null
+    private var torSwitchJob: Job? = null
+
     init {
         // Уведомления о подмене: движок сообщает только состояния, а что
         // именно сказать пользователю -- решает здесь общая подписка,
@@ -180,7 +223,7 @@ class AppState(
                 if (current != previous) {
                     when (current) {
                         GpsState.ACTIVE -> notify(Str.NOTIFY_GPS_ON, tag = TAG_GPS)
-                        GpsState.ERROR -> notify(Str.NOTIFY_GPS_ERROR, tag = TAG_GPS)
+                        GpsState.ERROR -> notify(Str.NOTIFY_GPS_ERROR, arg = gpsErrorCause(), tag = TAG_GPS)
                         GpsState.OFF -> if (previous == GpsState.ACTIVE || previous == GpsState.ERROR) {
                             notify(Str.NOTIFY_GPS_OFF, tag = TAG_GPS)
                         }
@@ -205,8 +248,12 @@ class AppState(
                 runCatching {
                     if (current == TunnelState.CONNECTED) {
                         startLinkSpeed()
+                        startPing()
+                        startTorAutoSwitch()
                     } else {
                         stopLinkSpeed()
+                        stopPing()
+                        stopTorAutoSwitch()
                     }
                     LauncherIcon.setConnected(current == TunnelState.CONNECTED)
                 }.onFailure { e ->
@@ -232,23 +279,55 @@ class AppState(
         linkJob = scope.launch {
             val source = trafficSource()
             var previous: TrafficSample? = null
+            var previousClash: ClashTraffic? = null
+            var previousClashAt = 0L
+            var clashError: Throwable? = null
             var ticks = 0
             while (isActive) {
-                val sample = runCatching { source.read(source.nowMs()) }.getOrNull()
-                if (sample == null) {
-                    if (ticks < 3) AppLog.log("spd", "read failed")
-                } else {
-                    val speed = previous?.let { linkSpeedBetween(it, sample) }
-                    LinkSpeedBus.publish(speed)
-                    // Первые тики и каждое десятое -- чтобы видеть и сам
-                    // факт работы, и не заливать журнал письмами в секунду.
-                    if (ticks < 3 || ticks % 10 == 0) {
-                        AppLog.log(
-                            "spd",
-                            "tick=$ticks ifaces=${sample.interfaces.size} speed=$speed"
+                val mark = source.nowMs()
+                val sample = runCatching { source.read(mark) }.getOrNull()
+                // Точные счётчики box'а (сам владеет tun): чужие файлы/
+                // права/sysfs не нужны, а worker'ы/системный трафик в них
+                // не попадают. Если clash_api выключен или box не отвечает
+                // -- падаем на интерфейсные счётчики. Причина сбоя -- в
+                // журнал вместе с периодической строкой, а не молча в null.
+                val clash = if (config.vpn.clashApiEnabled) {
+                    runCatching {
+                        fetchClashTraffic(config.vpn.clashApiPort, config.vpn.clashApiSecret, 3_000)
+                    }
+                        .onSuccess { clashError = null }
+                        .onFailure { clashError = it }
+                        .getOrNull()
+                } else null
+                val speed = when {
+                    // Интерфейсные счётчики -- по ним дельты точнее и видны сразу
+                    // (native/proc/sysfs/TrafficStats). Приоритет выше clash_api:
+                    // в нынешней сборке sing-box /traffic отдаёт всегда нули.
+                    sample != null && sample.interfaces.isNotEmpty() ->
+                        previous?.let { linkSpeedBetween(it, sample) }
+                    previousClash != null && clash != null -> {
+                        val sec = ((mark - previousClashAt) / 1000.0).coerceAtLeast(0.001)
+                        LinkSpeed(
+                            downBps = ((clash.down - previousClash.down).coerceAtLeast(0L) / sec).toLong(),
+                            upBps = ((clash.up - previousClash.up).coerceAtLeast(0L) / sec).toLong()
                         )
                     }
-                    previous = sample
+                    else -> null
+                }
+                if (clash != null) {
+                    previousClash = clash
+                    previousClashAt = mark
+                }
+                if (sample != null) previous = sample
+                LinkSpeedBus.publish(speed)
+                // Первые тики и каждое десятое -- чтобы видеть и сам
+                // факт работы, и не заливать журнал письмами в секунду.
+                if (ticks < 3 || ticks % 10 == 0) {
+                    AppLog.log(
+                        "spd",
+                        "tick=$ticks clash=${clash != null} err=${clashError?.causeText() ?: "-"} " +
+                            "ifaces=${sample?.interfaces?.size ?: 0} speed=$speed"
+                    )
                 }
                 ticks++
                 delay(1000)
@@ -262,6 +341,183 @@ class AppState(
         linkJob?.cancel()
         linkJob = null
         LinkSpeedBus.publish(null)
+    }
+
+    // --- Пинг активного подключения для плашки ---
+
+    /**
+     * Замер отклика до коннекта, с которым стоим подключены.
+     *
+     * Отдельный цикл, а не внутри опроса скорости: у них разная
+     * частота (секунда против пяти) и разная цена -- счётчики
+     * читаются из `/proc`, пинг уходит в сеть и не должен дублировать
+     * работу, пока не понадобился. Проба берёт ту же адресацию, что и
+     * список ([probeTarget]), поэтому плашка меряет ровно тот узел,
+     * что показан активным.
+     *
+     * Ошибки пробы не валит цикл: пинга нет -- и ладно, плашка просто
+     * не рисует это поле.
+     */
+    private fun startPing() {
+        if (pingJob?.isActive == true) return
+        AppLog.log("spd", "ping start")
+        pingJob = scope.launch {
+            var ticks = 0
+            while (isActive) {
+                val ms = currentPing()
+                PingBus.publish(ms)
+                // Первые тики -- чтобы было видно, что замер идёт, а
+                // дальше не заливать журнал письмами каждые пять секунд.
+                if (ticks < 3) AppLog.log("spd", "ping=$ms")
+                ticks++
+                delay(PING_TICK_MS)
+            }
+        }
+    }
+
+    /** Замер снят: пинг неизвестен, строка укорачивается. */
+    private fun stopPing() {
+        if (pingJob != null) AppLog.log("spd", "ping stop")
+        pingJob?.cancel()
+        pingJob = null
+        PingBus.publish(null)
+    }
+
+    /**
+     * Один замер активного подключения; null -- замерять нечего или
+     * проба не дала отклика (UDP-тишина -- это «жив», но время не
+     * измерить, а показывать ноль вместо миллисекунд нельзя).
+     */
+    private suspend fun currentPing(): Int? {
+        for (target in pingTargets()) {
+            val probe = runCatching {
+                probeLink(target.host, target.port, target.kind, PING_TIMEOUT_MS)
+            }.getOrNull() ?: continue
+            if (probe.alive && probe.latencyMs >= 0) return probe.latencyMs
+        }
+        return null
+    }
+
+    /**
+     * Цели замера: в обычном режиме -- единственный профиль, в групповом --
+     * несколько ближайших кандидатов.
+     *
+     * urltest в группе выбирает узел сам, а плашка показывает живой замер:
+     * если «лучший по пингу» не отвечает (список свежий, latency ещё -1),
+     * один промах раньше гасил индикатор целиком. Пробуем несколько
+     * кандидатов подряд -- первый живой и есть ответ.
+     */
+    private fun pingTargets(): List<LinkTarget> {
+        val vpn = config.vpn
+        if (!vpn.groupMode) {
+            return listOfNotNull(VpnConnects.pingProfile(vpn)?.let { probeTarget(it) })
+        }
+        // У Tor один мост -- замер моста, а не кандидатов: перебирать
+        // мосты параллельно с их автовыбором -- двойная работа.
+        val active = vpn.activeProfile()
+        if (active != null && active.protocol == VpnProtocol.TOR.code) {
+            return listOfNotNull(probeTarget(active))
+        }
+        val seen = LinkedHashSet<String>()
+        return VpnConnects.sort(VpnConnects.groupMembers(vpn.profiles), byPing = true)
+            .asSequence()
+            .mapNotNull { probeTarget(it) }
+            .filter { seen.add("${it.host}:${it.port}") }
+            .take(GROUP_PING_CANDIDATES)
+            .toList()
+    }
+
+    // --- Автоподбор мостов Tor ---
+
+    /**
+     * Пересмотр выбранного моста, пока подключены через Tor.
+     *
+     * Автовыбор при подключении -- не конец истории: мосты меняют
+     * скорость и падают, а юзер сидит и не знает. Тумблер
+     * [VpnConfig.groupMode] включает и выбор при старте, и этот цикл,
+     * поэтому ломать соединение без его согласия нельзя.
+     *
+     * Для VPN переподключение уже делает sing-box urltest (раз в
+     * минуту), поэтому здесь только мосты: у них -- свой список, свой
+     * выбор и единственный путь к новому узлу -- перезапуск тора.
+     */
+    private fun startTorAutoSwitch() {
+        if (torSwitchJob?.isActive == true) return
+        AppLog.log("vpn", "tor auto-switch start")
+        torSwitchJob = scope.launch {
+            var ticks = 0
+            while (isActive) {
+                delay(TOR_SWITCH_TICK_MS)
+                runCatching { torAutoSwitchTick() }
+                    .onFailure { AppLog.log("vpn", "auto-switch failed: ${it.causeText()}") }
+                ticks++
+            }
+        }
+    }
+
+    private fun stopTorAutoSwitch() {
+        if (torSwitchJob != null) AppLog.log("vpn", "tor auto-switch stop")
+        torSwitchJob?.cancel()
+        torSwitchJob = null
+    }
+
+    /**
+     * Один пересмотр: свежий замер текущего моста и нескольких
+     * ближайших кандидатов, затем переключение, если кто-то заметно
+     * быстрее (или текущий мёртв).
+     *
+     * Порядок условий важен: сначала всё, что может отменить такт
+     * (режим, состояние, ручная проверка), -- потому что каждый тик
+     * пишет health в конфиг, а гонка двух писателей даёт потерянную
+     * запись, а не две.
+     */
+    private suspend fun torAutoSwitchTick() {
+        val vpn = config.vpn
+        if (!vpn.groupMode) return
+        if (tunnel.state.value != TunnelState.CONNECTED) return
+        if (_checkProgress.value.running) return
+        val current = VpnConnects.pingProfile(vpn) ?: return
+        if (current.protocol != VpnProtocol.TOR.code) return
+
+        // Ближайшие по сохранённому пингу: мерить все сто мостов
+        // каждую минуту -- это нагрузка на радио впустую.
+        val candidates = VpnConnects.sort(
+            VpnConnects.torBridges(vpn.profiles).filter { it.id != current.id && it.health.alive != false },
+            byPing = true
+        ).take(TOR_SWITCH_PROBES)
+        if (candidates.isEmpty()) return
+
+        val probed = mutableListOf<Pair<String, LinkHealth>>()
+        for (profile in listOf(current) + candidates) {
+            val target = probeTarget(profile) ?: continue
+            val probe = runCatching {
+                probeLink(target.host, target.port, target.kind, PING_TIMEOUT_MS)
+            }.getOrElse { e ->
+                LinkProbe(alive = false, error = e::class.simpleName.orEmpty().lowercase())
+            }
+            probed += profile.id to LinkHealth(
+                alive = probe.alive,
+                latencyMs = probe.latencyMs,
+                checkedAtMs = System.currentTimeMillis(),
+                error = probe.error
+            )
+        }
+        if (probed.isEmpty()) return
+        applyHealth(probed)
+
+        val freshCurrent = config.vpn.profileById(current.id) ?: return
+        val better = VpnConnects.betterBridge(
+            freshCurrent,
+            candidates.mapNotNull { config.vpn.profileById(it.id) },
+            TOR_SWITCH_TOLERANCE_MS
+        ) ?: return
+        AppLog.log(
+            "vpn",
+            "auto-switch bridge: ${freshCurrent.name.ifBlank { freshCurrent.id }} " +
+                "(${freshCurrent.health.latencyMs} ms) -> " +
+                "${better.name.ifBlank { better.id }} (${better.health.latencyMs} ms)"
+        )
+        connectTorBridge(better)
     }
 
     // --- Мониторинг трафика ---
@@ -554,7 +810,13 @@ class AppState(
 
         fun step() {
             if (queue.isEmpty()) {
-                gpsEngine.start(config.gps, vpnAddress())
+                // Синхронная часть старта (разбор конфига, доступ к сервису)
+                // здесь же: исключение иначе пропало бы между диалогом
+                // разрешения и состоянием, а статус обязан иметь причину.
+                runCatching { gpsEngine.start(config.gps, vpnAddress()) }
+                    .onFailure { e ->
+                        gpsEngine.fail(GpsEvent(Str.GPS_LOG_START_FAILED, e.causeText()))
+                    }
                 onResult(true)
                 return
             }
@@ -590,7 +852,11 @@ class AppState(
             mutate { it.copy(zapret = it.zapret.copy(enabled = true)) }
         }
         val c = config.zapret
-        zapretDaemon.start(DaemonSpec(binary = c.binaryPath, args = c.toArgs()))
+        runCatching {
+            zapretDaemon.start(DaemonSpec(binary = c.binaryPath, args = c.toArgs()))
+        }.onFailure { e ->
+            failDaemon(zapretDaemon, "zapret", e)
+        }
     }
 
     fun stopZapret() {
@@ -621,13 +887,38 @@ class AppState(
         }
         val hosts = c.domainList()
         val files = if (hosts.isNotEmpty()) mapOf("hosts" to hosts.joinToString("\n")) else emptyMap()
-        dpiDaemon.start(
-            DaemonSpec(
-                binary = c.daemonPath,
-                args = c.toArgs(blacklistRef = if (hosts.isNotEmpty()) "{{hosts}}" else null),
-                files = files
+        runCatching {
+            dpiDaemon.start(
+                DaemonSpec(
+                    binary = c.daemonPath,
+                    args = c.toArgs(blacklistRef = if (hosts.isNotEmpty()) "{{hosts}}" else null),
+                    files = files
+                )
             )
-        )
+        }.onFailure { e ->
+            failDaemon(dpiDaemon, "goodbyedpi", e)
+        }
+    }
+
+    /**
+     * Причина исключения для журнала: текст ошибки или имя класса.
+     *
+     * Никогда пусто: строка причины обязана быть чем-то заполнена, иначе
+     * под статусом появится пустая строка вместо объяснения.
+     */
+    private fun Throwable.causeText(): String =
+        message?.takeIf { it.isNotBlank() } ?: (this::class.simpleName ?: "error")
+
+    /**
+     * Пойманное при запуске демона исключение -- в его журнал и в zapp.log.
+     *
+     * Без этого состояние оставалось бы «Ошибка» без причины (или, хуже,
+     * «Остановлен» с молчаливым исключением в никуда): одна строка тут --
+     * и карточка демона, и общий журнал показывают, что именно сломалось.
+     */
+    private fun failDaemon(engine: xyz.azraellab.zapp.core.daemon.DaemonEngine, tag: String, e: Throwable) {
+        AppLog.log(tag, "start failed: ${e.causeText()}")
+        engine.fail("start failed: ${e.causeText()}")
     }
 
     fun stopDpi() {
@@ -646,13 +937,20 @@ class AppState(
      */
     fun connectVpn() {
         if (!tunnel.supported) return
+        // Пользовательский коннект забирает сессию у noroot-обхода: её
+        // поднимала автоматика, а гасить выбор пользователя нельзя.
+        dpiSessionOwned = false
         AppLog.log("vpn", "connect requested (group=${config.vpn.groupMode})")
-        tunnel.connect()
+        // Синхронная часть подключения: исключение здесь иначе ушло бы
+        // мимо UI, а карточка осталась бы в DISCONNECTED без объяснений.
+        runCatching { tunnel.connect() }
+            .onFailure { tunnel.fail("connect failed: ${it.causeText()}") }
     }
 
     fun disconnectVpn() {
         AppLog.log("vpn", "disconnect requested")
-        tunnel.disconnect()
+        runCatching { tunnel.disconnect() }
+            .onFailure { tunnel.fail("disconnect failed: ${it.causeText()}") }
     }
 
     /**
@@ -671,18 +969,40 @@ class AppState(
      * остановиться» здесь исключена.
      */
     fun connectTor() {
-        if (!tunnel.supported) return
-        val torProfiles = config.vpn.profiles.filter { it.protocol == VpnProtocol.TOR.code }
-        val bridge = VpnConnects.torBridgeFor(torProfiles, config.vpn.activeProfileId)
+        val bridge = selectTorBridge()
         if (bridge == null) {
             vpnNotice = VpnNotice(Str.TOR_NO_BRIDGES)
             AppLog.log("vpn", "tor connect refused: no bridges")
             return
         }
+        connectTorBridge(bridge)
+    }
+
+    /**
+     * Мост для подключения.
+     *
+     * В автовыборе ([VpnConfig.groupMode]) ручной выбор отбрасывается:
+     * тумблер обещает «самый быстрый», поэтому выбранный когда-то мост
+     * не должен его обходить. Если живых не осталось -- откат к
+     * выбранному, пусть мёртвому: tor попробует сам, список мостов в
+     * конфиге у него есть.
+     */
+    private fun selectTorBridge(): VpnProfile? {
+        val bridges = VpnConnects.torBridges(config.vpn.profiles)
+        val preferred = if (config.vpn.groupMode) "" else config.vpn.activeProfileId
+        return VpnConnects.torBridgeFor(bridges, preferred)
+            ?: VpnConnects.torBridgeFor(bridges, config.vpn.activeProfileId)
+    }
+
+    /** Поднимает туннель ровно через [bridge]; см. [connectTor]. */
+    private fun connectTorBridge(bridge: VpnProfile) {
+        if (!tunnel.supported) return
+        dpiSessionOwned = false
         selectProfile(bridge.id)
         AppLog.log("vpn", "tor connect requested (bridge=${bridge.name.ifBlank { bridge.id }})")
         if (tunnel.state.value == TunnelState.DISCONNECTED) {
-            tunnel.connect()
+            runCatching { tunnel.connect() }
+                .onFailure { tunnel.fail("connect failed: ${it.causeText()}") }
             return
         }
         scope.launch {
@@ -691,8 +1011,10 @@ class AppState(
             while (tunnel.state.value != TunnelState.DISCONNECTED && waits < 50) {
                 delay(100); waits++
             }
-            tunnel.applyConfig(config.vpn)
-            tunnel.connect()
+            runCatching {
+                tunnel.applyConfig(config.vpn)
+                tunnel.connect()
+            }.onFailure { tunnel.fail("connect failed: ${it.causeText()}") }
         }
     }
 
@@ -708,11 +1030,20 @@ class AppState(
         if (_updateState.value == UpdateState.CHECKING) return
         _updateState.value = UpdateState.CHECKING
         scope.launch {
-            val found = runCatching { fetchLatestRelease() }.getOrNull()
+            val result = runCatching { fetchLatestRelease() }
+            val found = result.getOrNull()
             if (found == null) {
+                // Состояние ERROR всегда с причиной: сеть, таймаут, статус
+                // GitHub -- видно, что именно вышло, а не «Не удалось
+                // проверить» в пустоту. Строка идёт и в журнал ошибок:
+                // без неё багрепорт об обновлениях был бы голым.
+                val cause = result.exceptionOrNull()?.causeText() ?: "unknown"
+                updateError = cause
+                AppLog.log("update", "check failed: $cause")
                 _updateState.value = UpdateState.ERROR
                 return@launch
             }
+            updateError = null
             _release.value = found
             val newer = isNewerVersion(found.version, appVersion)
             _updateState.value = if (newer) UpdateState.AVAILABLE else UpdateState.CURRENT
@@ -740,6 +1071,19 @@ class AppState(
         val chosen = AppLang.of(AppLangStore.read())
         val lang = resolveLang(chosen, AppLangStore.systemCode())
         notifier.show(title = str.of(lang), body = arg, tag = tag)
+    }
+
+    /**
+     * Причина сбоя подмены координат для тела уведомления.
+     *
+     * «Подмена GPS не запустилась» без причины -- ровно та же голая
+     * ошибка, что и «Ошибка» без строки под статусом. Причина берётся из
+     * журнала движка и рендерится на том же языке, что и заголовок.
+     */
+    private fun gpsErrorCause(): String {
+        val event = gpsEngine.log.value.errorEvent() ?: return ""
+        val lang = resolveLang(AppLang.of(AppLangStore.read()), AppLangStore.systemCode())
+        return event.text.of(lang) + if (event.arg.isEmpty()) "" else " ${event.arg}"
     }
 
     // --- VPN: источники, проверка живости, импорт ---
@@ -1234,7 +1578,25 @@ class AppState(
                 }
             }
         }
+        // Noroot-обход: правила живут в конфиге туннеля, поэтому смена
+        // его состояния тоже пересчит -- остановили VPN при живых демонах
+        // обхода (и наоборот), и DPI-сессия должна встать или упасть.
+        scope.launch {
+            tunnel.state.collect {
+                if (!BuildMode.rootAllowed) refreshDpiOverlay(dpiPortSets())
+            }
+        }
     }
+
+    /**
+     * Признак владельца туннельной сессии для noroot-обхода.
+     *
+     * true -- сессию подняла автоматика обхода (демоны живут, туннель
+     * стоял), и гасить её вместе с демонами. Ложь -- сессия
+     * пользовательская (VPN/Tor): снимать её из-за остановки zapret
+     * нельзя, а обычный connect() режим уже переключает сам.
+     */
+    private var dpiSessionOwned = false
 
     /**
      * Свежие NFQUEUE-правила под текущее состояние демонов.
@@ -1245,6 +1607,22 @@ class AppState(
      * автоперезапуска процесс мёртв, и слушателя для очереди нет.
      */
     private fun refreshDpiFirewall() {
+        val sets = dpiPortSets()
+        val tcp = sets.first
+        val udp = sets.second
+        scope.launch(Dispatchers.IO) {
+            if (tcp.isEmpty() && udp.isEmpty()) {
+                DpiFirewall.disable()
+            } else {
+                DpiFirewall.enable(tcp.toList(), udp.toList())
+            }
+        }
+        // Noroot: ядерных правил нет, обход переезжает в конфиг туннеля.
+        if (!BuildMode.rootAllowed) refreshDpiOverlay(sets)
+    }
+
+    /** Порты живых демонов обхода: (tcp, udp), свежие из конфига и состояний. */
+    private fun dpiPortSets(): Pair<Set<String>, Set<String>> {
         val up = setOf(DaemonState.STARTING, DaemonState.RUNNING)
         val tcp = linkedSetOf<String>()
         val udp = linkedSetOf<String>()
@@ -1260,11 +1638,36 @@ class AppState(
             tcp += "80"
             tcp += "443"
         }
-        scope.launch(Dispatchers.IO) {
-            if (tcp.isEmpty() && udp.isEmpty()) {
-                DpiFirewall.disable()
-            } else {
-                DpiFirewall.enable(tcp.toList(), udp.toList())
+        return tcp to udp
+    }
+
+    /**
+     * Noroot-обход: состояние релея и сессии под свежими портами.
+     *
+     * Демоны поднимают релей через UserlandDpiEngine, но трафик идёт по
+     * правилам уже поднятого туннеля, поэтому здесь решается три вещи:
+     * поднять пассивную сессию, если туннель стоит; переподнять её, если
+     * правила изменились; снять её, если обход выключили, а сессию подняли
+     * именно мы (см. [dpiSessionOwned]).
+     */
+    private fun refreshDpiOverlay(sets: Pair<Set<String>, Set<String>>) {
+        val (tcp, udp) = sets
+        val changed = DpiOverlay.update(tcp, udp.isNotEmpty())
+        if (DpiOverlay.active) {
+            when (tunnel.state.value) {
+                TunnelState.DISCONNECTED -> {
+                    AppLog.log("dpi", "userland relay: starting passthrough session")
+                    dpiSessionOwned = true
+                    tunnel.connectDpi()
+                }
+                TunnelState.CONNECTED -> if (changed) tunnel.refreshDpi()
+                else -> Unit
+            }
+        } else if (dpiSessionOwned) {
+            dpiSessionOwned = false
+            if (tunnel.state.value == TunnelState.CONNECTED) {
+                AppLog.log("dpi", "userland relay: no daemons -- session down")
+                tunnel.disconnect()
             }
         }
     }

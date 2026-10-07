@@ -7,6 +7,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import xyz.azraellab.zapp.core.BuildMode
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.native.BinaryResolver
 import xyz.azraellab.zapp.core.root.RootShell
@@ -15,7 +16,14 @@ import java.io.File
 /** Метка logcat: одна на оба демона, различаются по префиксу строки. */
 private const val TAG = "ZAPP-DAEMON"
 
-actual fun createDaemonEngine(id: DaemonId): DaemonEngine = JvmDaemonEngine(id)
+actual fun createDaemonEngine(id: DaemonId): DaemonEngine = when {
+    // Noroot-сборка: nfqueue недоступен, zapret/goodbyedpi идут через
+    // userland-релей туннеля. Проверка здесь, а не в старте: карточка
+    // демона сразу показывает свой механизм, а не первый же провал бинаря.
+    !BuildMode.rootAllowed && (id == DaemonId.ZAPRET || id == DaemonId.GOODBYEDPI) ->
+        UserlandDpiEngine(id)
+    else -> JvmDaemonEngine(id)
+}
 
 actual fun daemonLogcat(tag: String, line: String) {
     // Рефлексия вместо android.util.Log: класс лежит в общем JVM-слое,
@@ -51,6 +59,10 @@ private class JvmDaemonEngine(
     @Volatile
     private var resolvedBinary: String? = null
 
+    /** Причина последнего неудачного [materialize]; null, если файлы писались. */
+    @Volatile
+    private var materializeError: String? = null
+
     private var monitorJob: Job? = null
     private var pkillJob: Job? = null
 
@@ -72,7 +84,10 @@ private class JvmDaemonEngine(
             }
             val args = materialize(spec) ?: run {
                 // Не бинарь, а файлы: причины разные, и путать их в
-                // журнале -- искать не ту поломку.
+                // журнале -- искать не ту поломку. Сырая причина идёт
+                // отдельной строкой: событие хранит только факт «не
+                // записаны», а для багрепорта нужен именно шелл-вывод.
+                materializeError?.let { log(DaemonEvent(raw = "files not written: $it")) }
                 log(DaemonEvent(Str.DAEMON_FILES_FAILED, arg = binaryName))
                 setState(DaemonState.ERROR)
                 return@launch
@@ -223,27 +238,53 @@ private class JvmDaemonEngine(
      */
     private fun materialize(spec: DaemonSpec): List<String>? {
         if (spec.files.isEmpty()) return spec.args
+        materializeError = null
 
         val substitutions = mutableMapOf<String, String>()
         if (RootShell.available()) {
             val dir = "/data/local/tmp/zapp/${id.name.lowercase()}"
-            if (!RootShell.run("mkdir -p ${RootShell.quote(dir)}", 2000).ok) return null
+            if (!RootShell.run("mkdir -p ${RootShell.quote(dir)}", 2000).ok) {
+                materializeError = "mkdir $dir"
+                return null
+            }
             for ((name, content) in spec.files) {
                 val path = "$dir/$name"
                 val payload = java.util.Base64.getEncoder().encodeToString(content.toByteArray())
-                val write = RootShell.run(
-                    "echo $payload | base64 -d > ${RootShell.quote(path)}",
-                    3000
-                )
-                if (!write.ok) return null
+                // Вся команда уходит в argv одним куском (`su ... -c <cmd>`),
+                // а ядро режет argv по MAX_ARG_STRLEN (128K): group-конфиг на
+                // сотнях профилей одним `echo` падал с E2BIG и превращался в
+                // «files not written». Пишем по 60K: граница кратна 4 -- base64
+                // режется только по группам символов, декодеру можно и пачками.
+                var first = true
+                var ok = true
+                payload.chunked(60_000).forEach { part ->
+                    if (!ok) return@forEach
+                    val op = if (first) ">" else ">>"
+                    first = false
+                    val write = RootShell.run(
+                        "echo $part | base64 -d $op ${RootShell.quote(path)}",
+                        5000
+                    )
+                    if (!write.ok) {
+                        ok = false
+                        materializeError = "write $path: ${write.output.ifBlank { "exit ${write.code}" }}"
+                    }
+                }
+                if (!ok) return null
                 substitutions[name] = path
             }
         } else {
             val dir = File(File(System.getProperty("java.io.tmpdir")), "zapp/${id.name.lowercase()}")
-            if (!runCatching { dir.mkdirs() }.getOrDefault(false) && !dir.isDirectory) return null
+            if (!runCatching { dir.mkdirs() }.getOrDefault(false) && !dir.isDirectory) {
+                materializeError = "mkdir $dir"
+                return null
+            }
             for ((name, content) in spec.files) {
                 val file = File(dir, name)
-                runCatching { file.writeText(content) }.getOrElse { return null }
+                runCatching { file.writeText(content) }.getOrElse {
+                    materializeError = "write $file: ${it.message ?: it::class.simpleName.orEmpty()}"
+                    return null
+                }
                 substitutions[name] = file.absolutePath
             }
         }

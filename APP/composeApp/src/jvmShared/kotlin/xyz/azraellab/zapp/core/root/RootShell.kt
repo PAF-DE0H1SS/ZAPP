@@ -41,6 +41,9 @@ object RootShell {
 
     /** Найденная форма вызова; пробуется один раз на сессию. */
     fun mode(): Mode {
+        // Noroot-сборка: ни одной пробы su. Режим известен на этапе сборки,
+        // поэтому решение не зависит от исхода пробы и от устройства.
+        if (!xyz.azraellab.zapp.core.BuildMode.rootAllowed) return Mode.NONE
         probed?.let { return it }
         synchronized(probeLock) {
             probed?.let { return it }

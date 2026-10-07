@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,7 +42,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppState
+import xyz.azraellab.zapp.core.RegionTuner
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.UsageProfile
 import xyz.azraellab.zapp.core.UsageTuner
@@ -50,6 +53,9 @@ import xyz.azraellab.zapp.core.permissions.PermissionState
 import xyz.azraellab.zapp.core.update.UpdateState
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
+import xyz.azraellab.zapp.ui.components.ComponentColors
+import xyz.azraellab.zapp.ui.components.RegionDropdown
+import xyz.azraellab.zapp.ui.components.ZappBanner
 import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappButtonRow
 import xyz.azraellab.zapp.ui.components.ZappCard
@@ -139,7 +145,8 @@ private fun WelcomeStep(onNext: () -> Unit) {
     ZappButton(
         text = tr(Str.WELCOME_NEXT),
         onClick = { onNext() },
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        path = "welcome.next"
     )
 }
 
@@ -164,7 +171,8 @@ private fun PermissionsStep(state: AppState, onNext: () -> Unit, onBack: () -> U
         statuses.forEach { status ->
             PermissionRow(
                 status = status,
-                onAction = { state.permissions.request(status.id) {} }
+                onAction = { state.permissions.request(status.id) {} },
+                path = "welcome.permission.${status.id.name.lowercase()}"
             )
         }
     }
@@ -183,19 +191,23 @@ private fun PermissionsStep(state: AppState, onNext: () -> Unit, onBack: () -> U
             text = tr(Str.COMMON_BACK),
             role = ButtonRole.GHOST,
             onClick = onBack,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            path = "welcome.back"
         )
         ZappButton(
             text = tr(Str.WELCOME_NEXT),
             enabled = allGranted,
             onClick = { onNext() },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            path = "welcome.next"
         )
     }
 }
 
 /** Состояние шага автонастройки. */
-private enum class AutoStep { PENDING, RUNNING, DONE, FAILED }/**
+private enum class AutoStep { PENDING, RUNNING, DONE, FAILED }
+
+/**
  * Автонастройка: опросник о себе, затем последовательные шаги.
  *
  * Опросник идёт первым и применяется сразу при выборе ответа: класс
@@ -204,6 +216,11 @@ private enum class AutoStep { PENDING, RUNNING, DONE, FAILED }/**
  * сейчас и что осталось. Таймауты нужны, чтобы сбой сети или медленный
  * репозиторий не оставил экран висеть вечно -- после таймаута шаг
  * помечается неудачным, а настройка продолжается.
+ *
+ * Пропустить шаг нельзя: приветствие не является пропускаемым просто так.
+ * Вместо этого есть два пути к «Начать»: автонастройка доходит до конца
+ * (неважно, успешно или с ошибками) или пользователь загружает свой пресет --
+ * тогда автонастройка отключается, а настройки берутся из пресета.
  */
 @Composable
 private fun AutoSetupStep(state: AppState) {
@@ -215,10 +232,16 @@ private fun AutoSetupStep(state: AppState) {
     var perfStep by remember { mutableStateOf(AutoStep.PENDING) }
     var finished by remember { mutableStateOf(false) }
 
+    // Загруженный пресет выключает автонастройку: настройки уже заданы.
+    var presetApplied by remember { mutableStateOf(false) }
+    var presetError by remember { mutableStateOf<Str?>(null) }
+    val scope = rememberCoroutineScope()
+
     // --- Мини-опросник: ответы применяются на месте ---
     var purpose by remember { mutableStateOf(state.config.usage.purpose) }
     var device by remember { mutableStateOf(state.config.usage.device) }
     var priority by remember { mutableStateOf(state.config.usage.priority) }
+    var region by remember { mutableStateOf(state.config.region) }
 
     fun applyUsage() {
         if (purpose.isBlank() && device.isBlank() && priority.isBlank()) return
@@ -232,7 +255,17 @@ private fun AutoSetupStep(state: AppState) {
         }
     }
 
-    LaunchedEffect(Unit) {
+    fun applyRegion(code: String) {
+        region = code
+        state.mutate { RegionTuner.apply(it, code) }
+    }
+
+    LaunchedEffect(presetApplied) {
+        // Пресет уже применил все настройки -- автошаги не нужны.
+        if (presetApplied) {
+            finished = true
+            return@LaunchedEffect
+        }
         val sourceStatus = state.sourceStatus
         val checkProgress = state.checkProgress
         val strategyRunning = state.strategyRunning
@@ -329,6 +362,22 @@ private fun AutoSetupStep(state: AppState) {
         color = MaterialTheme.colorScheme.primary
     )
     ZappCard(modifier = Modifier.fillMaxWidth()) {
+        // Страна -- фактор автонастройки: от неё скрываются протоколы.
+        Text(
+            text = tr(Str.WELCOME_Q_REGION),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = tr(Str.WELCOME_Q_REGION_HINT),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        RegionDropdown(
+            selected = region,
+            onSelect = ::applyRegion,
+            path = "welcome.q_region"
+        )
         ZappChoiceRow(
             label = tr(Str.WELCOME_Q_PURPOSE),
             options = listOf(
@@ -338,7 +387,8 @@ private fun AutoSetupStep(state: AppState) {
                 Choice(UsageProfile.PURPOSE_PRIVACY, tr(Str.Q_PURPOSE_PRIVACY))
             ),
             selected = purpose,
-            onSelect = { purpose = it; applyUsage() }
+            onSelect = { purpose = it; applyUsage() },
+            path = "welcome.q_purpose"
         )
         ZappChoiceRow(
             label = tr(Str.WELCOME_Q_DEVICE),
@@ -348,7 +398,8 @@ private fun AutoSetupStep(state: AppState) {
                 Choice(UsageProfile.DEVICE_HIGH, tr(Str.Q_DEVICE_HIGH))
             ),
             selected = device,
-            onSelect = { device = it; applyUsage() }
+            onSelect = { device = it; applyUsage() },
+            path = "welcome.q_device"
         )
         ZappChoiceRow(
             label = tr(Str.WELCOME_Q_PRIORITY),
@@ -358,12 +409,55 @@ private fun AutoSetupStep(state: AppState) {
                 Choice(UsageProfile.PRIORITY_BATTERY, tr(Str.Q_PRIORITY_BATTERY))
             ),
             selected = priority,
-            onSelect = { priority = it; applyUsage() }
+            onSelect = { priority = it; applyUsage() },
+            path = "welcome.q_priority"
+        )
+    }
+
+    // --- Пресет вместо автонастройки ---
+    if (presetApplied) {
+        ZappBanner(
+            title = tr(Str.WELCOME_AUTO_OFF),
+            state = ComponentColors.State.ACTIVE
+        )
+    } else {
+        ZappCard(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = tr(Str.WELCOME_LOAD_PRESET_HINT),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            ZappButton(
+                text = tr(Str.WELCOME_LOAD_PRESET),
+                role = ButtonRole.SECONDARY,
+                enabled = !finished,
+                onClick = {
+                    scope.launch {
+                        val result = state.importPreset()
+                        if (result.ok) {
+                            presetApplied = true
+                            finished = true
+                        } else {
+                            presetError = result.key()
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                path = "welcome.load_preset"
+            )
+        }
+    }
+    presetError?.let { key ->
+        Text(
+            text = tr(key),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            textAlign = TextAlign.Center
         )
     }
 
     val steps = listOf(sources, pings, strategy, components, updates, perfStep)
-    val doneCount = steps.count { it == AutoStep.DONE || it == AutoStep.FAILED }
+    val doneCount = if (presetApplied) steps.size else steps.count { it == AutoStep.DONE || it == AutoStep.FAILED }
     val progress by animateFloatAsState(
         targetValue = doneCount / steps.size.toFloat(),
         animationSpec = tween(500, easing = LinearEasing),
@@ -375,29 +469,21 @@ private fun AutoSetupStep(state: AppState) {
     )
 
     ZappCard(modifier = Modifier.fillMaxWidth()) {
-        AutoRow(tr(Str.WELCOME_AUTO_SOURCES), sources)
-        AutoRow(tr(Str.WELCOME_AUTO_PING), pings)
-        AutoRow(tr(Str.WELCOME_AUTO_STRATEGY), strategy)
-        AutoRow(tr(Str.WELCOME_AUTO_COMPONENTS), components)
-        AutoRow(tr(Str.WELCOME_AUTO_UPDATES), updates)
-        AutoRow(tr(Str.WELCOME_AUTO_PERF), perfStep)
+        AutoRow(tr(Str.WELCOME_AUTO_SOURCES), if (presetApplied) AutoStep.DONE else sources)
+        AutoRow(tr(Str.WELCOME_AUTO_PING), if (presetApplied) AutoStep.DONE else pings)
+        AutoRow(tr(Str.WELCOME_AUTO_STRATEGY), if (presetApplied) AutoStep.DONE else strategy)
+        AutoRow(tr(Str.WELCOME_AUTO_COMPONENTS), if (presetApplied) AutoStep.DONE else components)
+        AutoRow(tr(Str.WELCOME_AUTO_UPDATES), if (presetApplied) AutoStep.DONE else updates)
+        AutoRow(tr(Str.WELCOME_AUTO_PERF), if (presetApplied) AutoStep.DONE else perfStep)
     }
 
-    ZappButtonRow(modifier = Modifier.fillMaxWidth()) {
-        ZappButton(
-            text = tr(Str.WELCOME_SKIP),
-            role = ButtonRole.GHOST,
-            enabled = !finished,
-            onClick = { finished = true },
-            modifier = Modifier.weight(1f)
-        )
-        ZappButton(
-            text = tr(Str.WELCOME_DONE),
-            enabled = finished,
-            onClick = { state.finishWelcome() },
-            modifier = Modifier.weight(1f)
-        )
-    }
+    ZappButton(
+        text = tr(Str.WELCOME_DONE),
+        enabled = finished,
+        onClick = { state.finishWelcome() },
+        modifier = Modifier.fillMaxWidth(),
+        path = "welcome.done"
+    )
 }
 
 /**

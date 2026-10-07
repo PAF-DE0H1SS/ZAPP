@@ -94,7 +94,7 @@ Requires JDK 21 (with `jpackage` for desktop installers) and Android SDK with pl
 <summary><b>Android</b></summary>
 
 ```bash
-./gradlew :app:assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleDebug      # apk/{root,noroot}/debug/ZAPP[-ROOT]-<ver>-debug.apk
 ./gradlew :app:assembleRelease    # R8 minify + resource shrink -> app/build/outputs/apk/release/
 ```
 
@@ -278,7 +278,7 @@ namespace Android-библиотеки `xyz.azraellab.zapp.shared`. Namespace --
 <summary><b>Android</b></summary>
 
 ```bash
-./gradlew :app:assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleDebug      # apk/{root,noroot}/debug/ZAPP[-ROOT]-<ver>-debug.apk
 ./gradlew :app:assembleRelease    # R8 + shrink ресурсов -> app/build/outputs/apk/release/
 ```
 
@@ -463,7 +463,7 @@ Android 库 namespace 是 `xyz.azraellab.zapp.shared`。namespace 是库在 Andr
 <summary><b>Android</b></summary>
 
 ```bash
-./gradlew :app:assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleDebug      # apk/{root,noroot}/debug/ZAPP[-ROOT]-<ver>-debug.apk
 ./gradlew :app:assembleRelease    # R8 混淆 + 资源压缩 -> app/build/outputs/apk/release/
 ```
 

@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
+import xyz.azraellab.zapp.core.daemon.DpiOverlay
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -108,5 +109,81 @@ class SingboxConfigTest {
         val built = singleProfileDns(VpnConfig(dnsViaProxy = false))
         val dns0 = dnsServerByTag(built, "dns-0") ?: error("нет dns-0")
         assertNull(dns0["detour"], "без dnsViaProxy детур не добавляется")
+    }
+
+    // --- userland-обход DPI (сборки без root) ---
+
+    private fun routeOf(built: SingboxConfig.Built): JsonObject =
+        json.parseToJsonElement(built.json).jsonObject["route"]!!.jsonObject
+
+    private fun rulesOf(built: SingboxConfig.Built): List<JsonObject> =
+        routeOf(built)["rules"]!!.jsonArray.map { it.jsonObject }
+
+    private fun overlayOn() {
+        DpiOverlay.update(listOf("80", "443"), quicBlock = true)
+    }
+
+    private fun overlayOff() {
+        DpiOverlay.update(emptyList(), quicBlock = false)
+    }
+
+    @Test
+    fun dpiSessionRoutesFilteredTcpToRelayAndRejectsQuic() {
+        overlayOn()
+        try {
+            val built = SingboxConfig.buildDpi(VpnConfig())
+            val socks = outboundOfType(built, "socks")
+                ?: error("в DPI-сессии нет socks-outbound'а релея")
+            assertEquals(DpiOverlay.RELAY_TAG, socks["tag"]?.jsonPrimitive?.content)
+            assertEquals(DpiOverlay.RELAY_PORT, socks["server_port"]?.jsonPrimitive?.int)
+            assertEquals(
+                "direct", routeOf(built)["final"]?.jsonPrimitive?.content,
+                "пассивная сессия -- без прокси, финал прямой"
+            )
+            val rules = rulesOf(built)
+            val relay = rules.firstOrNull {
+                it["outbound"]?.jsonPrimitive?.content == DpiOverlay.RELAY_TAG
+            } ?: error("правила не ведут целевые порты на релей")
+            assertEquals(
+                listOf(80, 443),
+                relay["port"]!!.jsonArray.map { it.jsonPrimitive.int },
+                "порты релея -- числа, как ждет схема sing-box"
+            )
+            assertTrue(
+                rules.any {
+                    it["protocol"]?.jsonPrimitive?.content == "quic" &&
+                        it["action"]?.jsonPrimitive?.content == "reject"
+                },
+                "QUIC обязан блокироваться при активном обходе"
+            )
+        } finally {
+            overlayOff()
+        }
+    }
+
+    @Test
+    fun vpnSessionRejectsQuicButNeverSendsTrafficToRelay() {
+        overlayOn()
+        try {
+            val rules = rulesOf(group())
+            assertTrue(
+                rules.none { it["outbound"]?.jsonPrimitive?.content == DpiOverlay.RELAY_TAG },
+                "в VPN-сессии релей не должен перехватывать трафик -- прокси ушел бы мимо узла"
+            )
+            assertTrue(
+                rules.any { it["protocol"]?.jsonPrimitive?.content == "quic" },
+                "блокировка QUIC -- общее правило, оно применимо и к VPN"
+            )
+        } finally {
+            overlayOff()
+        }
+    }
+
+    @Test
+    fun withoutOverlayRoutesStayUntouched() {
+        overlayOff()
+        val rules = rulesOf(group())
+        assertTrue(rules.none { it["outbound"]?.jsonPrimitive?.content == DpiOverlay.RELAY_TAG })
+        assertTrue(rules.none { it["protocol"]?.jsonPrimitive?.content == "quic" })
     }
 }

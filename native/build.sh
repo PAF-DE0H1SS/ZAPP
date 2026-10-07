@@ -130,6 +130,15 @@ build_box() {
   cd "$HERE"
 }
 
+build_ovpntun() {
+  # Мост openvpn-afunix: пакеты tun-дескриптора приложения <-> socketpair
+  # openvpn. Одиночный C-файл без зависимостей.
+  local abi="$1" host="$2" cprefix="$3"
+  local cc; cc="$(cc_for x "$host" "$cprefix")"
+  "$cc" -std=c99 -Os -D_FORTIFY_SOURCE=2 -fPIE -pie \
+    -o "$OUT/$abi/ovpntun" "$HERE/ovpntun.c"
+}
+
 mkdir -p "$OUT" "$SRC"
 # Сырьё качается при его отсутствии (в git оно не входит).
 fetch() { [ -f "$SRC/$2" ] || curl -sfL -o "$SRC/$2" "$1"; }
@@ -212,6 +221,7 @@ for entry in "${ABIS[@]}"; do
   build_goodbyedpi "$abi" "$host" "$cprefix"
   build_wg "$abi" "$host" "$cprefix"
   build_box "$abi" "$goarch" "$goarm"
-  ls -la "$OUT/$abi/nfqws" "$OUT/$abi/goodbyedpi" "$OUT/$abi/wg" "$OUT/$abi/box"
+  build_ovpntun "$abi" "$host" "$cprefix"
+  ls -la "$OUT/$abi/nfqws" "$OUT/$abi/goodbyedpi" "$OUT/$abi/wg" "$OUT/$abi/box" "$OUT/$abi/ovpntun"
 done
 echo "=== готово ==="

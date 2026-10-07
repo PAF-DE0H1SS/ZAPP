@@ -106,13 +106,28 @@ esac
 DIST="build/dist"
 mkdir -p "$DIST"
 
-cp app/build/outputs/apk/debug/app-debug.apk "$DIST/ZAPP-android-debug.apk"
-if [ -f app/build/outputs/apk/release/app-release.apk ]; then
-  cp app/build/outputs/apk/release/app-release.apk "$DIST/ZAPP-android-release.apk"
+# APK: два flavor'а (root/noroot), имена заданы в app/build.gradle.kts --
+# ZAPP-ROOT-<version>[-debug].apk и ZAPP-<version>[-debug].apk.
+# Копируем как есть, в dist ровно те имена, что увидит пользователь.
+shopt -s nullglob
+APKS=(app/build/outputs/apk/*/*/*.apk)
+shopt -u nullglob
+if [ ${#APKS[@]} -eq 0 ]; then
+  echo "[ZAPP] APK не найдены в app/build/outputs/apk" >&2
+  exit 1
+fi
+SIGNED_FOUND=0
+for apk in "${APKS[@]}"; do
+  cp "$apk" "$DIST/"
+  base=$(basename "$apk")
+  if [[ "$base" == *unsigned* ]]; then
+    echo "[ZAPP] ВНИМАНИЕ: $base без подписи (нет signing/keystore.properties)"
+  elif [[ "$base" != *-debug.apk ]]; then
+    SIGNED_FOUND=1
+  fi
+done
+if [ "$SIGNED_FOUND" = 1 ]; then
   echo "[ZAPP] release APK подписан (signing/keystore.properties)"
-elif [ -f app/build/outputs/apk/release/app-release-unsigned.apk ]; then
-  cp app/build/outputs/apk/release/app-release-unsigned.apk "$DIST/ZAPP-android-release-unsigned.apk"
-  echo "[ZAPP] ВНИМАНИЕ: release APK без подписи (нет signing/keystore.properties)"
 fi
 
 DESKTOP_JAR=$(ls desktopApp/build/compose/jars/*.jar 2>/dev/null | head -1 || true)

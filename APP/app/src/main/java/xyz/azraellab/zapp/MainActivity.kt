@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import xyz.azraellab.zapp.core.AndroidCtx
+import xyz.azraellab.zapp.core.BuildMode
 import xyz.azraellab.zapp.core.installPresetFileBridge
 import xyz.azraellab.zapp.core.permissions.AndroidPermissionBridge
 
@@ -79,6 +80,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Флаг режима (root/noroot) -- до любых движков: RootShell, демоны и
+        // journal AppState читают BuildMode уже во время первого кадра.
+        BuildMode.rootAllowed = BuildConfig.ZAPP_ROOT
+
         AndroidCtx.attach(this)
 
         // Мост устанавливается до первого Composable: иначе кнопки импорта и

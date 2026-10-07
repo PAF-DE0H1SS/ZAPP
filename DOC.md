@@ -226,7 +226,7 @@ release-сборка выходит неподписанной.
 ### Проверка подписи
 
 ```bash
-apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk
+apksigner verify --print-certs app/build/outputs/apk/root/release/ZAPP-ROOT-<ver>.apk
 ```
 
 `keytool -printcert -jarfile` на APK отвечает `Not a signed jar file`. Это не
@@ -684,7 +684,7 @@ chown -R azrael:users .
 Проверка, что приложение не падает на устройстве:
 
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/root/debug/ZAPP-ROOT-<ver>-debug.apk
 adb shell am start -n xyz.azraellab.zapp/.MainActivity
 adb logcat -d | grep -iE "FATAL|AndroidRuntime"
 ```

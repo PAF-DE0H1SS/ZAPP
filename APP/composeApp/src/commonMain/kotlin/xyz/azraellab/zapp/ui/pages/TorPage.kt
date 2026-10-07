@@ -16,13 +16,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import xyz.azraellab.zapp.core.AppState
-import xyz.azraellab.zapp.core.LinkSpeedBus
 import xyz.azraellab.zapp.core.Str
-import xyz.azraellab.zapp.core.toDisplayString
 import xyz.azraellab.zapp.core.TorBridges
 import xyz.azraellab.zapp.core.VpnConnects
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.engine.TunnelState
+import xyz.azraellab.zapp.core.log.errorLine
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ZappButton
@@ -31,6 +30,7 @@ import xyz.azraellab.zapp.ui.components.ZappChoiceRow
 import xyz.azraellab.zapp.ui.components.ZappEmptyState
 import xyz.azraellab.zapp.ui.components.ZappExpandableCard
 import xyz.azraellab.zapp.ui.components.ZappListRow
+import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.tr
 
@@ -87,18 +87,19 @@ fun TorPage(state: AppState) {
                         ZappButton(
                             text = tr(Str.COMMON_STOP),
                             role = ButtonRole.DANGER,
-                            onClick = { state.disconnectVpn() }
+                            onClick = { state.disconnectVpn() },
+                            path = "tor.stop"
                         )
                     } else {
                         ZappButton(
                             text = tr(Str.COMMON_START),
-                            onClick = { state.connectTor() }
+                            onClick = { state.connectTor() },
+                            path = "tor.start"
                         )
                     }
                 }
                 if (tunnelState == TunnelState.ERROR) {
-                    val reason = tunnelLog.lastOrNull { it.startsWith("error") || it.startsWith("box failed") }
-                        ?: tunnelLog.lastOrNull()
+                    val reason = tunnelLog.errorLine()
                     if (reason != null) {
                         Text(
                             text = reason,
@@ -117,26 +118,9 @@ fun TorPage(state: AppState) {
                         )
                     }
                 }
-                // Скорость туннеля и активные режимы: живут, пока
-                // подключены, обновляются раз в секунду отдельным опросом
-                // счётчиков. Режимы -- только работающие.
-                val linkSpeed by LinkSpeedBus.current.collectAsState()
-                val modes = activeModes(state, tunnelState)
-                val speedLine = when {
-                    tunnelState == TunnelState.CONNECTED && modes.isNotEmpty() ->
-                        (linkSpeed?.toDisplayString() ?: "↓ …  ↑ …") + "  ($modes)"
-                    tunnelState == TunnelState.CONNECTED ->
-                        linkSpeed?.toDisplayString() ?: "↓ …  ↑ …"
-                    modes.isNotEmpty() -> "($modes)"
-                    else -> ""
-                }
-                if (speedLine.isNotEmpty()) {
-                    Text(
-                        text = speedLine,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                // Скорость туннеля, пинг и активные режимы: живут, пока
+                // подключены, обновляются фоновыми опросами.
+                SpeedLine(state, tunnelState)
             }
         }
 
@@ -148,6 +132,7 @@ fun TorPage(state: AppState) {
             state = state,
             title = Str.TOR_SOURCES,
             kind = "tor",
+            prefix = "tor",
             sources = remember(state.config.vpn.sources) {
                 VpnConnects.sourcesByKind(state.config.vpn.sources, "tor")
             }
@@ -157,12 +142,13 @@ fun TorPage(state: AppState) {
         ZappCard {
             ZappListRow(
                 title = tr(Str.VPN_TOR_SOCKS),
-                subtitle = "127.0.0.1:${state.config.vpn.torSocksPort}"
+                subtitle = "127.0.0.1:${state.config.vpn.torSocksPort}",
+                path = "tor.socks"
             )
         }
 
         // --- Журнал туннеля ---
-        JournalExpandable(tunnelLog)
+        JournalExpandable(tunnelLog, path = "tor.log.expand")
     }
 }
 
@@ -207,8 +193,23 @@ private fun BridgesExpandable(state: AppState, checkProgress: AppState.CheckProg
     ZappExpandableCard(
         title = tr(Str.TOR_BRIDGES),
         badge = if (bridges.isEmpty()) null else bridges.size.toString(),
-        subtitle = source?.name?.takeIf { it.isNotBlank() }
+        subtitle = source?.name?.takeIf { it.isNotBlank() },
+        path = "tor.bridges.expand"
     ) {
+        // Автовыбор -- тот же тумблер, что на VPN: обещает «самый
+        // быстрый», поэтому выбирает мост при старте и сам же
+        // переключает, когда другой окажется заметно живее.
+        ZappCard {
+            ZappSettingRow(
+                title = tr(Str.VPN_GROUP_MODE),
+                subtitle = tr(Str.VPN_GROUP_MODE_SUB),
+                checked = config.groupMode,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(vpn = it.vpn.copy(groupMode = on)) }
+                },
+                path = "tor.autoselect"
+            )
+        }
         if (sources.size > 1) {
             ZappChoiceRow(
                 label = tr(Str.TOR_BRIDGE_SOURCE),
@@ -222,7 +223,8 @@ private fun BridgesExpandable(state: AppState, checkProgress: AppState.CheckProg
                     )
                 },
                 selected = source?.id,
-                onSelect = { id -> if (id != null) pick(id) }
+                onSelect = { id -> if (id != null) pick(id) },
+                path = "tor.bridge_source"
             )
         }
         if (sources.isNotEmpty()) {
@@ -234,7 +236,8 @@ private fun BridgesExpandable(state: AppState, checkProgress: AppState.CheckProg
                 },
                 enabled = !checkProgress.running,
                 onClick = { state.checkLinks(sources.map { it.id }) },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                path = "tor.check_all"
             )
         }
 
@@ -256,7 +259,8 @@ private fun BridgesExpandable(state: AppState, checkProgress: AppState.CheckProg
                     text = tr(Str.VPN_SHOW_MORE) + " (${bridges.size - shown.size})",
                     role = ButtonRole.GHOST,
                     onClick = { limit += pageSize },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    path = "tor.show_more"
                 )
             }
         }

@@ -47,6 +47,22 @@ interface TunnelEngine {
     /** Поднимает туннель по настройкам, уже переданным через [applyConfig]. */
     fun connect()
 
+    /**
+     * Поднимает пассивную DPI-сессию: туннель приложения без прокси.
+     *
+     * Нужна сборкам без root, где zapret/goodbyedpi работают не через
+     * NFQUEUE, а через релей в конфиге туннеля, -- сам релей живёт только
+     * внутри поднятой сессии. Вызывается AppState, когда демоны обхода
+     * запущены, а туннель стоит.
+     */
+    fun connectDpi() {}
+
+    /**
+     * Правила обхода DPI изменились при живой сессии: переподключает её
+     * с новым конфигом. Молчание на платформах без такого механизма.
+     */
+    fun refreshDpi() {}
+
     /** Снимает туннель. Без ошибок, даже если он и не поднимался. */
     fun disconnect()
 
@@ -59,6 +75,15 @@ interface TunnelEngine {
      * NFQUEUE, порты). Пустое тело на платформе без такой уборки.
      */
     suspend fun awaitStartup() {}
+
+    /**
+     * Пишет причину сбоя в журнал и ставит ERROR.
+     *
+     * Нужен вызывающему коду (AppState): исключение до или вокруг
+     * [connect] иначе остаётся незамеченным, а статус «Ошибка» без
+     * строки причины ничего не объясняет.
+     */
+    fun fail(message: String)
 }
 
 /** Базовая реализация с буфером лога: actual-классы добавляют только работу с системой. */
@@ -83,6 +108,11 @@ abstract class BaseTunnelEngine : TunnelEngine {
 
     protected fun clearLog() {
         _log.value = emptyList()
+    }
+
+    override fun fail(message: String) {
+        log("error: $message")
+        setState(TunnelState.ERROR)
     }
 
     private companion object {

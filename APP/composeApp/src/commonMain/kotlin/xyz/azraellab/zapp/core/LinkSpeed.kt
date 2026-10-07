@@ -117,3 +117,28 @@ private fun trimZero(value: Double): String {
 /** Строка плашки: «↓ 1.5 MB/s  ↑ 340 KB/s». */
 fun LinkSpeed.toDisplayString(): String =
     "↓ ${formatSpeed(downBps)}  ↑ ${formatSpeed(upBps)}"
+
+/**
+ * Строка плашки под статусом: скорость, пинг и активные режимы.
+ *
+ * Единая сборка для вкладок VPN и Tor: раньше строку склеивали дважды с
+ * одинаковым `when`, и добавление пинга пришлось бы делать в двух местах.
+ *
+ * Порядок читается как «сколько, как быстро отвечаем, чем именно»:
+ * `↓ 1.5 KB/s  ↑ 0 B/s · 45 ms  (T|Z)`. Пинг -- только когда измерен;
+ * нет подключения -- показываем режимы, которые работают мимо туннеля
+ * (zapret, goodbyeDPI), и ничего не рисуем, когда не показывать.
+ */
+fun statusLine(
+    connected: Boolean,
+    speed: LinkSpeed?,
+    pingMs: Int?,
+    modes: String
+): String {
+    val modesPart = if (modes.isEmpty()) "" else "($modes)"
+    if (!connected) return modesPart
+    val speedPart = speed?.toDisplayString() ?: "↓ …  ↑ …"
+    val pingPart = pingMs?.let { " · $it ms" } ?: ""
+    if (modesPart.isEmpty()) return speedPart + pingPart
+    return speedPart + pingPart + "  " + modesPart
+}

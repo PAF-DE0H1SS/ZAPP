@@ -108,12 +108,29 @@ object TrafficFormat {
     /** Сколько знаков оставить после запятой. */
     private fun decimals(scaled: Double): Int = if (scaled >= 100) 0 else if (scaled >= 10) 1 else 2
 
+    /**
+     * Число с фиксированным числом знаков, всегда с точкой.
+     *
+     * `String.format("%.2f")` берёт десятичный разделитель из локали
+     * системы: на русском выходит `1,5 KiB`, и половина форматирования
+     * (`trimEnd('.')`, сравнение с `100`) перестаёт работать -- `0,00`
+     * превращается в `0,`. Здесь разделитель всегда `.`: формат одинаков
+     * на всех устройствах и не зависит от языка системы.
+     */
+    private fun fixed(scaled: Double, places: Int): String {
+        val rounded = when (places) {
+            1 -> kotlin.math.round(scaled * 10.0) / 10.0
+            2 -> kotlin.math.round(scaled * 100.0) / 100.0
+            else -> kotlin.math.round(scaled)
+        }
+        return if (rounded == rounded.toLong().toDouble()) rounded.toLong().toString()
+        else rounded.toString()
+    }
+
     fun bytes(value: Long, config: TrafficConfig = TrafficConfig()): String {
         val binary = TrafficUnit.of(config.unitSystem) == TrafficUnit.BINARY
         val (scaled, suffix) = step(value.toDouble(), binary)
-        val text = if (scaled >= 100 && suffix == "B") scaled.toLong().toString()
-        else String.format("%.${decimals(scaled)}f", scaled).trimEnd('0').trimEnd('.') + " " + suffix
-        return if (scaled >= 100 && suffix == "B") "$text $suffix" else text
+        return "${fixed(scaled, decimals(scaled))} $suffix"
     }
 
     fun speed(bitsPerSecond: Double, config: TrafficConfig = TrafficConfig()): String {
@@ -122,8 +139,7 @@ object TrafficFormat {
         val raw = if (perSecond) bitsPerSecond else bitsPerSecond / 8.0
         val (scaled, suffix) = step(raw, binary)
         val unit = if (perSecond) suffix else suffix.replace("i", "")
-        val text = String.format("%.${decimals(scaled)}f", scaled).trimEnd('0').trimEnd('.')
-        return "$text $unit/s"
+        return "${fixed(scaled, decimals(scaled))} $unit/s"
     }
 
     fun duration(millis: Long): String {

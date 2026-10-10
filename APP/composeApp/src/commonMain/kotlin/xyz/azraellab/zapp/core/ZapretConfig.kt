@@ -136,6 +136,28 @@ data class ZapretConfig(
     /** `--fake-sniff`: подменять содержимое по снифферу. */
     val fakeSniff: Boolean = false,
 
+    // --- DPI: fake TLS и UDP (реальные опции nfqws) ---
+    /**
+     * `--dpi-desync-fake-tls-mod`: модификации дефолтного fake ClientHello.
+     *
+     * Список через запятую из `rnd`, `rndsni`, `dupsid`, `padencap`,
+     * `sni=<имя>`. Работает и без своего blob: params.c подставляет
+     * дефолтный ClientHello уже после разбора аргументов, так что моды
+     * применяются и к нему.
+     */
+    val fakeTlsMod: String = "",
+    /**
+     * `--dpi-desync-autottl`: авто-TTL для фейков, `delta:min-max` или `-`.
+     *
+     * `-` -- явно выключить (важно, если стратегия включила auto-TTL,
+     * а сеть требует обычного TTL).
+     */
+    val autoTtl: String = "",
+    /** `--dpi-desync-udplen-increment`: менять длину UDP-пакета на N байт. */
+    val udpLenIncrement: Int? = null,
+    /** `--dpi-desync-any-protocol=1`: резать любой непустой пакет, не только http/tls. */
+    val anyProtocol: Boolean = false,
+
     // --- TTL и окно ---
     /** `--ttl`: TTL исходящих пакетов. */
     val ttl: Int? = null,
@@ -185,7 +207,7 @@ data class ZapretConfig(
      * форков), в команду не попадают: неверная опция роняет демон на старте,
      * а это хуже, чем несработавшая настройка.
      */
-    fun toArgs(): List<String> = buildList {
+    fun toArgs(queueNum: Int = 0): List<String> = buildList {
         appendFlag("hostcase", hostCase)
         if (hostSpell) add("--hostspell=HoST")
         appendFlag("hostnospace", hostNoSpace)
@@ -196,10 +218,10 @@ data class ZapretConfig(
         appendValue("--filter-udp", filterUdp)
 
         // Номер очереди явно: android-сборка nfqws не имеет значения по
-        // умолчанию и падает с «Need queue number». Цепочка ZAPP_DPI
-        // (DpiFirewall) шлёт пакеты ровно в очередь 0 -- номера обязаны
-        // совпадать.
-        add("--qnum=0")
+        // умолчанию и падает с «Need queue number». Основной демон слушает
+        // очередь 0 (туда шлёт цепочка ZAPP_DPI), пробный инстанс -- 1:
+        // два кандидата и боевой демон при этом не пересекаются.
+        add("--qnum=$queueNum")
 
         // Списки доменов -- настоящие опции nfqws: значения кладутся прямо
         // в команду, файл для них не нужен.
@@ -231,6 +253,14 @@ data class ZapretConfig(
         )
         if (fooling.isNotEmpty()) add("--dpi-desync-fooling=" + fooling.joinToString(","))
         if (fakeTcpFlags != null) add("--dpi-desync-tcp-flags-set=$fakeTcpFlags")
+
+        // Fake TLS и UDP: только опции из long_options nfqws. Пустые
+        // значения не эмитируются -- иначе nfqws читал бы их как файл
+        // blob и падал на старте.
+        appendValue("--dpi-desync-fake-tls-mod", fakeTlsMod)
+        appendValue("--dpi-desync-autottl", autoTtl)
+        appendValue("--dpi-desync-udplen-increment", udpLenIncrement)
+        if (anyProtocol) add("--dpi-desync-any-protocol=1")
 
         if (comment.isNotBlank()) add("--comment=$comment")
     }
@@ -303,13 +333,21 @@ data class ZapretDefaults(
     val mss: Int? = null,
 
     val fakeTlsMode: String? = null,
+    val fakeTlsMod: String? = null,
     val fakePacket: Boolean? = null,
     val fakeTcp: Boolean? = null,
     val fakeCutTls: Boolean? = null,
     val fakeSeq: Int? = null,
     val fakeCsum: Boolean? = null,
     val fakeRepeats: Int? = null,
-    val foolingTs: Boolean? = null
+    val foolingTs: Boolean? = null,
+
+    val autoTtl: String? = null,
+    val udpLenIncrement: Int? = null,
+    val anyProtocol: Boolean? = null,
+
+    /** UDP-порты, которые пойдут в очередь: у UDP-стратегий это ядро работы. */
+    val filterUdp: String? = null
 )
 
 /** Режим работы Zapret. */
@@ -397,6 +435,42 @@ enum class ZapretStrategy(
         "fake-fakedsplit-ts", "Fake + fakedsplit (ts)", "Fake + fakedsplit (ts)",
         ZapretFamily.DESYNC,
         ZapretDefaults(desync = setOf("fake", "fakedsplit"), fakeRepeats = 6, foolingTs = true)
+    ),
+
+    // --- Профили под задачу: UDP-фейки для голосовых и игр ---
+    // Протокольные фейки (QUIC/Discord/STUN/...) nfqws шлёт сам, когда
+    // пакет попал в очередь: blob'ы подставляются из params.c. Вся
+    // настройка профиля -- туда пустить нужный UDP и сколько раз слать
+    // фейк; ядро профиля -- filterUdp.
+    MESSAGING(
+        "messaging", "Мессенджеры", "Messaging",
+        ZapretFamily.DESYNC,
+        ZapretDefaults(
+            desync = setOf("fake"),
+            filterUdp = "443,3478",
+            fakeRepeats = 1
+        )
+    ),
+    GAMES(
+        "games", "Игровой", "Games",
+        ZapretFamily.DESYNC,
+        ZapretDefaults(
+            desync = setOf("fake"),
+            filterUdp = "3478,5223,3074,27015-27020",
+            fakeRepeats = 2
+        )
+    ),
+    // Рандомизация полей поддельного ClientHello: DPI, который учится
+    // по подписи фейка, видит каждый раз новое рукопожатие.
+    FAKE_TLS_RND(
+        "fake-tls-rnd", "TLS с рандомизацией", "Fake TLS rand",
+        ZapretFamily.PATCH,
+        ZapretDefaults(
+            desync = setOf("fake"),
+            fakeTlsMod = "rnd,rndsni,dupsid",
+            hostCase = false,
+            hostSpell = false
+        )
     );
 
     companion object {

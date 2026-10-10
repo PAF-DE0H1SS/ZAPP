@@ -7,5 +7,11 @@ package xyz.azraellab.zapp.core.notify
  */
 actual fun createNotifier(): Notifier = object : Notifier {
     override val supported: Boolean = false
-    override fun show(title: String, body: String, tag: String) = Unit
+    override fun show(
+        title: String,
+        body: String,
+        tag: String,
+        action: NotifierAction?,
+        actionLabel: String
+    ) = Unit
 }

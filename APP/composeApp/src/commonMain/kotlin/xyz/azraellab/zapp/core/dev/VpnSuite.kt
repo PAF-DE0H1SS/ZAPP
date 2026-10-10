@@ -1,6 +1,9 @@
 package xyz.azraellab.zapp.core.dev
 
+import xyz.azraellab.zapp.core.AppConfig
+import xyz.azraellab.zapp.core.ConfigCodec
 import xyz.azraellab.zapp.core.LinkHealth
+import xyz.azraellab.zapp.core.RouteHealth
 import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnConnects
 import xyz.azraellab.zapp.core.VpnProfile
@@ -8,10 +11,17 @@ import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.VpnRouting
 import xyz.azraellab.zapp.core.VpnSource
 import xyz.azraellab.zapp.core.VpnTransport
+import xyz.azraellab.zapp.core.daemon.DaemonState
+import xyz.azraellab.zapp.core.engine.LifecyclePhase
+import xyz.azraellab.zapp.core.engine.TunnelState
+import xyz.azraellab.zapp.core.engine.isLive
 import xyz.azraellab.zapp.core.engine.openvpnTunnelParams
+import xyz.azraellab.zapp.core.engine.phase
+import xyz.azraellab.zapp.core.gps.GpsState
 import xyz.azraellab.zapp.core.net.LinkTarget
 import xyz.azraellab.zapp.core.net.ProbeKind
 import xyz.azraellab.zapp.core.net.probeTarget
+import xyz.azraellab.zapp.core.route
 
 /**
  * VPN: протоколы, списки коннектов, выбор пробы.
@@ -551,5 +561,63 @@ internal fun vpnTests(out: MutableList<DevTest>) {
             VpnConnects.betterBridge(aliveCurrent, listOf(aliveCurrent), 50),
             "сам себя не обгоняет"
         )
+    }
+
+    // --- Kill switch: живой TUN и DNS-исключения ---
+
+    out += DevTest("vpn/tunnel-state-is-live", DevCategory.VPN, "Переподключение -- рабочее состояние туннеля") {
+        checkTrue(TunnelState.CONNECTING.isLive, "подключение live")
+        checkTrue(TunnelState.CONNECTED.isLive, "сессия live")
+        checkTrue(TunnelState.RECONNECTING.isLive, "переподключение live: СТОП доступен")
+        checkFalse(TunnelState.DISCONNECTED.isLive, "выключенный не live")
+        checkFalse(TunnelState.ERROR.isLive, "ошибка не live")
+    }
+
+    out += DevTest("vpn/kill-switch-dns-default-off", DevCategory.VPN, "DNS при kill switch выключен по умолчанию") {
+        checkFalse(VpnConfig().killSwitchDns, "дефолт -- без исключений")
+    }
+
+    out += DevTest("vpn/kill-switch-dns-survives-json", DevCategory.VPN, "Флаг DNS переживает сериализацию") {
+        val cfg = VpnConfig(killSwitch = true, killSwitchDns = true, dnsServers = "9.9.9.9, 149.112.112.112")
+        val back = ConfigCodec.decodeConfig(ConfigCodec.encodeConfig(AppConfig(vpn = cfg)))
+        checkTrue(back.vpn.killSwitchDns, "флаг доехал")
+        checkEq(listOf("9.9.9.9", "149.112.112.112"), back.vpn.dnsList(), "свой список DNS на месте")
+    }
+
+    // --- Оси состояния: здоровье маршрута и фаза жизненного цикла ---
+
+    out += DevTest("vpn/route-health-triple", DevCategory.VPN, "Здоровье маршрута -- три, а не два состояния") {
+        checkEq(RouteHealth.UNKNOWN, LinkHealth(alive = null).route, "не проверялось -- не то же, что живо")
+        checkEq(RouteHealth.HEALTHY, LinkHealth(alive = true).route, "живо -- здоровье")
+        checkEq(RouteHealth.UNHEALTHY, LinkHealth(alive = false).route, "мёртвое -- нездоровье")
+    }
+
+    out += DevTest("vpn/lifecycle-phase-tunnel", DevCategory.VPN, "Фазы туннеля: покой, подъём, работа") {
+        checkEq(LifecyclePhase.INACTIVE, TunnelState.DISCONNECTED.phase, "выключенный -- покой")
+        checkEq(LifecyclePhase.ESTABLISHING, TunnelState.CONNECTING.phase, "подключение -- подъём")
+        checkEq(LifecyclePhase.ACTIVE, TunnelState.CONNECTED.phase, "сессия -- работа")
+        checkEq(LifecyclePhase.ACTIVE, TunnelState.RECONNECTING.phase, "переподключение при живом TUN -- работа")
+        checkEq(LifecyclePhase.INACTIVE, TunnelState.ERROR.phase, "ошибка -- покой")
+    }
+
+    out += DevTest("vpn/lifecycle-phase-daemon-gps", DevCategory.VPN, "Фазы демона и подмены на той же оси") {
+        checkEq(LifecyclePhase.INACTIVE, DaemonState.STOPPED.phase, "демон остановлен -- покой")
+        checkEq(LifecyclePhase.ESTABLISHING, DaemonState.STARTING.phase, "демон стартует -- подъём")
+        checkEq(LifecyclePhase.ACTIVE, DaemonState.RUNNING.phase, "демон работает -- работа")
+        checkEq(LifecyclePhase.INACTIVE, DaemonState.ERROR.phase, "демон упал -- покой")
+        checkEq(LifecyclePhase.INACTIVE, GpsState.OFF.phase, "подмена выключена -- покой")
+        checkEq(LifecyclePhase.ESTABLISHING, GpsState.STARTING.phase, "подмена стартует -- подъём")
+        checkEq(LifecyclePhase.ACTIVE, GpsState.ACTIVE.phase, "подмена работает -- работа")
+        checkEq(LifecyclePhase.INACTIVE, GpsState.ERROR.phase, "подмена упала -- покой")
+    }
+
+    out += DevTest("vpn/is-live-matches-phase", DevCategory.VPN, "Живость туннеля -- это фаза, не список состояний") {
+        for (state in TunnelState.entries) {
+            checkEq(
+                state.phase != LifecyclePhase.INACTIVE,
+                state.isLive,
+                "isLive и фаза расходятся на $state"
+            )
+        }
     }
 }

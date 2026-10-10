@@ -1,6 +1,7 @@
 package xyz.azraellab.zapp.core.daemon
 
 import kotlin.concurrent.Volatile
+import xyz.azraellab.zapp.core.probe.RelayTuning
 
 /**
  * Состояние userland-обхода DPI для сборок без root.
@@ -37,6 +38,22 @@ object DpiOverlay {
     @Volatile
     var quicBlock: Boolean = false
         private set
+
+    /**
+     * Тюнинг разрыва в релее: пауза между сегментами и число разрезов.
+     *
+     * Присылается из AppConfig при каждом обновлении конфига -- автоподбор
+     * стратегии пишет подобранные значения в конфиг, а релей читает их
+     * здесь без своего жизненного цикла.
+     */
+    @Volatile
+    var relay: RelayTuning = RelayTuning()
+        private set
+
+    /** Принимает свежий тюнинг из конфига (нормализация -- на приёме). */
+    fun updateRelay(tuning: RelayTuning) {
+        relay = tuning.normalized()
+    }
 
     /**
      * Применяет свежие порты от демонов.

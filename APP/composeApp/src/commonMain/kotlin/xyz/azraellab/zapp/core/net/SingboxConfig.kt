@@ -16,6 +16,12 @@ import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.daemon.DpiOverlay
+import xyz.azraellab.zapp.core.routing.SectionAction
+import xyz.azraellab.zapp.core.routing.UrlTestFilter
+import xyz.azraellab.zapp.core.routing.filterUrltestTags
+import xyz.azraellab.zapp.core.routing.parseSectionDomains
+import xyz.azraellab.zapp.core.routing.parseSectionPorts
+import xyz.azraellab.zapp.core.routing.parseWords
 
 /**
  * Сборка конфига sing-box (amnezia-box) из профиля и общих настроек.
@@ -188,6 +194,62 @@ object SingboxConfig {
 
     // --- Сборка общей части ---
 
+    /** Результат применения активного каскада. */
+    private data class CascadeResult(
+        val outbounds: List<JsonObject>,
+        val finalTag: String?,
+        val notes: List<String>
+    )
+
+    /**
+     * Активный каскад: цепочка detour и финал на входном узле.
+     *
+     * Первый hop -- вход, его outbound становится финалом маршрута;
+     * каждый hop, кроме последнего, набирает следующий за ним (detour),
+     * последний выходит в сеть напрямую: трафик идёт вход -> ... ->
+     * выход -> интернет. Сессии со своим финалом (DPI-пассивная)
+     * каскад не трогают; в одиночных сессиях
+     * (tor, один узел без подписки) несуществующий hop -- это тихое
+     * «не в этой сессии», а в группе -- честная ошибка на несуществующий
+     * узел: иначе опечатка в цепочке молча выключала бы каскад.
+     */
+    private fun applyCascade(
+        vpn: VpnConfig,
+        outbounds: List<JsonObject>,
+        sessionFinal: String?
+    ): CascadeResult {
+        val active = vpn.routing.activeCascade
+        if (active.isBlank()) return CascadeResult(outbounds, null, emptyList())
+        val cascade = vpn.routing.activeCascadeOrNull()
+            ?: throw IllegalArgumentException("active cascade not found: $active")
+        val hops = cascade.hopList()
+        if (hops.size < 2) {
+            throw IllegalArgumentException("cascade '$active' needs at least two hops")
+        }
+        if (sessionFinal != null) {
+            return CascadeResult(outbounds, null, listOf("cascade '$active' ignored: session has its own final"))
+        }
+        val available = outbounds.map { tagOf(it) }.toSet()
+        val missing = hops.firstOrNull { it !in available }
+        if (missing != null) {
+            if (outbounds.size >= 2) throw IllegalArgumentException("cascade hop not found: $missing")
+            return CascadeResult(outbounds, null, listOf("cascade '$active': hop '$missing' not in this session, ignored"))
+        }
+        val patched = outbounds.map { outbound ->
+            val index = hops.indexOf(tagOf(outbound))
+            if (index in 0 until hops.lastIndex) {
+                JsonObject(outbound.toMutableMap().apply {
+                    // Вход (и все, кроме выходного) дозванивается через
+                    // следующий узел; выходной выходит в сеть напрямую.
+                    put("detour", JsonPrimitive(hops[index + 1]))
+                })
+            } else {
+                outbound
+            }
+        }
+        return CascadeResult(patched, hops.first(), listOf("cascade '$active': ${hops.joinToString(" -> ")}"))
+    }
+
     private fun assemble(
         profile: VpnProfile,
         vpn: VpnConfig,
@@ -196,22 +258,26 @@ object SingboxConfig {
         notes: List<String>,
         finalTag: String? = null
     ): Built {
-        val final = finalTag ?: when {
+        val cascade = applyCascade(vpn, outbounds, finalTag)
+        val builtOutbounds = cascade.outbounds
+        val final = finalTag ?: cascade.finalTag ?: when {
             endpoints.isNotEmpty() -> ENDPOINT_TAG
-            outbounds.size > 1 -> URLTEST_TAG
-            else -> tagOf(outbounds.first())
+            builtOutbounds.size > 1 -> URLTEST_TAG
+            else -> tagOf(builtOutbounds.first())
         }
 
         val dns = dnsSection(vpn, profile, final)
         val route = routeSection(
             vpn, final,
-            relayRules = outbounds.any { tagOf(it) == DpiOverlay.RELAY_TAG }
+            relayRules = builtOutbounds.any { tagOf(it) == DpiOverlay.RELAY_TAG }
         )
-        val extraNotes = notes + buildList {
+        val extraNotes = notes + cascade.notes + buildList {
             if (vpn.killSwitch) add("kill-switch: applied by engine (iptables)")
             if (vpn.routing.allowPerAppBypass && vpn.routing.bypassAppList().isNotEmpty()) {
                 add("per-app bypass: ${vpn.routing.bypassAppList().size} package(s)")
             }
+            val sections = vpn.routing.sections.count { it.active() }
+            if (sections > 0) add("routing sections: $sections")
         }
 
         val root = buildJsonObject {
@@ -224,8 +290,8 @@ object SingboxConfig {
                 add(tunInbound(profile, vpn))
             })
             put("outbounds", buildJsonArray {
-                outbounds.forEach { add(it) }
-                if (outbounds.size > 1) add(urltestOf(outbounds))
+                builtOutbounds.forEach { add(it) }
+                if (builtOutbounds.size > 1) add(urltestOf(builtOutbounds, vpn.urlTest))
                 add(buildJsonObject {
                     put("type", "direct")
                     put("tag", DIRECT_TAG)
@@ -271,33 +337,53 @@ object SingboxConfig {
     }
 
     private fun dnsSection(vpn: VpnConfig, profile: VpnProfile, finalTag: String): JsonObject {
+        val transport = when (vpn.dnsType.trim().lowercase()) {
+            "tcp" -> "tcp"
+            "tls", "dot" -> "tls"
+            "https", "doh" -> "https"
+            else -> "udp"
+        }
+        val defaultPort = when (transport) {
+            "tls" -> 853
+            "https" -> 443
+            else -> 53
+        }
+        val bootstrap = vpn.dnsBootstrap.trim()
         val explicit = (vpn.dnsList() + profile.dnsList()).distinct().filter { it.isNotBlank() }
+        // Секции action=dns: свой резолвер для своих доменов. Сервер уходит
+        // в общий список, правило -- в dns.rules; маршрут не меняется.
+        val dnsSections = vpn.routing.sections.filter {
+            it.active() && it.action == SectionAction.DNS && it.dnsServer.isNotBlank()
+        }
         val servers = buildJsonArray {
             add(buildJsonObject { put("type", "local"); put("tag", "system") })
             explicit.forEachIndexed { index, server ->
-                add(buildJsonObject {
-                    put("type", "udp")
-                    put("tag", "dns-$index")
-                    put("server", server)
-                    put("server_port", 53)
-                    if (vpn.dnsViaProxy && finalTag != DIRECT_TAG) put("detour", finalTag)
-                })
+                add(dnsServerOf("dns-$index", server, transport, defaultPort, vpn, finalTag, bootstrap))
             }
             // Android: type local резолвит через системный резолвер, которого
             // у демона нет ([::1]:53 refused), -- при пустом списке нужен
             // рабочий публичный DNS, иначе ядро не разрешит адреса своих
             // исходящих подключений.
             if (explicit.isEmpty()) {
+                add(dnsServerOf("dns-0", "8.8.8.8", transport, defaultPort, vpn, finalTag, bootstrap))
+            }
+            // Bootstrap: адреса самих DNS-серверов резолвятся напрямую,
+            // минуя основной сервер -- без петли «сервер сам себе резолвер».
+            if (bootstrap.isNotBlank()) {
+                val parsed = dnsServerAddress(bootstrap, 53)
                 add(buildJsonObject {
                     put("type", "udp")
-                    put("tag", "dns-0")
-                    put("server", "8.8.8.8")
-                    put("server_port", 53)
-                    // Как и явным серверам: с dnsViaProxy резолв идёт через
-                    // туннель, иначе первый пинг узла -- это ещё и утечка
-                    // запроса мимо прокси. Сервер -- IP, петли не будет.
-                    if (vpn.dnsViaProxy && finalTag != DIRECT_TAG) put("detour", finalTag)
+                    put("tag", "bootstrap")
+                    put("server", parsed.host)
+                    put("server_port", parsed.port)
                 })
+            }
+            dnsSections.forEachIndexed { index, section ->
+                add(dnsServerOf(
+                    "sec-dns-$index", section.dnsServer,
+                    section.dnsType, dnsTypeDefaultPort(section.dnsType),
+                    vpn, finalTag, bootstrap
+                ))
             }
             if (vpn.dnsFakeIp) {
                 add(buildJsonObject {
@@ -314,8 +400,12 @@ object SingboxConfig {
         return buildJsonObject {
             put("servers", servers)
             if (finalServer != null) put("final", finalServer)
-            if (vpn.dnsFakeIp) {
-                put("rules", buildJsonArray {
+            val strategy = vpn.dnsStrategy.trim().lowercase()
+            if (strategy in setOf("prefer_ipv4", "prefer_ipv6", "disable_ipv6")) {
+                put("strategy", strategy)
+            }
+            val rules = buildJsonArray {
+                if (vpn.dnsFakeIp) {
                     add(buildJsonObject {
                         put("query_type", buildJsonArray {
                             add(JsonPrimitive("A"))
@@ -323,9 +413,117 @@ object SingboxConfig {
                         })
                         put("server", "fakeip")
                     })
-                })
+                }
+                // Секции action=dns: свой резолвер для своих доменов.
+                // Серверы уже добавлены в общий список выше.
+                dnsSections.forEachIndexed { index, section ->
+                    val tag = "sec-dns-$index"
+                    val domains = parseSectionDomains(section.domains)
+                    add(buildJsonObject {
+                        putDomains(domains)
+                        val ips = parseWords(section.ipCidrs)
+                        if (ips.isNotEmpty()) {
+                            put("ip_cidr", buildJsonArray { ips.forEach { add(JsonPrimitive(it)) } })
+                        }
+                        put("server", tag)
+                        if (vpn.dnsRewriteTtl > 0) put("rewrite_ttl", vpn.dnsRewriteTtl)
+                    })
+                }
             }
+            if (rules.size > 0) put("rules", rules)
             put("independent_cache", true)
+        }
+    }
+
+    /** DNS-сервер секции: тип берётся из самой секции. */
+    private fun dnsTypeDefaultPort(type: String): Int = when (type.trim().lowercase()) {
+        "tls", "dot" -> 853
+        "https", "doh" -> 443
+        else -> 53
+    }
+
+    private data class DnsAddress(val host: String, val port: Int, val path: String)
+
+    /**
+     * Разбор адреса DNS-сервера: `host`, `host:port`, `https://host/path`.
+     *
+     * Скобочный IPv6 проходит как есть (в нём нет валидного суффикса
+     * `:цифры` после последнего двоеточия -- порт-парсер его не трогает,
+     * потому что порт обязан состоять только из цифр).
+     */
+    private fun dnsServerAddress(value: String, defaultPort: Int): DnsAddress {
+        var text = value.trim()
+        var path = ""
+        for (scheme in listOf("https://", "http://")) {
+            if (text.startsWith(scheme, ignoreCase = true)) {
+                text = text.substring(scheme.length)
+                val slash = text.indexOf('/')
+                if (slash >= 0) {
+                    path = text.substring(slash)
+                    text = text.substring(0, slash)
+                }
+                break
+            }
+        }
+        var port = defaultPort
+        val colon = text.lastIndexOf(':')
+        if (colon > 0 && text.substring(colon + 1).all { it.isDigit() }) {
+            text.substring(colon + 1).toIntOrNull()?.let { candidate ->
+                if (candidate in 1..65535) {
+                    port = candidate
+                    text = text.substring(0, colon)
+                }
+            }
+        }
+        return DnsAddress(host = text, port = port, path = path)
+    }
+
+    /** Адрес -- литерал IP (v4 или v6): ему не нужен bootstrap-резолв. */
+    private fun isIpLiteral(host: String): Boolean =
+        host.matches(Regex("""\d{1,3}(\.\d{1,3}){3}""")) || host.contains(':')
+
+    private fun dnsServerOf(
+        tag: String,
+        value: String,
+        type: String,
+        defaultPort: Int,
+        vpn: VpnConfig,
+        finalTag: String,
+        bootstrap: String
+    ): JsonObject {
+        val transport = when (type.trim().lowercase()) {
+            "tcp" -> "tcp"
+            "tls", "dot" -> "tls"
+            "https", "doh" -> "https"
+            else -> "udp"
+        }
+        val parsed = dnsServerAddress(value, defaultPort)
+        return buildJsonObject {
+            put("type", transport)
+            put("tag", tag)
+            put("server", parsed.host)
+            put("server_port", parsed.port)
+            if (transport == "https" && parsed.path.isNotBlank()) put("path", parsed.path)
+            if (bootstrap.isNotBlank() && !isIpLiteral(parsed.host)) {
+                put("domain_resolver", "bootstrap")
+            }
+            if (vpn.dnsViaProxy && finalTag != DIRECT_TAG) put("detour", finalTag)
+        }
+    }
+
+    /** Доменные условия правила -- в sing-box-вид. */
+    private fun JsonObjectBuilder.putDomains(domains: xyz.azraellab.zapp.core.routing.ParsedDomains) {
+        if (domains.exact.isNotEmpty()) {
+            put("domain", buildJsonArray { domains.exact.forEach { add(JsonPrimitive(it)) } })
+        }
+        if (domains.suffix.isNotEmpty()) {
+            put("domain_suffix", buildJsonArray { domains.suffix.forEach { add(JsonPrimitive(it)) } })
+        }
+        if (domains.keyword.isNotEmpty()) {
+            put("domain_keyword", buildJsonArray { domains.keyword.forEach { add(JsonPrimitive(it)) } })
+        }
+        if (domains.regex.isNotEmpty()) {
+            put("domain_regex", buildJsonArray { domains.regex.forEach { add(JsonPrimitive(it)) } })
         }
     }
 
@@ -368,6 +566,48 @@ object SingboxConfig {
                     put("action", "reject")
                 })
             }
+            // --- секции: правила поверх базовой маршрутизации ---
+            // Ниже основы (hijack-dns, локальные сети), выше механики
+            // обхода (quic/релей): секция -- осознанное правило
+            // пользователя, и оно перебивает автоматику обхода для своих
+            // соединений.
+            vpn.routing.sections
+                .filter { it.active() && it.action != SectionAction.DNS }
+                .forEach { section ->
+                    val domains = parseSectionDomains(section.domains)
+                    val ips = parseWords(section.ipCidrs)
+                    val ports = parseSectionPorts(section.ports)
+                    val network = section.network.trim().lowercase().takeIf { it in setOf("tcp", "udp") }
+
+                    // Реальный IP перед маршрутом: копия доменных матчеров
+                    // с действием resolve -- по ней идёт сама маршрутизация.
+                    if (section.resolveRealIp && section.action == SectionAction.CONNECTION && domains.isNotEmpty()) {
+                        add(buildJsonObject {
+                            put("action", "resolve")
+                            put("server", "dns-0")
+                            putDomains(domains)
+                        })
+                    }
+                    add(buildJsonObject {
+                        when (section.action) {
+                            SectionAction.CONNECTION -> put("outbound", finalTag)
+                            SectionAction.DIRECT -> put("outbound", DIRECT_TAG)
+                            SectionAction.BLOCK -> put("action", "reject")
+                            SectionAction.DNS -> Unit
+                        }
+                        putDomains(domains)
+                        if (ips.isNotEmpty()) {
+                            put("ip_cidr", buildJsonArray { ips.forEach { add(JsonPrimitive(it)) } })
+                        }
+                        if (ports.ports.isNotEmpty()) {
+                            put("port", buildJsonArray { ports.ports.forEach { add(JsonPrimitive(it)) } })
+                        }
+                        if (ports.ranges.isNotEmpty()) {
+                            put("port_range", buildJsonArray { ports.ranges.forEach { add(JsonPrimitive(it)) } })
+                        }
+                        if (network != null) put("network", network)
+                    })
+                }
             // --- userland-обход (сборки без root) ---
             // QUIC: десинхронизация udp из ядра недоступна, поэтому канал
             // закрывается целиком -- приложение уходит в TCP, а TCP сплитит
@@ -402,9 +642,10 @@ object SingboxConfig {
             // Резолвер доменных адресов своих же outbounds (серверы почти
             // всегда -- домены). Без него sing-box зовёт deprecated-отчёт
             // missing-domain-resolver, а на нём паникует Impending() форка
-            // (см. патч zapp-deprecated-impending). "dns-0" гарантированно
-            // существует: публичный fallback или первый явный сервер.
-            put("default_domain_resolver", "dns-0")
+            // (см. патч zapp-deprecated-impending). С bootstrap -- напрямую
+            // через него, без bootstrap -- через "dns-0" (публичный
+            // fallback или первый явный сервер, гарантированно существует).
+            put("default_domain_resolver", if (vpn.dnsBootstrap.isNotBlank()) "bootstrap" else "dns-0")
             // false: на Android untrusted_app SELinux запрещает netlink
             // (b/155595000), мониторы интерфейсов там отключены, и автобинд
             // физического интерфейса некому резолвить. Сокеты ядра и так идут
@@ -414,21 +655,28 @@ object SingboxConfig {
         }
     }
 
-    private fun urltestOf(outbounds: List<JsonObject>): JsonObject = buildJsonObject {
+    private fun urltestOf(outbounds: List<JsonObject>, filter: UrlTestFilter): JsonObject = buildJsonObject {
         put("type", "urltest")
         put("tag", URLTEST_TAG)
+        // Фильтр решает, кто участвует в автоподборе: имя, страна по
+        // флагу в имени узла или регулярное выражение. Пустой результат
+        // фильтра остаётся со всеми узлами -- неверный паттерн не должен
+        // молча выключать группу.
+        val tags = filterUrltestTags(outbounds.map { tagOf(it) }, filter)
         put("outbounds", buildJsonArray {
-            outbounds.forEach { add(JsonPrimitive(tagOf(it))) }
+            tags.forEach { add(JsonPrimitive(it)) }
         })
         // Часто и мелко: раз в минуту группа перепроверяет узлы, а
         // tolerance в 10 мс переключает только на заметно более быстрый --
         // минимум пинга без дёрганья туда-сюда на шуме замера.
-        put("interval", "1m")
-        put("tolerance", 10)
+        put("interval", filter.interval.trim().ifBlank { "1m" })
+        put("tolerance", filter.toleranceMs)
         // При смене узла существующие соединения рвутся и переезжают на
         // новый: без этого «выбрал быстрее» действовало бы только для
         // новых соединений, а живые сидели бы на старом пинге.
         put("interrupt_exist_connections", true)
+        if (filter.testingUrl.isNotBlank()) put("url", filter.testingUrl)
+        if (filter.idleTimeout.isNotBlank()) put("idle_timeout", filter.idleTimeout)
     }
 
     // --- WireGuard / Amnezia WG ---

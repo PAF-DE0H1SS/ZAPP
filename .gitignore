@@ -26,9 +26,15 @@ APP/app/src/main/jniLibs/
 .idea/
 ldpath
 AGENTS.md
+AGENTS.md.bak-*
+JOURNAL.md
 
 # Локальные сборочные скрипты: в репозиторий не идут, build-all.sh зовёт их с диска
 scripts/
 
 # Локальные тесты на устройстве: скрипты, скриншоты, логи
 .devtest/
+TODO.md
+
+# Симлинк-сам на себя, локальная особенность каталога
+ZAPP

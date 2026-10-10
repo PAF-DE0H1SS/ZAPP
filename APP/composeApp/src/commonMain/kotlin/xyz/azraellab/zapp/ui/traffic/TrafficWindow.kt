@@ -39,6 +39,7 @@ import xyz.azraellab.zapp.core.TrafficFormat
 import xyz.azraellab.zapp.core.TrafficPoint
 import xyz.azraellab.zapp.core.TrafficSummary
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
+import xyz.azraellab.zapp.ui.theme.monoData
 import xyz.azraellab.zapp.ui.components.debugPath
 import xyz.azraellab.zapp.ui.tr
 
@@ -157,7 +158,7 @@ private fun SummaryRow(label: String, value: String) {
         )
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyMedium,
+            style = monoData(),
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface
         )

@@ -9,6 +9,7 @@ import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.GoodbyeDpiMode
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.domains.DpiScope
 import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ZappCard
@@ -76,6 +77,15 @@ fun GoodbyeDpiPage(state: AppState) {
                 supportingText = tr(Str.LIST_DOMAINS) + ": ${config.domainList().size}",
                 path = "gdpi.domains"
             )
+            // Без выбора приложений и без доменов запуск блокируется --
+            // причина видна до нажатия, а не только в журнале после.
+            if (!DpiScope.gdpi(state.config.perApp, config)) {
+                Text(
+                    text = tr(Str.DAEMON_NEED_SCOPE),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
 
         // --- Команда, которая получится ---

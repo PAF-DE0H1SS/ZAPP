@@ -69,9 +69,19 @@ actual object VpnTunnel {
         // stopService сервис не уничтожает, fd /dev/tun остаётся открытым,
         // и мёртвый tun0 перехватывает весь трафик устройства (чёрная
         // дыра). Сначала рвём fd сами, затем снимаем сервис.
-        runCatching { ZappVpnService.instance?.teardown() }
-        val context = AndroidCtx.current ?: return
-        runCatching { context.stopService(Intent(context, ZappVpnService::class.java)) }
+        val live = ZappVpnService.instance
+        runCatching { live?.teardown() }
+        // stopService только для уже поднятого сервиса: пока старт-намерение
+        // не доставлено (onCreate/onStartCommand ещё в очереди главного
+        // потока), stopService отменяет их вместе, система видит
+        // startForegroundService без startForeground и роняет процесс
+        // с ForegroundServiceDidNotStartInTimeException. Без нашего stopService
+        // намерение доедет само: params уже null, сервис поднимется,
+        // закроется в onStartCommand через stopSelf -- быстро и законно.
+        if (live != null) {
+            val context = AndroidCtx.current ?: return
+            runCatching { context.stopService(Intent(context, ZappVpnService::class.java)) }
+        }
     }
 
     /** Сuspend-обёртка над системным диалогом VPN-консента. */

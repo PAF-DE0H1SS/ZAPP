@@ -30,6 +30,22 @@ data class GoodbyeDpiConfig(
     val fakeCsum: Boolean = false,
     /** SNI для `--fake-with-sni` режима Fake SNI; без него режим не стартует. */
     val fakeSni: String = "",
+    /** `--fake-gen N`: N случайных фейк-пакетов вместо статичных. */
+    val fakeGen: Int? = null,
+    /** `--fake-resend N`: слать каждый фейк N раз. */
+    val fakeResend: Int? = null,
+
+    // --- TTL и фрагментация ---
+    /** `--auto-ttl a1-a2-max`: авто-TTL для фейков, например `3-8-10`. */
+    val autoTtl: String = "",
+    /** `--set-ttl N`: фиксированный TTL фейка (выключает auto-TTL). */
+    val setTtl: Int? = null,
+    /** `--max-payload N`: не трогать пакеты с полезной нагрузкой больше N. */
+    val maxPayload: Int? = null,
+    /** `--reverse-frag`: слать фрагменты в обратном порядке. */
+    val reverseFrag: Boolean = false,
+    /** `--frag-by-sni`: резать прямо перед значением SNI. */
+    val fragBySni: Boolean = false,
 
     // --- Что пропускать ---
     /** Проверять домен перед применением правила; выкл -- `--allow-no-sni`. */
@@ -81,6 +97,18 @@ data class GoodbyeDpiConfig(
         if (fakeCsum && GoodbyeDpiMode.of(mode) != GoodbyeDpiMode.FAKE_PATCH) modeset.add("--wrong-chksum")
         if (fakeSeq != null && GoodbyeDpiMode.of(mode) != GoodbyeDpiMode.FAKE_SSL) modeset.add("--wrong-seq")
         if (!hostCheck) modeset.add("--allow-no-sni")
+
+        // Дополнительные техники: только опции, которые есть в нашем
+        // бинаре (см. long_options goodbyedpi.c). Порядок важен:
+        // `--set-ttl` гасит auto-TTL, поэтому фиксированный -- первым.
+        if (setTtl != null) modeset.add("--set-ttl=$setTtl")
+        if (autoTtl.isNotBlank()) modeset.add("--auto-ttl=$autoTtl")
+        fakeGen?.let { modeset.add("--fake-gen=$it") }
+        fakeResend?.let { modeset.add("--fake-resend=$it") }
+        maxPayload?.let { modeset.add("--max-payload=$it") }
+        if (reverseFrag) modeset.add("--reverse-frag")
+        if (fragBySni) modeset.add("--frag-by-sni")
+
         if (blacklistRef != null) modeset.add("--blacklist=$blacklistRef")
         return modeset
     }

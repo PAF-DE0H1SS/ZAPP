@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.log.ErrorLog
 import xyz.azraellab.zapp.core.log.isError
+import xyz.azraellab.zapp.core.log.platformNowMs
 
 /** Какой именно демон запускается: у каждого свой каталог файлов. */
 enum class DaemonId(val defaultBinary: String) {
@@ -56,7 +57,17 @@ enum class DaemonState {
 data class DaemonEvent(
     val text: Str? = null,
     val raw: String = "",
-    val arg: String = ""
+    val arg: String = "",
+
+    /**
+     * Момент записи, мс с эпохи; 0 -- не проставлен.
+     *
+     * Штамп ставит журнальный писатель: события собираются в общем коде,
+     * где время не нужно, а диагностика «время · компонент · причина» без
+     * времени -- половина строки. Ноль остаётся у конструированных руками
+     * событий (тесты, заглушки).
+     */
+    val at: Long = 0
 ) {
     init {
         require(text != null || raw.isNotEmpty()) { "пустое событие демона" }
@@ -150,20 +161,24 @@ abstract class BaseDaemonEngine : DaemonEngine {
     }
 
     protected fun log(event: DaemonEvent) {
-        val next = _log.value + event
+        // Штамп времени здесь, а не в конструкторе: события собираются в
+        // десятках мест, и проставлять каждый раз -- мусор. Писатель --
+        // единственная точка, через которую проходит любое событие.
+        val stamped = if (event.at == 0L) event.copy(at = platformNowMs()) else event
+        val next = _log.value + stamped
         _log.value = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
         // Причина сбоя уходит в отдельный журнал ошибок. Сырой вывод
         // предпочтительнее: он объясняет больше, чем «Exit code 1», а
         // событие-причина (только ключ [Str]) берём, когда строк нет.
-        if (event.isError()) {
-            val raw = event.raw.ifBlank { null }
+        if (stamped.isError()) {
+            val raw = stamped.raw.ifBlank { null }
             if (raw != null) {
                 ErrorLog.note("daemon", raw)
             } else {
-                event.text?.let { ErrorLog.noteStr("daemon", it) }
+                stamped.text?.let { ErrorLog.noteStr("daemon", it) }
             }
         }
-        onEvent(event)
+        onEvent(stamped)
     }
 
     /**

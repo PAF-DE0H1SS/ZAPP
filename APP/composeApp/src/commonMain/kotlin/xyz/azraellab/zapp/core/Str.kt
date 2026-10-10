@@ -83,6 +83,7 @@ enum class Str {
     VPN_MTU,
     VPN_KEEPALIVE,
     VPN_KILL_SWITCH,
+    VPN_KILL_SWITCH_DNS,
     VPN_SPLIT_TUNNELING,
     VPN_AUTO_RECONNECT,
     VPN_BYPASS_LAN,
@@ -181,6 +182,7 @@ enum class Str {
     DAEMON_NO_BINARY,
     DAEMON_FILES_FAILED,
     DAEMON_NO_SNI,
+    DAEMON_NEED_SCOPE,
     DAEMON_BINARY,
 
     /** Мониторинг трафика. */
@@ -216,6 +218,22 @@ enum class Str {
     ABOUT_VERSION,
     ABOUT_LICENSE,
     ABOUT_PLATFORM,
+
+    /** Per-app: выбор приложений под каждую функцию. */
+    SETTINGS_PERAPP,
+    PERAPP_SELECT,
+    PERAPP_SEARCH,
+    PERAPP_SHOW_SYSTEM,
+    PERAPP_SELECTED,
+    PERAPP_EXCEPT,
+    PERAPP_MODE,
+    PERAPP_MODE_INCLUDE,
+    PERAPP_MODE_EXCLUDE,
+    PERAPP_ALL_APPS,
+    PERAPP_NO_MATCH,
+    PERAPP_ROOT_ONLY,
+    PERAPP_NEXT_CONNECT,
+    PERAPP_SELF_EXCLUDED,
 
     /** Журнал (детальный лог). */
     LOG_DETAIL_ON,
@@ -348,6 +366,7 @@ enum class Str {
     ENGINE_STATE_DISCONNECTED,
     ENGINE_STATE_CONNECTING,
     ENGINE_STATE_CONNECTED,
+    ENGINE_STATE_RECONNECTING,
     ENGINE_STATE_ERROR,
     ENGINE_LOG,
     ENGINE_LOG_EMPTY,
@@ -363,6 +382,14 @@ enum class Str {
     UPD_STATE_AVAILABLE,
     UPD_STATE_ERROR,
     UPD_OPEN,
+    UPD_DOWNLOAD,
+    UPD_DOWNLOADING,
+    UPD_INSTALL,
+    UPD_SNOOZE,
+    UPD_SNOOZED,
+    UPD_COMPARE,
+    UPD_COMPARE_SEMVER,
+    UPD_COMPARE_TAG,
 
     /** Строка состояния под навигацией. */
     STATUS_PERMS_NEEDED,
@@ -430,10 +457,72 @@ enum class Str {
     VPN_ONLY_ALIVE,
     VPN_SEARCH,
 
+    /** Детальная маршрутизация: секции, каскады, фильтр автоподбора, DNS. */
+    ROUTING_SECTIONS,
+    ROUTING_SECTION_ADD,
+    ROUTING_PRESETS,
+    ROUTING_PRESET_ADS,
+    ROUTING_PRESET_RU,
+    ROUTING_PRESET_LOCAL,
+    ROUTING_SECTION_LABEL,
+    ROUTING_SECTION_ACTION,
+    ROUTING_ACTION_CONNECTION,
+    ROUTING_ACTION_DIRECT,
+    ROUTING_ACTION_BLOCK,
+    ROUTING_ACTION_DNS,
+    ROUTING_NETWORK,
+    ROUTING_NETWORK_ANY,
+    ROUTING_NETWORK_TCP,
+    ROUTING_NETWORK_UDP,
+    ROUTING_RESOLVE_IP,
+    ROUTING_DOMAINS,
+    ROUTING_DOMAINS_HINT,
+    ROUTING_IPS,
+    ROUTING_PORTS,
+    ROUTING_SECTION_ALL_TRAFFIC,
+    ROUTING_DNS_TYPE,
+    ROUTING_DNS_SERVER,
+    ROUTING_DNS_STRATEGY,
+    ROUTING_DNS_STRATEGY_OFF,
+    ROUTING_STRATEGY_PREFER_V4,
+    ROUTING_STRATEGY_PREFER_V6,
+    ROUTING_STRATEGY_DISABLE_V6,
+    ROUTING_DNS_BOOTSTRAP,
+    ROUTING_DNS_REWRITE_TTL,
+    ROUTING_CASCADES,
+    ROUTING_CASCADE_ACTIVE,
+    ROUTING_CASCADE_OFF,
+    ROUTING_CASCADE_ADD,
+    ROUTING_CASCADE_LABEL,
+    ROUTING_CASCADE_HOPS,
+    ROUTING_CASCADE_HINT,
+    ROUTING_URLTEST,
+    ROUTING_URLTEST_MODE,
+    ROUTING_MODE_DISABLED,
+    ROUTING_MODE_INCLUDE,
+    ROUTING_MODE_EXCLUDE,
+    ROUTING_MODE_MIXED,
+    ROUTING_INCLUDE_NAMES,
+    ROUTING_INCLUDE_REGEX,
+    ROUTING_INCLUDE_COUNTRIES,
+    ROUTING_EXCLUDE_NAMES,
+    ROUTING_EXCLUDE_REGEX,
+    ROUTING_EXCLUDE_COUNTRIES,
+    ROUTING_TEST_URL,
+    ROUTING_INTERVAL,
+    ROUTING_TOLERANCE,
+    ROUTING_IDLE,
+
     /** Автоподбор стратегии обхода. */
     STRATEGY_PROBE,
     STRATEGY_APPLIED,
     STRATEGY_NETWORK_FAIL,
+    STRATEGY_CANDIDATE,
+    STRATEGY_ETA,
+
+    /** Обход отдельно от VPN и Tor. */
+    DPI_STANDALONE_ROOT,
+    DPI_STANDALONE_NOROOT,
 
     /** Компоненты приложения: распакованные нативные бинари. */
     COMPONENTS,
@@ -551,6 +640,12 @@ enum class Str {
         VPN_MTU -> pick(lang, "MTU", "MTU", "MTU")
         VPN_KEEPALIVE -> pick(lang, "Keepalive, s", "Keepalive, с", "保活, 秒")
         VPN_KILL_SWITCH -> pick(lang, "Kill switch", "Kill switch", "断网保护")
+        VPN_KILL_SWITCH_DNS -> pick(
+            lang,
+            "Allow configured DNS while kill switch is on",
+            "Пропускать DNS конфига при kill switch",
+            "断网保护时允许配置的 DNS"
+        )
         VPN_SPLIT_TUNNELING -> pick(lang, "Split tunneling", "Раздельное туннелирование", "分流")
         VPN_AUTO_RECONNECT -> pick(lang, "Auto reconnect", "Переподключение", "自动重连")
         VPN_BYPASS_LAN -> pick(lang, "Bypass local network", "Мимо локальной сети", "跳过局域网")
@@ -630,6 +725,40 @@ enum class Str {
         SETTINGS_LOG -> pick(lang, "Log", "Журнал", "日志")
         SETTINGS_DOCS -> pick(lang, "Documentation", "Документация", "文档")
         SETTINGS_SECTION_GENERAL -> pick(lang, "General", "Основное", "常规")
+        SETTINGS_PERAPP -> pick(lang, "Apps", "Приложения", "应用")
+        PERAPP_SELECT -> pick(lang, "Select apps", "Выбирать приложения", "选择应用")
+        PERAPP_SEARCH -> pick(lang, "Search", "Поиск", "搜索")
+        PERAPP_SHOW_SYSTEM -> pick(lang, "Show system apps", "Показывать системные", "显示系统应用")
+        PERAPP_SELECTED -> pick(lang, "Selected", "Выбрано", "已选")
+        PERAPP_EXCEPT -> pick(lang, "Except", "Кроме", "除外")
+        PERAPP_MODE -> pick(lang, "Selected apps", "Выбранные приложения", "所选应用")
+        PERAPP_MODE_INCLUDE -> pick(lang, "Only they go through", "Только они идут через", "仅这些走该功能")
+        PERAPP_MODE_EXCLUDE -> pick(
+            lang,
+            "Everything except them",
+            "Все, кроме них",
+            "除它们之外全部"
+        )
+        PERAPP_ALL_APPS -> pick(lang, "All apps go through", "Пойдут все приложения", "全部应用走该功能")
+        PERAPP_NO_MATCH -> pick(lang, "Nothing found", "Ничего не нашлось", "未找到")
+        PERAPP_ROOT_ONLY -> pick(
+            lang,
+            "DPI bypass runs only in the root build; without root the list has no effect.",
+            "Обход DPI работает только в root-сборке; без root список ни на что не влияет.",
+            "DPI 绕过仅在 root 版本中生效；无 root 时列表不起作用。"
+        )
+        PERAPP_NEXT_CONNECT -> pick(
+            lang,
+            "Applied on next connect; live session keeps the old list.",
+            "Применится при следующем подключении; текущая сессия работает со старым списком.",
+            "将在下次连接时生效；当前会话仍使用旧列表。"
+        )
+        PERAPP_SELF_EXCLUDED -> pick(
+            lang,
+            "ZAPP itself always goes around the tunnel.",
+            "Само приложение ZAPP всегда идёт мимо туннеля.",
+            "ZAPP 自身始终绕过隧道。"
+        )
         SETTINGS_SYSTEM -> pick(lang, "System", "Система", "系统")
         SETTINGS_APPLY_LIVE -> pick(lang, "Apply on change", "Применять сразу", "立即应用")
         LOG_DETAIL_ON -> pick(lang, "Detailed log", "Детальный журнал", "详细日志")
@@ -871,6 +1000,12 @@ enum class Str {
             "守护进程文件写入失败"
         )
         DAEMON_NO_SNI -> pick(lang, "Fake SNI mode needs a domain", "Режиму Fake SNI нужен домен", "Fake SNI 模式需要域名")
+        DAEMON_NEED_SCOPE -> pick(
+            lang,
+            "Select apps or enter domains first: without a scope the bypass stays off.",
+            "Сначала выберите приложения или введите домены: без области действия обход не включается.",
+            "请先选择应用或输入域名：没有作用范围无法启动绕过。"
+        )
         DAEMON_BINARY -> pick(lang, "Binary path", "Путь к бинарю", "可执行文件路径")
         LIST_EMPTY_PROFILES -> pick(lang, "No profiles", "Профилей нет", "没有配置")
         LIST_EMPTY_PRESETS -> pick(lang, "No presets", "Пресетов нет", "没有预设")
@@ -961,6 +1096,7 @@ enum class Str {
         ENGINE_STATE_DISCONNECTED -> pick(lang, "Off", "Выключен", "已断开")
         ENGINE_STATE_CONNECTING -> pick(lang, "Connecting...", "Подключение...", "连接中...")
         ENGINE_STATE_CONNECTED -> pick(lang, "Connected", "Подключено", "已连接")
+        ENGINE_STATE_RECONNECTING -> pick(lang, "Reconnecting...", "Переподключение...", "重连中...")
         ENGINE_STATE_ERROR -> pick(lang, "Error", "Ошибка", "出错")
         ENGINE_LOG -> pick(lang, "Log", "Журнал", "日志")
         ENGINE_LOG_EMPTY -> pick(lang, "Nothing yet", "Пока пусто", "暂无内容")
@@ -976,6 +1112,14 @@ enum class Str {
         UPD_STATE_AVAILABLE -> pick(lang, "Update available", "Доступно обновление", "有可用更新")
         UPD_STATE_ERROR -> pick(lang, "Check failed", "Не удалось проверить", "检查失败")
         UPD_OPEN -> pick(lang, "Open release page", "Открыть страницу релиза", "打开发布页")
+        UPD_DOWNLOAD -> pick(lang, "Download APK", "Скачать APK", "下载 APK")
+        UPD_DOWNLOADING -> pick(lang, "Downloading...", "Скачивание...", "正在下载...")
+        UPD_INSTALL -> pick(lang, "Install", "Установить", "安装")
+        UPD_SNOOZE -> pick(lang, "Do not remind today", "Не напоминать сегодня", "今天不再提醒")
+        UPD_SNOOZED -> pick(lang, "Reminders postponed until tomorrow", "Напоминания отложены до завтра", "提醒已推迟至明天")
+        UPD_COMPARE -> pick(lang, "Version comparison", "Сравнение версий", "版本比较")
+        UPD_COMPARE_SEMVER -> pick(lang, "By version number", "По номеру версии", "按版本号")
+        UPD_COMPARE_TAG -> pick(lang, "By tag change", "По смене тега", "按标签变化")
         STATUS_PERMS_NEEDED -> pick(lang, "Permissions needed", "Нужны разрешения", "需要权限")
         STATUS_DPI -> pick(lang, "DPI", "DPI", "DPI")
         NOTIFY_GPS_ON -> pick(lang, "GPS spoofing on", "Подмена GPS включена", "GPS 伪造已开启")
@@ -1058,6 +1202,86 @@ enum class Str {
         VPN_ONLY_ALIVE -> pick(lang, "Alive only", "Только живые", "仅存活")
         VPN_SEARCH -> pick(lang, "Search", "Поиск", "搜索")
 
+        ROUTING_SECTIONS -> pick(lang, "Routing sections", "Секции маршрутизации", "路由分段")
+        ROUTING_SECTION_ADD -> pick(lang, "Add section", "Добавить секцию", "添加分段")
+        ROUTING_PRESETS -> pick(lang, "Presets", "Пресеты", "预设")
+        ROUTING_PRESET_ADS -> pick(lang, "Ads (block)", "Реклама (блок)", "广告（阻断）")
+        ROUTING_PRESET_RU -> pick(lang, "Russia (direct)", "Россия (напрямую)", "俄罗斯（直连）")
+        ROUTING_PRESET_LOCAL -> pick(lang, "Local networks", "Локальные сети", "本地网络")
+        ROUTING_SECTION_LABEL -> pick(lang, "Section name", "Имя секции", "分段名称")
+        ROUTING_SECTION_ACTION -> pick(lang, "Action", "Действие", "操作")
+        ROUTING_ACTION_CONNECTION -> pick(lang, "Through tunnel", "Через туннель", "走隧道")
+        ROUTING_ACTION_DIRECT -> pick(lang, "Direct", "Напрямую", "直连")
+        ROUTING_ACTION_BLOCK -> pick(lang, "Block", "Отклонить", "阻断")
+        ROUTING_ACTION_DNS -> pick(lang, "Own DNS", "Свой DNS", "自定义 DNS")
+        ROUTING_NETWORK -> pick(lang, "Transport", "Транспорт", "传输协议")
+        ROUTING_NETWORK_ANY -> pick(lang, "Any", "Любой", "任意")
+        ROUTING_NETWORK_TCP -> pick(lang, "TCP", "TCP", "TCP")
+        ROUTING_NETWORK_UDP -> pick(lang, "UDP", "UDP", "UDP")
+        ROUTING_RESOLVE_IP -> pick(
+            lang,
+            "Resolve real IP before routing",
+            "Разрешить реальный IP перед маршрутом",
+            "路由前解析真实 IP"
+        )
+        ROUTING_DOMAINS -> pick(lang, "Domains", "Домены", "域名")
+        ROUTING_DOMAINS_HINT -> pick(
+            lang,
+            "Comma list; full: exact, keyword: substring, regex: pattern, no prefix -- domain suffix",
+            "Через запятую; full: -- точное имя, keyword: -- подстрока, regex: -- шаблон, без префикса -- суффикс",
+            "逗号分隔；full: 精确匹配，keyword: 包含，regex: 正则，无前缀 -- 域名后缀"
+        )
+        ROUTING_IPS -> pick(lang, "Subnets", "Подсети", "子网")
+        ROUTING_PORTS -> pick(lang, "Ports", "Порты", "端口")
+        ROUTING_SECTION_ALL_TRAFFIC -> pick(
+            lang,
+            "No matchers: the section catches all traffic",
+            "Без условий секция ловит весь трафик",
+            "无条件：分段匹配全部流量"
+        )
+        ROUTING_DNS_TYPE -> pick(lang, "DNS type", "Тип DNS", "DNS 类型")
+        ROUTING_DNS_SERVER -> pick(lang, "DNS server", "DNS-сервер", "DNS 服务器")
+        ROUTING_DNS_STRATEGY -> pick(lang, "Address family", "Семейство адресов", "地址族")
+        ROUTING_DNS_STRATEGY_OFF -> pick(lang, "System default", "Как в системе", "系统默认")
+        ROUTING_STRATEGY_PREFER_V4 -> pick(lang, "Prefer IPv4", "Предпочитать IPv4", "优先 IPv4")
+        ROUTING_STRATEGY_PREFER_V6 -> pick(lang, "Prefer IPv6", "Предпочитать IPv6", "优先 IPv6")
+        ROUTING_STRATEGY_DISABLE_V6 -> pick(lang, "Disable IPv6", "Отключить IPv6", "禁用 IPv6")
+        ROUTING_DNS_BOOTSTRAP -> pick(
+            lang,
+            "Bootstrap resolver for server names",
+            "Bootstrap-резолвер для имён серверов",
+            "服务器域名的 Bootstrap 解析器"
+        )
+        ROUTING_DNS_REWRITE_TTL -> pick(lang, "DNS rule TTL, s", "TTL DNS-правил, с", "DNS 规则 TTL, 秒")
+        ROUTING_CASCADES -> pick(lang, "Cascades", "Каскады", "级联")
+        ROUTING_CASCADE_ACTIVE -> pick(lang, "Active cascade", "Активный каскад", "活动级联")
+        ROUTING_CASCADE_OFF -> pick(lang, "Off", "Выключен", "关闭")
+        ROUTING_CASCADE_ADD -> pick(lang, "Add cascade", "Добавить каскад", "添加级联")
+        ROUTING_CASCADE_LABEL -> pick(lang, "Cascade name", "Имя каскада", "级联名称")
+        ROUTING_CASCADE_HOPS -> pick(lang, "Nodes, entry to exit", "Узлы от входа к выходу", "节点，入口到出口")
+        ROUTING_CASCADE_HINT -> pick(
+            lang,
+            "First node is the entry, last node is the exit; each node except the last dials through the next one",
+            "Первый узел -- вход, последний -- выход; каждый узел, кроме последнего, набирается через следующий за ним",
+            "首个节点为入口，末尾为出口；除末节点外，每个节点经其后一节点拨号"
+        )
+        ROUTING_URLTEST -> pick(lang, "Node auto-select", "Автоподбор узлов", "节点自动选择")
+        ROUTING_URLTEST_MODE -> pick(lang, "Node filter", "Фильтр узлов", "节点过滤")
+        ROUTING_MODE_DISABLED -> pick(lang, "All nodes", "Все узлы", "全部节点")
+        ROUTING_MODE_INCLUDE -> pick(lang, "Include only", "Только выбранное", "仅包含")
+        ROUTING_MODE_EXCLUDE -> pick(lang, "Exclude", "Все, кроме", "排除")
+        ROUTING_MODE_MIXED -> pick(lang, "Include then exclude", "Включить и исключить", "包含后排除")
+        ROUTING_INCLUDE_NAMES -> pick(lang, "Names to include", "Имена (включить)", "包含名称")
+        ROUTING_INCLUDE_REGEX -> pick(lang, "Patterns to include", "Шаблоны (включить)", "包含正则")
+        ROUTING_INCLUDE_COUNTRIES -> pick(lang, "Countries to include", "Страны (включить)", "包含国家")
+        ROUTING_EXCLUDE_NAMES -> pick(lang, "Names to exclude", "Имена (исключить)", "排除名称")
+        ROUTING_EXCLUDE_REGEX -> pick(lang, "Patterns to exclude", "Шаблоны (исключить)", "排除正则")
+        ROUTING_EXCLUDE_COUNTRIES -> pick(lang, "Countries to exclude", "Страны (исключить)", "排除国家")
+        ROUTING_TEST_URL -> pick(lang, "Test URL", "URL проверки", "测速地址")
+        ROUTING_INTERVAL -> pick(lang, "Check interval", "Проверка каждые", "检查间隔")
+        ROUTING_TOLERANCE -> pick(lang, "Switch tolerance, ms", "Допуск переключения, мс", "切换容差, 毫秒")
+        ROUTING_IDLE -> pick(lang, "Idle before sleep, s", "Простой перед сном, с", "休眠前空闲, 秒")
+
         STRATEGY_PROBE -> pick(lang, "Detect strategy", "Подобрать стратегию", "检测策略")
         STRATEGY_APPLIED -> pick(lang, "Strategy applied", "Стратегия применена", "策略已应用")
         STRATEGY_NETWORK_FAIL -> pick(
@@ -1065,6 +1289,20 @@ enum class Str {
             "Network check failed",
             "Не удалось проверить сеть",
             "网络检查失败"
+        )
+        STRATEGY_CANDIDATE -> pick(lang, "Candidate", "Кандидат", "候选")
+        STRATEGY_ETA -> pick(lang, "≈ remaining", "≈ осталось", "约剩余")
+        DPI_STANDALONE_ROOT -> pick(
+            lang,
+            "Runs on its own: no VPN or Tor needed -- packets are handled at the kernel level.",
+            "Работает отдельно: VPN и Tor не нужны -- пакеты режутся на уровне ядра.",
+            "独立运行：无需 VPN 或 Tor -- 在内核层处理数据包。"
+        )
+        DPI_STANDALONE_NOROOT -> pick(
+            lang,
+            "Can run without VPN or Tor: a passthrough tunnel is brought up automatically.",
+            "Можно запускать без VPN и Tor: пассивный туннель поднимается автоматически.",
+            "可脱离 VPN 或 Tor 运行：自动建立直通隧道。"
         )
         COMPONENTS -> pick(lang, "Components", "Компоненты", "组件")
         COMPONENTS_REINSTALL -> pick(lang, "Reinstall", "Переустановить", "重新安装")

@@ -88,8 +88,9 @@ fun GpsPage(state: AppState) {
                     }
                     // Причина сбоя -- под статусом: «Ошибка» без строки под
                     // ним ничего не объясняет, а причину приложение знает.
+                    // Строка -- диагностика: время · компонент · причина.
                     if (gpsState == GpsState.ERROR) {
-                        gpsLog.gpsErrorReason()?.let { reason ->
+                        gpsLog.gpsDiagnosisReason("gps")?.let { reason ->
                             Text(
                                 text = reason,
                                 style = MaterialTheme.typography.bodySmall,

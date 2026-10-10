@@ -27,6 +27,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,6 +73,17 @@ import xyz.azraellab.zapp.ui.tr
 fun AppRoot(state: AppState) {
     var tabName: String by rememberSaveable { mutableStateOf(AppTab.first.name) }
     val trafficOpen by state.trafficWindowOpen.collectAsState()
+
+    // Запрос из шторки: кнопка «открыть настройки» на уведомлении приходит
+    // через intent в Activity, а переключение вкладки -- здесь. Флаг
+    // гасится сразу: запрос -- одноразовый, а не режим навигации.
+    val openSettings by AppNavRequest.openSettings.collectAsState()
+    LaunchedEffect(openSettings) {
+        if (openSettings) {
+            tabName = AppTab.SETTINGS.name
+            AppNavRequest.openSettings.value = false
+        }
+    }
 
     val tabs = remember(state.caps.gpsSpoofingSupported) {
         AppTab.available(state.caps.gpsSpoofingSupported)

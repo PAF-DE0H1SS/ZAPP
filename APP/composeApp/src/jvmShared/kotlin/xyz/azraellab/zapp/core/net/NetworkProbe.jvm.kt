@@ -30,10 +30,12 @@ import xyz.azraellab.zapp.core.AutoStrategy
  * режущегося хоста, потом три вопроса к нему: помогает ли подмена SNI,
  * живёт ли TLS 1.3 на подменённом SNI, отвечает ли сервер на QUIC.
  *
- * Классификация отказов намеренно грубая: сброс, таймаут и handshake-ошибку
- * отделяем от «платформа не умеет TLS 1.3» и от «DNS не разрешился» -- это
- * разные вещи, и путать их нельзя, иначе на старом Android автоподбор
- * выставит стратегию «DPI режет ClientHello» там, где просто нет TLS 1.3.
+ * Классификация отказов намеренно грубая, но фазная: сбой соединения
+ * (сервер лёг) и обрыв handshake после ClientHello (DPI режет) -- разные
+ * вещи, и смешивать их нельзя, иначе в цель обхода попадает мёртвый хост.
+ * От «платформа не умеет TLS 1.3» и от «DNS не разрешился» их тоже
+ * отделяем: автоподбор на старом Android не должен предлагать стратегию
+ * «режут ClientHello», когда до сети дело не дошло.
  */
 actual object NetworkProbe {
 
@@ -64,21 +66,26 @@ actual object NetworkProbe {
             return@withContext unknownReport(notes)
         }
 
-        val control12 = tls(controlIp, CONTROL, TLS12, alpn = null)
-        if (control12 != AutoStrategy.ProbeResult.Pass) {
-            notes += "control unreachable over $TLS12: $CONTROL"
+        val control12 = tlsProbe(controlIp, CONTROL, TLS12, alpn = null)
+        if (control12.result != AutoStrategy.ProbeResult.Pass) {
+            notes += "control unreachable over $TLS12: $CONTROL" +
+                if (control12.note.isEmpty()) "" else " (${control12.note})"
             return@withContext unknownReport(notes)
         }
 
         // Ищем хост, который реально режется. Все «заблокированные»
         // проходят -- фильтрации на этой сети нет, ломать нечего.
+        // Кандидат, упавший на фазе соединения, -- это мёртвый сервер, а
+        // не «режется»: его отказ уходит в заметки, цель он не делает.
         var target: Pair<String, String>? = null
         for (host in BLOCKED_CANDIDATES) {
             val ip = resolve(host) ?: continue
-            if (tls(ip, host, TLS12, alpn = null) == AutoStrategy.ProbeResult.Blocked) {
+            val probe = tlsProbe(ip, host, TLS12, alpn = null)
+            if (probe.result == AutoStrategy.ProbeResult.Blocked) {
                 target = host to ip
                 break
             }
+            if (probe.note.isNotEmpty()) notes += "candidate $host: ${probe.note}"
         }
 
         val control13 = tls(controlIp, CONTROL, TLS13, alpn = null)
@@ -194,64 +201,105 @@ actual object NetworkProbe {
      * сертификата здесь лжала бы: DPI-отказ и недоверие к сертификату --
      * один и тот же исход для алгоритма, но разные причины.
      */
-    private fun tls(ip: String, sni: String, protocol: String, alpn: List<String>?): AutoStrategy.ProbeResult {
+    private fun tls(ip: String, sni: String, protocol: String, alpn: List<String>?): AutoStrategy.ProbeResult =
+        tlsProbe(ip, sni, protocol, alpn).result
+
+    /**
+     * Та же проба, но с заметкой о причине отказа.
+     *
+     * Фазы развязаны: отказ соединения (сервер лёг, сеть мертва) и обрыв
+     * handshake после ClientHello (DPI режет) -- это разные вещи, и смешивать
+     * их в один «Blocked» -- вот и была ошибка: мёртвый хост выбирался
+     * целью обхода. Вердикт выносит чистая [tlsVerdict], здесь -- только
+     * разделение фаз и снятие исключений.
+     */
+    private fun tlsProbe(ip: String, sni: String, protocol: String, alpn: List<String>?): TlsOutcome {
         val sniName = try {
             SNIHostName(sni)
         } catch (e: IllegalArgumentException) {
-            return AutoStrategy.ProbeResult.Unknown
+            return TlsOutcome(AutoStrategy.ProbeResult.Unknown, "bad sni")
         }
-        return try {
-            val context = SSLContext.getInstance("TLS").apply {
+        val context = try {
+            SSLContext.getInstance("TLS").apply {
                 init(null, TRUST_ALL, null)
             }
-            Socket().use { raw ->
-                raw.tcpNoDelay = true
+        } catch (e: Exception) {
+            return TlsOutcome(AutoStrategy.ProbeResult.Unknown, "no tls context")
+        }
+        Socket().use { raw ->
+            raw.tcpNoDelay = true
+            // Фаза 1: добраться до порта. Здесь нет DPI-фильтрации -- только
+            // живость сервера и сети, поэтому вердикт здесь всегда Unknown.
+            try {
                 raw.connect(InetSocketAddress(ip, 443), TIMEOUT_MS)
-                raw.soTimeout = TIMEOUT_MS
-                val ssl = context.socketFactory.createSocket(raw, sni, 443, true) as SSLSocket
-                ssl.useClientMode = true
-                if (protocol !in ssl.supportedProtocols) {
-                    // Платформа без TLS 1.3 (старый Android) -- не про сеть.
-                    return AutoStrategy.ProbeResult.Unknown
+            } catch (e: ConnectException) {
+                return verdict(TlsPhase.CONNECT, TlsFailure.REFUSED)
+            } catch (e: SocketTimeoutException) {
+                return verdict(TlsPhase.CONNECT, TlsFailure.TIMEOUT)
+            } catch (e: Exception) {
+                return verdict(TlsPhase.CONNECT, TlsFailure.OTHER)
+            }
+            raw.soTimeout = TIMEOUT_MS
+
+            // Фаза 2: сам TLS. Сокет уже открыт, всё, что ломается здесь,
+            // случилось после ClientHello.
+            val ssl = try {
+                context.socketFactory.createSocket(raw, sni, 443, true) as SSLSocket
+            } catch (e: Exception) {
+                return TlsOutcome(AutoStrategy.ProbeResult.Unknown, "ssl wrap failed")
+            }
+            ssl.useClientMode = true
+            if (protocol !in ssl.supportedProtocols) {
+                // Платформа без TLS 1.3 (старый Android) -- не про сеть.
+                return TlsOutcome(AutoStrategy.ProbeResult.Unknown, "platform lacks $protocol")
+            }
+            ssl.enabledProtocols = arrayOf(protocol)
+            if (alpn != null) {
+                // setApplicationProtocols -- Java 9 / API 24: на более
+                // старых платформах ALPN просто не выставляется, и
+                // handshake идёт без него. Рефлексия вместо прямого
+                // вызова нужна из-за jdk-release: компилятор видит
+                // старший API-уровень, чем метод.
+                runCatching {
+                    val method = SSLSocket::class.java.getMethod(
+                        "setApplicationProtocols",
+                        Array<String>::class.java
+                    )
+                    method.invoke(ssl, alpn.toTypedArray())
                 }
-                ssl.enabledProtocols = arrayOf(protocol)
-                if (alpn != null) {
-                    // setApplicationProtocols -- Java 9 / API 24: на более
-                    // старых платформах ALPN просто не выставляется, и
-                    // handshake идёт без него. Рефлексия вместо прямого
-                    // вызова нужна из-заjdk-release: компилятор видит
-                    // старший API-уровень, чем метод.
-                    runCatching {
-                        val method = SSLSocket::class.java.getMethod(
-                            "setApplicationProtocols",
-                            Array<String>::class.java
-                        )
-                        method.invoke(ssl, alpn.toTypedArray())
-                    }
-                }
-                ssl.sslParameters = ssl.sslParameters.apply { serverNames = listOf(sniName) }
+            }
+            ssl.sslParameters = ssl.sslParameters.apply { serverNames = listOf(sniName) }
+            return try {
                 ssl.startHandshake()
                 ssl.session?.invalidate()
-                AutoStrategy.ProbeResult.Pass
+                TlsOutcome(AutoStrategy.ProbeResult.Pass, "")
+            } catch (e: SSLHandshakeException) {
+                if (e.message?.contains("protocol", ignoreCase = true) == true) {
+                    verdict(TlsPhase.HANDSHAKE, TlsFailure.PROTOCOL_UNSUPPORTED)
+                } else {
+                    verdict(TlsPhase.HANDSHAKE, TlsFailure.SSL_ERROR)
+                }
+            } catch (e: SSLException) {
+                verdict(TlsPhase.HANDSHAKE, TlsFailure.SSL_ERROR)
+            } catch (e: SocketTimeoutException) {
+                verdict(TlsPhase.HANDSHAKE, TlsFailure.TIMEOUT)
+            } catch (e: ConnectException) {
+                verdict(TlsPhase.HANDSHAKE, TlsFailure.REFUSED)
+            } catch (e: IllegalArgumentException) {
+                TlsOutcome(AutoStrategy.ProbeResult.Unknown, "bad handshake args")
+            } catch (e: Exception) {
+                // Сброс после ClientHello -- типичный обрыв посередине
+                // записи: это фильтрация, а не мёртвый сервер.
+                verdict(TlsPhase.HANDSHAKE, TlsFailure.OTHER)
             }
-        } catch (e: SSLHandshakeException) {
-            if (e.message?.contains("protocol", ignoreCase = true) == true) {
-                AutoStrategy.ProbeResult.Unknown
-            } else {
-                AutoStrategy.ProbeResult.Blocked
-            }
-        } catch (e: SSLException) {
-            AutoStrategy.ProbeResult.Blocked
-        } catch (e: SocketTimeoutException) {
-            AutoStrategy.ProbeResult.Blocked
-        } catch (e: ConnectException) {
-            AutoStrategy.ProbeResult.Blocked
-        } catch (e: IllegalArgumentException) {
-            AutoStrategy.ProbeResult.Unknown
-        } catch (e: Exception) {
-            AutoStrategy.ProbeResult.Unknown
         }
     }
+
+    private fun verdict(phase: TlsPhase, failure: TlsFailure) =
+        TlsOutcome(tlsVerdict(phase, failure), tlsFailureNote(phase, failure))
+
+    /** Исход пробы и короткая подпись причины (пусто при успехе). */
+    private data class TlsOutcome(val result: AutoStrategy.ProbeResult, val note: String)
 
     /**
      * QUIC Version Negotiation: пакет с неизвестной версией.

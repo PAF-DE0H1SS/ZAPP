@@ -2,6 +2,8 @@ package xyz.azraellab.zapp.core
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import xyz.azraellab.zapp.core.perApp.PerAppConfig
+import xyz.azraellab.zapp.core.probe.RelayTuning
 
 /**
  * Все настройки приложения в одном объекте.
@@ -26,6 +28,21 @@ data class AppConfig(
 
     /** Приветствие уже показано. false -- показываем при первом запуске. */
     val welcomeDone: Boolean = false,
+
+    /**
+     * Как сравнивать версии при проверке обновлений: `semver` -- по
+     * числам, `tag` -- по любому отличию тега (см. updateAvailable).
+     */
+    val updateCompareMode: String = "semver",
+
+    /**
+     * Напоминания об обновлениях отложены до этого момента (эпоха, мс).
+     *
+     * 0 -- не отложено. После [localDayEndMs] тапа «не напоминать
+     * сегодня» уведомление молчит до конца суток, сама проверка при этом
+     * продолжает работать и состояние в настройках остаётся честным.
+     */
+    val updateSnoozeUntilMs: Long = 0L,
 
     /**
      * Производительность: фон, размер страницы списка.
@@ -53,11 +70,30 @@ data class AppConfig(
      */
     val region: String = "",
 
+    /**
+     * Выбор приложений для функций обхода (per-app).
+     *
+     * Хранится в основном конфиге, а не внутри VpnConfig: выбор общий для
+     * VPN, Tor, Zapret и GoodbyeDPI, а профили VPN -- лишь часть конфига.
+     * Пресеты переносят выбор: куда уезжает профиль, туда уезжает и набор
+     * приложений, которые через него ходят.
+     */
+    val perApp: PerAppConfig = PerAppConfig(),
+
+    /**
+     * Тюнинг локального релея обхода (noroot-сборки).
+     *
+     * Общий для zapret и goodbyedpi: релей у них один. Заполняется
+     * автоподбором стратегии -- в сборке без root «стратегия» и есть
+     * параметры этого разрыва.
+     */
+    val relay: RelayTuning = RelayTuning(),
+
     /** Схема версии: нужна для миграций при чтении старых файлов. */
     val version: Int = CURRENT_VERSION
 ) {
     companion object {
-        const val CURRENT_VERSION: Int = 2
+        const val CURRENT_VERSION: Int = 3
     }
 }
 
@@ -185,7 +221,8 @@ data class Preset(
     val zapret: ZapretConfig = ZapretConfig(),
     val goodbyeDpi: GoodbyeDpiConfig = GoodbyeDpiConfig(),
     val vpn: VpnConfig = VpnConfig(),
-    val gps: GpsConfig = GpsConfig()
+    val gps: GpsConfig = GpsConfig(),
+    val perApp: PerAppConfig = PerAppConfig()
 ) {
     /** Применяет пресет к настройкам, не трогая устройственные поля. */
     fun applyTo(config: AppConfig): AppConfig =
@@ -194,7 +231,8 @@ data class Preset(
             goodbyeDpi = goodbyeDpi,
             vpn = vpn,
             gps = gps,
-            region = region
+            region = region,
+            perApp = perApp
         ), region)
 
     fun validate(): List<String> {
@@ -232,7 +270,8 @@ data class Preset(
             zapret = config.zapret,
             goodbyeDpi = config.goodbyeDpi,
             vpn = config.vpn,
-            gps = config.gps
+            gps = config.gps,
+            perApp = config.perApp
         )
     }
 }

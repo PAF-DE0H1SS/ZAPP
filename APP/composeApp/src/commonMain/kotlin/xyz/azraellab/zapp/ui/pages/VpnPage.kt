@@ -23,6 +23,8 @@ import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.LinkSpeedBus
 import xyz.azraellab.zapp.core.PingBus
+import xyz.azraellab.zapp.core.RouteHealth
+import xyz.azraellab.zapp.core.route
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.VpnConnects
 import xyz.azraellab.zapp.core.VpnProfile
@@ -30,12 +32,14 @@ import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.VpnSource
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.engine.TunnelState
+import xyz.azraellab.zapp.core.engine.isLive
 import xyz.azraellab.zapp.core.log.errorLine
 import xyz.azraellab.zapp.core.log.looksLikeErrorLine
 import xyz.azraellab.zapp.core.statusLine
 import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
+import xyz.azraellab.zapp.ui.components.ConnectionOrb
 import xyz.azraellab.zapp.ui.components.ZappBanner
 import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappButtonRow
@@ -47,6 +51,7 @@ import xyz.azraellab.zapp.ui.components.ZappListRow
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.components.ZappTextField
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
+import xyz.azraellab.zapp.ui.theme.monoData
 import xyz.azraellab.zapp.ui.tr
 
 /**
@@ -81,25 +86,23 @@ fun VpnPage(state: AppState) {
                         color = when (tunnelState) {
                             TunnelState.CONNECTED -> MaterialTheme.colorScheme.primary
                             TunnelState.ERROR -> MaterialTheme.colorScheme.error
-                            TunnelState.CONNECTING -> MaterialTheme.colorScheme.tertiary
+                            TunnelState.CONNECTING, TunnelState.RECONNECTING ->
+                                MaterialTheme.colorScheme.tertiary
                             TunnelState.DISCONNECTED -> MaterialTheme.colorScheme.onSurface
                         },
                         modifier = Modifier.weight(1f)
                     )
-                    if (tunnelState == TunnelState.CONNECTING || tunnelState == TunnelState.CONNECTED) {
-                        ZappButton(
-                            text = tr(Str.COMMON_STOP),
-                            role = ButtonRole.DANGER,
-                            onClick = { state.disconnectVpn() },
-                            path = "vpn.stop"
-                        )
-                    } else {
-                        ZappButton(
-                            text = tr(Str.COMMON_START),
-                            onClick = { state.connectVpn() },
-                            path = "vpn.start"
-                        )
-                    }
+                    // Орб -- и статус, и кнопка: тон по состоянию туннеля,
+                    // нажатие ставит сессию или снимает её.
+                    ConnectionOrb(
+                        state = tunnelState,
+                        label = tr(if (tunnelState.isLive) Str.COMMON_STOP else Str.COMMON_START),
+                        animate = state.config.perf.animatedBackground,
+                        onClick = {
+                            if (tunnelState.isLive) state.disconnectVpn()
+                            else state.connectVpn()
+                        }
+                    )
                 }
                 // Скорость туннеля, пинг и активные режимы: живут, пока
                 // подключены, обновляются фоновыми опросами. Режимы --
@@ -359,11 +362,14 @@ internal fun ConnectRow(
     path: String? = null
 ) {
     val protocol = VpnProtocol.of(profile.protocol)
-    val status = when (profile.health.alive) {
-        null -> tr(Str.VPN_STATUS_UNKNOWN)
-        true -> if (profile.health.latencyMs >= 0) "${profile.health.latencyMs} ms"
+    // Тройство здоровья маршрута -- явный enum: «не проверялось», «живо»
+    // и «мёртвое» -- три разных состояния, и путать их через булево с null
+    // легко, а через when по RouteHealth -- нет.
+    val status = when (profile.health.route) {
+        RouteHealth.UNKNOWN -> tr(Str.VPN_STATUS_UNKNOWN)
+        RouteHealth.HEALTHY -> if (profile.health.latencyMs >= 0) "${profile.health.latencyMs} ms"
         else tr(Str.VPN_STATUS_ALIVE)
-        false -> tr(Str.VPN_STATUS_DEAD) + if (profile.health.error.isNotEmpty()) {
+        RouteHealth.UNHEALTHY -> tr(Str.VPN_STATUS_DEAD) + if (profile.health.error.isNotEmpty()) {
             ": ${profile.health.error}"
         } else ""
     }
@@ -376,10 +382,10 @@ internal fun ConnectRow(
             Text(
                 text = status,
                 style = MaterialTheme.typography.bodySmall,
-                color = when (profile.health.alive) {
-                    true -> MaterialTheme.colorScheme.primary
-                    false -> MaterialTheme.colorScheme.error
-                    null -> MaterialTheme.colorScheme.onSurfaceVariant
+                color = when (profile.health.route) {
+                    RouteHealth.HEALTHY -> MaterialTheme.colorScheme.primary
+                    RouteHealth.UNHEALTHY -> MaterialTheme.colorScheme.error
+                    RouteHealth.UNKNOWN -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
             )
         },
@@ -612,6 +618,7 @@ internal fun TunnelState.labelKey(): Str = when (this) {
     TunnelState.DISCONNECTED -> Str.ENGINE_STATE_DISCONNECTED
     TunnelState.CONNECTING -> Str.ENGINE_STATE_CONNECTING
     TunnelState.CONNECTED -> Str.ENGINE_STATE_CONNECTED
+    TunnelState.RECONNECTING -> Str.ENGINE_STATE_RECONNECTING
     TunnelState.ERROR -> Str.ENGINE_STATE_ERROR
 }
 
@@ -636,7 +643,7 @@ internal fun SpeedLine(state: AppState, tunnelState: TunnelState) {
     if (line.isNotEmpty()) {
         Text(
             text = line,
-            style = MaterialTheme.typography.bodyMedium,
+            style = monoData(),
             color = MaterialTheme.colorScheme.primary
         )
     }

@@ -21,9 +21,11 @@ import xyz.azraellab.zapp.core.TorBridges
 import xyz.azraellab.zapp.core.VpnConnects
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.engine.TunnelState
+import xyz.azraellab.zapp.core.engine.isLive
 import xyz.azraellab.zapp.core.log.errorLine
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.Choice
+import xyz.azraellab.zapp.ui.components.ConnectionOrb
 import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
@@ -78,25 +80,23 @@ fun TorPage(state: AppState) {
                         color = when (tunnelState) {
                             TunnelState.CONNECTED -> MaterialTheme.colorScheme.primary
                             TunnelState.ERROR -> MaterialTheme.colorScheme.error
-                            TunnelState.CONNECTING -> MaterialTheme.colorScheme.tertiary
+                            TunnelState.CONNECTING, TunnelState.RECONNECTING ->
+                                MaterialTheme.colorScheme.tertiary
                             TunnelState.DISCONNECTED -> MaterialTheme.colorScheme.onSurface
                         },
                         modifier = Modifier.weight(1f)
                     )
-                    if (tunnelState == TunnelState.CONNECTING || tunnelState == TunnelState.CONNECTED) {
-                        ZappButton(
-                            text = tr(Str.COMMON_STOP),
-                            role = ButtonRole.DANGER,
-                            onClick = { state.disconnectVpn() },
-                            path = "tor.stop"
-                        )
-                    } else {
-                        ZappButton(
-                            text = tr(Str.COMMON_START),
-                            onClick = { state.connectTor() },
-                            path = "tor.start"
-                        )
-                    }
+                    // Тот же орб, что и на VPN: одна кнопка-статус на обеих
+                    // вкладках, действие -- сессия туннеля.
+                    ConnectionOrb(
+                        state = tunnelState,
+                        label = tr(if (tunnelState.isLive) Str.COMMON_STOP else Str.COMMON_START),
+                        animate = state.config.perf.animatedBackground,
+                        onClick = {
+                            if (tunnelState.isLive) state.disconnectVpn()
+                            else state.connectTor()
+                        }
+                    )
                 }
                 if (tunnelState == TunnelState.ERROR) {
                     val reason = tunnelLog.errorLine()

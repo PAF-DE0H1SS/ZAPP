@@ -43,7 +43,13 @@ import xyz.azraellab.zapp.core.native.NativeBinaries
 import xyz.azraellab.zapp.core.permissions.PermissionId
 import xyz.azraellab.zapp.core.permissions.PermissionState
 import xyz.azraellab.zapp.core.permissions.PermissionStatus
+import xyz.azraellab.zapp.core.update.UPDATE_COMPARE_SEMVER
+import xyz.azraellab.zapp.core.update.UPDATE_COMPARE_TAG
+import xyz.azraellab.zapp.core.update.UpdateDownload
 import xyz.azraellab.zapp.core.update.UpdateState
+import xyz.azraellab.zapp.core.update.ZappComponent
+import xyz.azraellab.zapp.core.update.cachedUpdateApk
+import xyz.azraellab.zapp.core.update.probeComponentVersion
 import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.ComponentColors
@@ -82,9 +88,14 @@ fun SettingsPage(state: AppState) {
     // Системная кнопка «назад» закрывает открытое подокно, а не всё
     // приложение: из окна категории возвращаемся в список категорий.
     // «Тесты» -- вторая ступень внутри «Для разработчиков», поэтому назад
-    // из неё ведёт в раздел, а не мимо, в корень.
+    // из неё ведёт в раздел, а не мимо, в корень. Строки perapp.* --
+    // ступень внутри «Приложений».
     ZappBackHandler(enabled = section != null) {
-        section = if (section == "devtests") "dev" else null
+        section = when {
+            section?.startsWith("perapp.") == true -> "perapp"
+            section == "devtests" -> "dev"
+            else -> null
+        }
     }
 
     when (section) {
@@ -121,6 +132,26 @@ fun SettingsPage(state: AppState) {
             PerfSection(state)
         }
 
+        "perapp" -> SubPage(Str.SETTINGS_PERAPP, back = { section = null }) {
+            PerAppRoot(state, onOpen = { section = it })
+        }
+
+        "perapp.vpn" -> SubPage(Str.TAB_VPN, back = { section = "perapp" }) {
+            PerAppPicker(state, PerAppScope.VPN)
+        }
+
+        "perapp.tor" -> SubPage(Str.TAB_TOR, back = { section = "perapp" }) {
+            PerAppPicker(state, PerAppScope.TOR)
+        }
+
+        "perapp.zapret" -> SubPage(Str.TAB_ZAPRET, back = { section = "perapp" }) {
+            PerAppPicker(state, PerAppScope.ZAPRET)
+        }
+
+        "perapp.gdpi" -> SubPage(Str.TAB_GOODBYE_DPI, back = { section = "perapp" }) {
+            PerAppPicker(state, PerAppScope.GDPI)
+        }
+
         "vpn" -> SubPage(Str.TAB_VPN, back = { section = null }) {
             VpnExtrasSection(state)
         }
@@ -138,7 +169,7 @@ fun SettingsPage(state: AppState) {
         }
 
         "components" -> SubPage(Str.COMPONENTS, back = { section = null }) {
-            ComponentsSection(state)
+            ComponentsSection()
         }
 
         "log" -> SubPage(Str.SETTINGS_LOG, back = { section = null }) {
@@ -179,6 +210,7 @@ private fun SettingsRoot(state: AppState, onOpen: (String) -> Unit) {
             CategoryRow(tr(Str.TAB_TRAFFIC), path = "settings.traffic") { onOpen("traffic") }
             CategoryRow(tr(Str.SETTINGS_PRESETS), path = "settings.presets") { onOpen("presets") }
             CategoryRow(tr(Str.SETTINGS_PERF), path = "settings.perf") { onOpen("perf") }
+            CategoryRow(tr(Str.SETTINGS_PERAPP), path = "settings.perapp") { onOpen("perapp") }
             CategoryRow(tr(Str.TAB_VPN), path = "settings.vpn") { onOpen("vpn") }
             CategoryRow(tr(Str.TAB_TOR), path = "settings.tor") { onOpen("tor") }
             if (NativeBinaries.installed().isNotEmpty()) {
@@ -389,6 +421,8 @@ private fun DeviceSection(state: AppState) {
 @Composable
 private fun UpdatesSection(state: AppState) {
     val updateState by state.updateState.collectAsState()
+    val download by state.updateDownload.collectAsState()
+    val release by state.release.collectAsState()
     PageGroup(tr(Str.SETTINGS_UPDATES)) {
         ZappCard {
             InfoRow(tr(Str.ABOUT_VERSION), state.appVersion)
@@ -412,7 +446,7 @@ private fun UpdatesSection(state: AppState) {
                     onClick = { state.checkForUpdates() },
                     modifier = Modifier.weight(1f)
                 )
-                if (updateState == UpdateState.AVAILABLE) {
+                if (updateState == UpdateState.AVAILABLE && release != null) {
                     ZappButton(
                         text = tr(Str.UPD_OPEN),
                         onClick = { state.openReleasePage() },
@@ -420,6 +454,83 @@ private fun UpdatesSection(state: AppState) {
                     )
                 }
             }
+
+            // Второй ряд появляется только для свежего релиза: качаем и
+            // ставим APK штатным установщиком, а на время загрузки кнопка
+            // гаснет -- двойной тап ничего не ускорит.
+            if (updateState == UpdateState.AVAILABLE && release != null) {
+                val snoozed = state.config.updateSnoozeUntilMs > System.currentTimeMillis()
+                val apkUrl = release?.apkUrl.orEmpty()
+                if (state.caps.apkUpdatesSupported && apkUrl.isNotBlank()) {
+                    val apkPath = release?.version?.let { cachedUpdateApk(it) }
+                    ZappButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        if (download == UpdateDownload.RUNNING) {
+                            ZappButton(
+                                text = tr(Str.UPD_DOWNLOADING),
+                                role = ButtonRole.SECONDARY,
+                                enabled = false,
+                                onClick = {},
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else if (apkPath != null) {
+                            ZappButton(
+                                text = tr(Str.UPD_INSTALL),
+                                onClick = { state.installUpdate() },
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else {
+                            ZappButton(
+                                text = tr(Str.UPD_DOWNLOAD),
+                                onClick = { state.downloadUpdate() },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        ZappButton(
+                            text = tr(Str.UPD_SNOOZE),
+                            role = ButtonRole.SECONDARY,
+                            enabled = !snoozed,
+                            onClick = { state.snoozeUpdates() },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                } else if (!snoozed) {
+                    ZappButton(
+                        text = tr(Str.UPD_SNOOZE),
+                        role = ButtonRole.SECONDARY,
+                        onClick = { state.snoozeUpdates() }
+                    )
+                }
+                state.updateDownloadError?.takeIf { it.isNotBlank() }?.let { cause ->
+                    Text(
+                        text = cause,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                if (snoozed) {
+                    Text(
+                        text = tr(Str.UPD_SNOOZED),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // Режимы сравнения -- про будущие теги: пока они числовые, оба
+        // режима дают один ответ, но «по смене тега» не пропустит
+        // релиз с нечисловым именем.
+        ZappCard {
+            ZappChoiceRow(
+                label = tr(Str.UPD_COMPARE),
+                options = listOf(
+                    Choice(UPDATE_COMPARE_SEMVER, tr(Str.UPD_COMPARE_SEMVER)),
+                    Choice(UPDATE_COMPARE_TAG, tr(Str.UPD_COMPARE_TAG))
+                ),
+                selected = state.config.updateCompareMode,
+                onSelect = { mode -> state.mutate { it.copy(updateCompareMode = mode) } },
+                path = "updates.compare"
+            )
         }
     }
 }
@@ -549,6 +660,15 @@ private fun PresetsSection(state: AppState) {
     }
     PageGroup(tr(Str.VPN_ROUTING)) {
         VpnRoutingCard(state)
+    }
+    PageGroup(tr(Str.ROUTING_SECTIONS)) {
+        RouteSectionsCard(state)
+    }
+    PageGroup(tr(Str.ROUTING_CASCADES)) {
+        RouteCascadesCard(state)
+    }
+    PageGroup(tr(Str.ROUTING_URLTEST)) {
+        UrlTestFilterCard(state)
     }
     PageGroup(tr(Str.SETTINGS_SYSTEM)) {
         ZappCard {
@@ -732,7 +852,37 @@ private fun ZapretSection(state: AppState) {
                     value = config.fakeRepeats,
                     onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(fakeRepeats = v)) } }
                 )
+                ZappTextField(
+                    label = "--dpi-desync-autottl",
+                    value = config.autoTtl,
+                    onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(autoTtl = v)) } },
+                    placeholder = "3:4-10"
+                )
+                ZappNumberField(
+                    label = "--dpi-desync-udplen-increment",
+                    value = config.udpLenIncrement,
+                    onValueChange = { v ->
+                        state.mutate { it.copy(zapret = it.zapret.copy(udpLenIncrement = v)) }
+                    },
+                    placeholder = "0"
+                )
+                ZappSettingRow(
+                    title = "--dpi-desync-any-protocol",
+                    checked = config.anyProtocol,
+                    onCheckedChange = { on ->
+                        state.mutate { it.copy(zapret = it.zapret.copy(anyProtocol = on)) }
+                    }
+                )
             }
+
+            // Моды fake ClientHello работают при любом семействе, где есть
+            // подмена TLS: поле общей зоны, не привязано к семейству.
+            ZappTextField(
+                label = "--dpi-desync-fake-tls-mod",
+                value = config.fakeTlsMod,
+                onValueChange = { v -> state.mutate { it.copy(zapret = it.zapret.copy(fakeTlsMod = v)) } },
+                placeholder = "rnd,rndsni,dupsid"
+            )
 
             if (family == ZapretFamily.FAKE || family == ZapretFamily.PATCH) {
                 ZappSettingRow(
@@ -870,6 +1020,53 @@ private fun GoodbyeDpiSection(state: AppState) {
                     state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(hostCheck = !on)) }
                 }
             )
+
+            // TTL, фрагментация и фейки: техники, которые есть в нашем
+            // бинаре. Подписи -- сами флаги, как в строке команды ниже.
+            ZappTextField(
+                label = "--auto-ttl",
+                value = config.autoTtl,
+                onValueChange = { v -> state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(autoTtl = v)) } },
+                placeholder = "3-8-10"
+            )
+            ZappNumberField(
+                label = "--set-ttl",
+                value = config.setTtl,
+                onValueChange = { v -> state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(setTtl = v)) } },
+                placeholder = "5"
+            )
+            ZappNumberField(
+                label = "--fake-gen",
+                value = config.fakeGen,
+                onValueChange = { v -> state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(fakeGen = v)) } },
+                placeholder = "3"
+            )
+            ZappNumberField(
+                label = "--fake-resend",
+                value = config.fakeResend,
+                onValueChange = { v -> state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(fakeResend = v)) } },
+                placeholder = "2"
+            )
+            ZappNumberField(
+                label = "--max-payload",
+                value = config.maxPayload,
+                onValueChange = { v -> state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(maxPayload = v)) } },
+                placeholder = "1400"
+            )
+            ZappSettingRow(
+                title = "--reverse-frag",
+                checked = config.reverseFrag,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(reverseFrag = on)) }
+                }
+            )
+            ZappSettingRow(
+                title = "--frag-by-sni",
+                checked = config.fragBySni,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(fragBySni = on)) }
+                }
+            )
             ZappTextField(
                 label = tr(Str.DPI_DAEMON_PATH),
                 value = config.daemonPath,
@@ -893,13 +1090,25 @@ private fun GoodbyeDpiSection(state: AppState) {
 }
 
 @Composable
-private fun ComponentsSection(state: AppState) {
+private fun ComponentsSection() {
     val scope = rememberCoroutineScope()
-    val installed = NativeBinaries.installed()
+
+    // Версии настоящие, а не версия приложения: каждый бинарь отвечает
+    // сам. `--version` -- это короткий запуск процесса, поэтому проба
+    // одна, при открытии окна; не распакованный компонент -- тире.
+    var versions by remember {
+        mutableStateOf(ZappComponent.entries.map { it.title to "..." })
+    }
+    LaunchedEffect(Unit) {
+        versions = ZappComponent.entries.map { component ->
+            component.title to (probeComponentVersion(component) ?: "-")
+        }
+    }
+
     PageGroup(tr(Str.COMPONENTS)) {
         ZappCard {
-            installed.forEach { tool ->
-                InfoRow(label = tool, value = state.appVersion)
+            versions.forEach { (name, version) ->
+                InfoRow(label = name, value = version)
             }
             ZappButton(
                 text = tr(Str.COMPONENTS_REINSTALL),

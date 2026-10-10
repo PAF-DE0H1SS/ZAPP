@@ -24,8 +24,14 @@ import xyz.azraellab.zapp.core.net.ProxyUri
 import xyz.azraellab.zapp.core.net.SingboxConfig
 import xyz.azraellab.zapp.core.net.WireGuardIni
 import xyz.azraellab.zapp.core.native.BinaryResolver
+import xyz.azraellab.zapp.core.perApp.AppFamily
+import xyz.azraellab.zapp.core.perApp.AppSelection
+import xyz.azraellab.zapp.core.perApp.PerAppConfig
+import xyz.azraellab.zapp.core.perApp.RouteMode
+import xyz.azraellab.zapp.core.perApp.installedApps
 import xyz.azraellab.zapp.core.root.RootShell
 import java.io.File
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
@@ -51,13 +57,48 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     @Volatile
     private var config: VpnConfig = VpnConfig()
 
+    /** Выборы приложений по функции; передаются AppState через applyPerApp. */
+    @Volatile
+    private var perApp: PerAppConfig = PerAppConfig()
+
+    /**
+     * Выбор приложений текущей сессии.
+     *
+     * VPN и Tor делят один туннель, поэтому скоуп выбирается в
+     * performConnect по режиму подключения, а не в момент передачи
+     * конфига: только там видно, чей это туннель. DPI-сессия скоупа
+     * не имеет -- пассивный туннель обязан пропускать весь трафик,
+     * иначе релей не увидит соединений.
+     */
+    @Volatile
+    private var sessionApps: AppSelection = AppSelection.NONE
+
     /** Ядерный интерфейс; null, если не поднимали. */
     @Volatile
     private var iface: String? = null
 
+    /**
+     * Сервисный туннель поднят и fd у бэкенда: флаг живого kill switch.
+     *
+     * Снимается только при явной уборке (cleanupQuiet/performDisconnect):
+     * падение демона туннель не трогает -- в этом весь смысл крышки.
+     */
+    @Volatile
+    private var tunnelHeld = false
+
     private var boxDaemon: DaemonEngine? = null
     private var openvpnDaemon: DaemonEngine? = null
     private var torDaemon: DaemonEngine? = null
+
+    /**
+     * Последний собранный конфиг box: нужен для перезапуска демона
+     * без переподнятия туннеля (kill switch через живой TUN).
+     *
+     * Обнуляется в [cleanupQuiet]/[performDisconnect]: после снятия
+     * интерфейса перезапуск бэкенда на старом конфиге бессмыслен.
+     */
+    @Volatile
+    private var lastBoxBuilt: SingboxConfig.Built? = null
 
     private var killSwitchEndpoints: List<String> = emptyList()
     private var uidZeroBypassOn = false
@@ -139,6 +180,10 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
 
     override fun applyConfig(config: VpnConfig) {
         this.config = config
+    }
+
+    override fun applyPerApp(perApp: PerAppConfig) {
+        this.perApp = perApp
     }
 
     override fun connect() {
@@ -232,6 +277,14 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         }
 
         val protocol = VpnProtocol.of(profile?.protocol)
+        // Владелец туннеля текущей сессии: пассивная DPI-сессия скоупа
+        // не имеет (релей обязан видеть весь трафик), у Tor -- свой
+        // выбор приложений, всё остальное -- VPN.
+        sessionApps = when {
+            dpiSession -> AppSelection.NONE
+            protocol == VpnProtocol.TOR -> perApp.tor
+            else -> perApp.vpn
+        }
         try {
             when {
                 dpiSession -> boxDpi(vpn)
@@ -358,6 +411,12 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         if (vpn.routing.allowPerAppBypass && vpn.routing.bypassAppList().isNotEmpty()) {
             log("note: per-app bypass is supported by the sing-box backend only")
         }
+        if (sessionApps.active()) {
+            // Ядро маршрутизирует устройство целиком, per-app-список живёт
+            // только в VpnService -- молчать нельзя: пользователь выбрал
+            // приложения, а уйдёт весь трафик.
+            log("note: per-app routing is not available in kernel mode; whole device goes through the tunnel")
+        }
         if (vpn.killSwitch) enableKillSwitch(endpointsOf(profile), vpn)
     }
 
@@ -415,48 +474,119 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         boxBuilt(SingboxConfig.buildDpi(vpn), vpn, null)
     }
 
+    /**
+     * Пакеты allow-режима текущей сессии, расширенные до uid-семей.
+     *
+     * Выбранный пакет тянет за собой соседей по sharedUserId (движок
+     * зовёт AppFamily в момент establish, когда каталог установленных
+     * ещё свежий), иначе обход поймал бы только часть процессов.
+     * Выключенный выбор, exclude-режим или пустой список -- пустой
+     * список, туннель без ограничений. Ошибка каталога не роняет
+     * подключение: пакеты уходят без расширения, худший случай --
+     * усечённый семейство.
+     */
+    private fun allowedPackages(): List<String> = expandedPackages(RouteMode.INCLUDE)
+
+    /**
+     * Пакеты exclude-режима: их Builder уводит мимо туннеля.
+     *
+     * Тот же принцип расширения до семейств, что и в allow-режиме:
+     * соседи по sharedUserId пришли бы вместе с приложением, которого
+     * пользователь исключал.
+     */
+    private fun excludedPackages(): List<String> = expandedPackages(RouteMode.EXCLUDE)
+
+    /** Общий разбор выбора: mode фильтрует, семейства расширяют. */
+    private fun expandedPackages(mode: RouteMode): List<String> {
+        if (!sessionApps.active() || sessionApps.mode != mode) return emptyList()
+        val catalog = runCatching { installedApps() }.getOrDefault(emptyList())
+        return AppFamily.expand(sessionApps.packages, catalog)
+    }
+
     private suspend fun boxBuilt(built: SingboxConfig.Built, vpn: VpnConfig, profile: VpnProfile?) {
         built.notes.forEach { log(it) }
         if (vpn.killSwitch) enableKillSwitch(endpointsOf(profile), vpn)
+        lastBoxBuilt = built
 
         // Android: туннель поднимает VpnService до старта ядра, а fd ядро
         // забирает из unix-сокета сервиса (номер в окружении ненадёжен:
         // ProcessBuilder вырезает унаследованные fd при спавне). Desktop:
         // establish() вернёт null, и ядро откроет /dev/net/tun само.
         val tunnel = vpnTunnelParams(
-            built.json, vpn, profile?.name?.takeIf { it.isNotBlank() } ?: "ZAPP"
+            built.json, vpn, profile?.name?.takeIf { it.isNotBlank() } ?: "ZAPP",
+            allowedPackages(),
+            excludedPackages()
         )
         if (stopping) error("connection stopped before tunnel start")
         val fd = tunnel?.let { VpnTunnel.establish(it) }
+        tunnelHeld = fd != null
         if (fd != null && RootShell.available()) enableUidZeroBypass()
 
         val daemon = createDaemonEngine(DaemonId.TUNNEL)
         boxDaemon = daemon
         if (stopping) error("connection stopped before box start")
-        daemon.start(
-            DaemonSpec(
-                binary = "box",
-                args = listOf("run", "-c", "{{config}}"),
-                files = mapOf("config" to built.json),
-                env = if (fd != null) {
-                    buildMap {
-                        VpnTunnel.fdSocketPath?.let { put("ZAPP_TUN_SOCK", it) }
-                        // Go x509 ищет корни в /etc/ssl/certs, которого на
-                        // Android нет: корневые лежат в
-                        // /system/etc/security/cacerts. Без этой переменной
-                        // TLS-проверка сертификатов падает с «unknown
-                        // authority».
-                        put("SSL_CERT_DIR", "/system/etc/security/cacerts")
-                    }
-                } else {
-                    emptyMap()
-                }
-            )
-        )
+        daemon.start(boxSpec(built, useTunSocket = fd != null))
         if (!awaitState(daemon, DaemonState.RUNNING, START_TIMEOUT_MS)) {
-            error("box failed to start: ${daemonReason(daemon)}")
+            // Причина снимается до остановки: stop добавит в журнал свою
+            // строку, а процесс, не успевший выйти к таймауту, убит -- без
+            // этого поздний спавн оставлял сироту.
+            val reason = daemonReason(daemon)
+            runCatching { daemon.stop() }
+            error("box failed to start: $reason")
         }
         log("box is running")
+    }
+
+    /**
+     * Спецификация запуска box: одна на первый старт и на перезапуск
+     * при живом kill switch.
+     *
+     * [useTunSocket] говорит, что туннель поднят через сервис и бэкенд
+     * должен забрать fd по unix-сокету: при respawn fd уже не наш, а
+     * сервис (accept-цикл по одному пути) отдаст новому box'у ту же
+     * самую туннель-сессию.
+     */
+    private fun boxSpec(built: SingboxConfig.Built, useTunSocket: Boolean): DaemonSpec = DaemonSpec(
+        binary = "box",
+        args = listOf("run", "-c", "{{config}}"),
+        files = mapOf("config" to built.json),
+        env = if (useTunSocket && VpnTunnel.fdSocketPath != null) {
+            buildMap {
+                put("ZAPP_TUN_SOCK", VpnTunnel.fdSocketPath!!)
+                // Go x509 ищет корни в /etc/ssl/certs, которого на
+                // Android нет: корневые лежат в
+                // /system/etc/security/cacerts. Без этой переменной
+                // TLS-проверка сертификатов падает с «unknown
+                // authority».
+                put("SSL_CERT_DIR", "/system/etc/security/cacerts")
+            }
+        } else {
+            emptyMap()
+        }
+    )
+
+    /**
+     * Перезапуск box на уже поднятом туннеле: kill switch-режим, когда
+     * падение бэкенда не должно поднимать весь трафик наружу.
+     *
+     * Туннель не трогается: пока fd жив, пакеты уходят в него и
+     * теряются (чёрная дыра), а новый box снова подключается к сервису.
+     * true -- демон снова RUNNING.
+     */
+    private suspend fun respawnBox(): Boolean {
+        val built = lastBoxBuilt ?: return false
+        runCatching { boxDaemon?.stop() }
+        val daemon = createDaemonEngine(DaemonId.TUNNEL)
+        boxDaemon = daemon
+        daemon.start(boxSpec(built, useTunSocket = true))
+        val alive = awaitState(daemon, DaemonState.RUNNING, START_TIMEOUT_MS)
+        if (alive) log("box is running (kill switch kept the tunnel)")
+        else {
+            val reason = daemonReason(daemon)
+            runCatching { daemon.stop() }
+            log("box restart failed: $reason")
+        }
+        return alive
     }
 
     // --- OpenVPN ---
@@ -473,7 +603,8 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         val sockPath = VpnTunnel.fdSocketPath
         val afunix = !RootShell.available() && sockPath != null
         val tunnel = if (afunix) {
-            openvpnTunnelParams(profile, vpn) ?: error("openvpn profile has no ifconfig")
+            openvpnTunnelParams(profile, vpn, allowedPackages(), excludedPackages())
+                ?: error("openvpn profile has no ifconfig")
         } else {
             null
         }
@@ -486,7 +617,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         if (vpn.killSwitch) enableKillSwitch(endpointsOf(profile), vpn)
         if (tunnel != null) {
             if (stopping) error("connection stopped before tunnel start")
-            VpnTunnel.establish(tunnel)
+            tunnelHeld = VpnTunnel.establish(tunnel) != null
         }
 
         val extra = if (afunix) {
@@ -516,7 +647,9 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
             )
         )
         if (!awaitState(daemon, DaemonState.RUNNING, START_TIMEOUT_MS)) {
-            error("openvpn failed to start: ${daemonReason(daemon)}")
+            val reason = daemonReason(daemon)
+            runCatching { daemon.stop() }
+            error("openvpn failed to start: $reason")
         }
         log("openvpn is running")
     }
@@ -586,7 +719,9 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         torDaemon = daemon
         daemon.start(DaemonSpec(binary = tor, args = listOf("-f", "{{torrc}}"), files = mapOf("torrc" to torrc)))
         if (!awaitState(daemon, DaemonState.RUNNING, START_TIMEOUT_MS)) {
-            error("tor failed to start: ${daemonReason(daemon)}")
+            val reason = daemonReason(daemon)
+            runCatching { daemon.stop() }
+            error("tor failed to start: $reason")
         }
 
         // Bootstrap: SOCKS-порт открывается сразу, но без 100% трафик через
@@ -707,6 +842,16 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         for (endpoint in endpoints) {
             rules += "iptables -A ZAPP_KS -d $endpoint/32 -j RETURN"
         }
+        // Свои DNS при kill switch: без них мёртв не только трафик, но и
+        // резолвер -- переподключение по доменному имени не поднимется.
+        // Пропускаются только серверы самого конфига, не «любой DNS».
+        if (vpn.killSwitchDns) {
+            for (dns in vpn.dnsList()) {
+                val addr = runCatching { InetAddress.getByName(dns) }.getOrNull() ?: continue
+                val mask = if (addr is Inet6Address) 128 else 32
+                rules += "iptables -A ZAPP_KS -d $dns/$mask -j RETURN"
+            }
+        }
         rules += "iptables -A ZAPP_KS -j REJECT --reject-with icmp-port-unreachable"
         for (rule in rules) {
             val r = RootShell.run(rule, 3000)
@@ -756,6 +901,18 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
 
     // --- Наблюдение и автопереподключение ---
 
+    /**
+     * Живой TUN: kill switch и поднятый сервисный туннель.
+     *
+     * Пока fd цел, падение бэкенда можно лечить перезапуском демона --
+     * трафик всё это время уходит в туннель и теряется (чёрная дыра),
+     * наружу ничего не утекает. Снятие туннеля при падении как раз и
+     * пробивает kill switch, поэтому в этом режиме reconnect идёт без
+     * cleanupQuiet.
+     */
+    private fun liveTunKillSwitch(): Boolean =
+        config.killSwitch && tunnelHeld && lastBoxBuilt != null
+
     private fun startWatch() {
         watchJob?.cancel()
         watchJob = scope.launch {
@@ -767,34 +924,63 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
 
             while (isActive && !stopping) {
                 delay(WATCH_TICK_MS)
-                if (state.value != TunnelState.CONNECTED) continue
-                if (connectionAlive()) {
-                    attempts = 0
-                    continue
-                }
+                when (state.value) {
+                    TunnelState.CONNECTED -> {
+                        if (connectionAlive()) {
+                            attempts = 0
+                            continue
+                        }
+                        log("connection lost")
+                        if (!auto) {
+                            setState(TunnelState.ERROR)
+                            return@launch
+                        }
+                        if (liveTunKillSwitch()) {
+                            // Туннель остаётся: крышка kill switch не
+                            // снимается ни на мгновение, рестарт идёт в
+                            // отдельной ветке RECONNECTING.
+                            log("kill switch: tunnel stays up, restarting box")
+                            setState(TunnelState.RECONNECTING)
+                            continue
+                        }
+                        attempts++
+                        if (max > 0 && attempts > max) {
+                            log("error: reconnect attempts exhausted ($attempts)")
+                            setState(TunnelState.ERROR)
+                            return@launch
+                        }
+                        log("reconnect in ${delayMs / 1000}s (attempt $attempts)")
+                        delay(delayMs)
+                        if (stopping) return@launch
+                        cleanupQuiet()
+                        setState(TunnelState.CONNECTING)
+                        log("reconnecting")
+                        performConnect()
+                        if (state.value != TunnelState.CONNECTED) {
+                            delay(delayMs)
+                        } else {
+                            attempts = 0
+                        }
+                    }
 
-                log("connection lost")
-                if (!auto) {
-                    setState(TunnelState.ERROR)
-                    return@launch
-                }
-                attempts++
-                if (max > 0 && attempts > max) {
-                    log("error: reconnect attempts exhausted ($attempts)")
-                    setState(TunnelState.ERROR)
-                    return@launch
-                }
-                log("reconnect in ${delayMs / 1000}s (attempt $attempts)")
-                delay(delayMs)
-                if (stopping) return@launch
-                cleanupQuiet()
-                setState(TunnelState.CONNECTING)
-                log("reconnecting")
-                performConnect()
-                if (state.value != TunnelState.CONNECTED) {
-                    delay(delayMs)
-                } else {
-                    attempts = 0
+                    TunnelState.RECONNECTING -> {
+                        delay(delayMs)
+                        if (stopping) return@launch
+                        if (respawnBox()) {
+                            attempts = 0
+                            setState(TunnelState.CONNECTED)
+                        } else {
+                            attempts++
+                            if (max > 0 && attempts > max) {
+                                log("error: reconnect attempts exhausted ($attempts); kill switch keeps blocking")
+                                setState(TunnelState.ERROR)
+                                return@launch
+                            }
+                            log("box restart failed (attempt $attempts)")
+                        }
+                    }
+
+                    else -> Unit
                 }
             }
         }
@@ -830,6 +1016,8 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         openvpnDaemon?.stop(); openvpnDaemon = null
         torDaemon?.stop(); torDaemon = null
         VpnTunnel.close()
+        tunnelHeld = false
+        lastBoxBuilt = null
 
         if (userInitiated) {
             log("disconnected")
@@ -850,6 +1038,8 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         torDaemon?.let { runCatching { it.stop() } }
         torDaemon = null
         runCatching { VpnTunnel.close() }
+        tunnelHeld = false
+        lastBoxBuilt = null
     }
 
     // --- Мелкая механика ---
@@ -927,7 +1117,13 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
 
     private companion object {
         const val WATCH_TICK_MS = 3000L
-        const val START_TIMEOUT_MS = 10_000L
+
+        // Таймаут идёт от вызова start() и покрывает запись файлов
+        // демона, а не только сам процесс: групповой конфиг sing-box на
+        // тысячах профилей -- мегабайты, и порционная запись через `su`
+        // занимает десятки вызовов. 10s здесь обрывали подключение на
+        // «no output»: демон ещё писал конфиг, а журнала уже требовали.
+        const val START_TIMEOUT_MS = 30_000L
 
         // Мосты на телефоне собираются десятки секунд: lyrebird отбрасывает
         // мёртвые хосты по таймауту, а до 100% нужно пройти несколько

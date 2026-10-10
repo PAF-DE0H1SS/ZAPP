@@ -3,6 +3,7 @@ package xyz.azraellab.zapp.core.engine
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.LocalServerSocket
@@ -23,11 +24,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppLangStore
+import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.LinkSpeedBus
 import xyz.azraellab.zapp.core.PingBus
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.toDisplayString
 import java.io.File
+import java.net.Inet6Address
 import java.net.InetAddress
 
 /**
@@ -56,12 +59,27 @@ class ZappVpnService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // Контракт startForegroundService закрывается как можно раньше:
+        // если закрытие туннеля обгоняет доставку старт-намерения, onCreate
+        // остаётся единственным местом, где startForeground гарантированно
+        // вызывается до того, как система успеет пожаловаться.
+        startAsForeground()
     }
 
     override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startAsForeground()
+
+        // Кнопка СТОП в уведомлении: тап приходит сюда отдельным
+        // намерением и обязан обработаться ДО проверки параметров --
+        // остановка ничего не поднимает, а значит и устанавливать туннель
+        // в этом вызове нельзя.
+        if (intent?.action == ACTION_STOP) {
+            runCatching { AppState.obtain().disconnectVpn() }
+                .onFailure { VpnTunnel.fail("stop from notification failed: ${it.message ?: it::class.simpleName}") }
+            return START_NOT_STICKY
+        }
 
         val params = VpnTunnel.params
         if (params == null) {
@@ -184,12 +202,37 @@ class ZappVpnService : VpnService() {
             builder.addRoute(InetAddress.getByName(host), prefix)
         }
         for (dns in params.dns) builder.addDnsServer(dns)
+        // Отдельный маршрут к каждому v4 DNS-серверу: часть прошивок
+        // (Samsung и другие) шлёт системный резолвер прямо к адресу
+        // сервера, минуя общий маршрут, и запрос уходит мимо туннеля.
+        // /32 не меняет прочую маршрутизацию; если семья адреса не
+        // заявлена в tun -- это не наш случай, молча пропускаем.
+        for (dns in params.dns) {
+            runCatching {
+                val addr = InetAddress.getByName(dns)
+                if (addr !is Inet6Address) builder.addRoute(addr, 32)
+            }
+        }
 
         // Свой трафик мимо туннеля обязателен: сокеты box ходят напрямую,
         // иначе их пакеты входят в tun и уходят сами в себя -- петля.
-        builder.addDisallowedApplication(packageName)
-        for (pkg in params.bypassApps) {
-            runCatching { builder.addDisallowedApplication(pkg) }
+        //
+        // Allowed-режим (per-app) и disallowed-режим у Builder
+        // взаимоисключающие: после addAllowedApplication вызов
+        // addDisallowedApplication бросает IllegalArgumentException.
+        // В allow-режиме всё, чего нет в списке, идёт мимо туннеля, --
+        // значит, свой пакет просто не попадает в список, а bypassApps
+        // в этом режиме не применяются.
+        if (params.allowedApps.isNotEmpty()) {
+            for (pkg in params.allowedApps) {
+                if (pkg == packageName) continue
+                runCatching { builder.addAllowedApplication(pkg) }
+            }
+        } else {
+            builder.addDisallowedApplication(packageName)
+            for (pkg in params.bypassApps) {
+                runCatching { builder.addDisallowedApplication(pkg) }
+            }
         }
 
         return builder.establish()
@@ -235,11 +278,28 @@ class ZappVpnService : VpnService() {
             .takeIf { it != 0 } ?: android.R.drawable.ic_dialog_info
         val lang = AppLang.of(runCatching { AppLangStore.read() }.getOrNull())
             ?: AppLang.EN
+        // Кнопка СТОП: единственный способ снять туннель, не открывая
+        // приложение и не вытаскивая шторку до уведомления.
+        val stopPending = PendingIntent.getService(
+            this,
+            REQUEST_STOP,
+            Intent(this, ZappVpnService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE
+        )
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(icon)
             .setContentTitle(Str.APP_NAME.of(lang))
             .setContentText(contentText)
             .setOngoing(true)
+            // Плашка со скоростью и пингом не должна читаться с экрана
+            // блокировки: содержимое скрывается целиком, а не по строкам.
+            .setVisibility(Notification.VISIBILITY_SECRET)
+            .addAction(
+                // Иконка 0: кнопка действия рисуется системной.
+                android.app.Notification.Action.Builder(
+                    0, Str.COMMON_STOP.of(lang), stopPending
+                ).build()
+            )
             .build()
     }
 
@@ -335,6 +395,12 @@ class ZappVpnService : VpnService() {
     internal companion object {
         private const val CHANNEL_ID = "zapp-vpn"
         private const val NOTIFICATION_ID = 43
+
+        /** Действие «СТОП» в уведомлении (отдельный старт-интент). */
+        private const val ACTION_STOP = "xyz.azraellab.zapp.action.STOP_VPN"
+
+        /** Номер PendingIntent'а кнопки СТОП. */
+        private const val REQUEST_STOP = 1
 
         /** Живой сервис для teardown() из движка. */
         @Volatile

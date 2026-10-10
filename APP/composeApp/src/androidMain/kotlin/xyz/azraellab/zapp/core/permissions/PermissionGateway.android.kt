@@ -53,7 +53,20 @@ object AndroidPermissionBridge {
 
     fun requestVpn(onResult: (Boolean) -> Unit) {
         val request = vpnRequest
-        if (request == null) onResult(false) else request(onResult)
+        if (request == null) {
+            // Activity в этом процессе ещё не жила -- старт из плитки шторки.
+            // Спросить диалог нечем, но если consent уже выдан, честный «да»
+            // позволяет подключиться без окна, а не падать «not granted».
+            val context = AndroidCtx.current
+            val granted = try {
+                context != null && VpnService.prepare(context) == null
+            } catch (_: Exception) {
+                false
+            }
+            onResult(granted)
+        } else {
+            request(onResult)
+        }
     }
 
     fun openSettings(intent: Intent) {

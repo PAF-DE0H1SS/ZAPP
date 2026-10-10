@@ -3,6 +3,8 @@ package xyz.azraellab.zapp.ui.pages
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
@@ -12,6 +14,7 @@ import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.VpnTransport
 import xyz.azraellab.zapp.core.consistency.SettingKeys
+import xyz.azraellab.zapp.core.engine.isLive
 import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
@@ -46,6 +49,11 @@ fun VpnProfileEditor(state: AppState) {
     }
     val lang = AppLangState.current
     val locks = settingLocks(state)
+    // Крышка переключается только вне сессии: во время подключения
+    // смена kill switch означала бы мгновенный сброс маршрутов под
+    // ногами идущего establish.
+    val tunnelState by state.tunnel.state.collectAsState()
+    val tunnelLive = tunnelState.isLive
 
     ZappCard {
         // Выбор профиля нужен только когда их больше одного: с единственным
@@ -145,12 +153,22 @@ fun VpnProfileEditor(state: AppState) {
         ZappSettingRow(
             title = tr(Str.VPN_KILL_SWITCH),
             checked = state.config.vpn.killSwitch,
-            subtitle = lockReason(locks, SettingKeys.KILL_SWITCH),
-            enabled = !isLocked(locks, SettingKeys.KILL_SWITCH),
+            subtitle = if (tunnelLive) tr(Str.PERAPP_NEXT_CONNECT)
+            else lockReason(locks, SettingKeys.KILL_SWITCH),
+            enabled = !isLocked(locks, SettingKeys.KILL_SWITCH) && !tunnelLive,
             onCheckedChange = { on ->
                 state.mutate { it.copy(vpn = it.vpn.copy(killSwitch = on)) }
             },
             path = "editor.kill_switch"
+        )
+        ZappSettingRow(
+            title = tr(Str.VPN_KILL_SWITCH_DNS),
+            checked = state.config.vpn.killSwitchDns,
+            enabled = state.config.vpn.killSwitch && !tunnelLive,
+            onCheckedChange = { on ->
+                state.mutate { it.copy(vpn = it.vpn.copy(killSwitchDns = on)) }
+            },
+            path = "editor.kill_switch_dns"
         )
         ZappSettingRow(
             title = tr(Str.VPN_AUTOSTART),
@@ -284,6 +302,48 @@ fun VpnRoutingCard(state: AppState) {
             onValueChange = { v -> state.mutate { it.copy(vpn = it.vpn.copy(dnsServers = v)) } },
             placeholder = "1.1.1.1, 9.9.9.9",
             path = "routing.dns"
+        )
+
+        // --- Тонкая настройка DNS-серверов ---
+        ZappChoiceRow(
+            label = tr(Str.ROUTING_DNS_TYPE),
+            options = listOf(
+                Choice("udp", "UDP"),
+                Choice("tcp", "TCP"),
+                Choice("tls", "DoT"),
+                Choice("https", "DoH")
+            ),
+            selected = config.dnsType,
+            onSelect = { type -> state.mutate { it.copy(vpn = it.vpn.copy(dnsType = type)) } },
+            path = "routing.dns_type"
+        )
+        ZappTextField(
+            label = tr(Str.ROUTING_DNS_BOOTSTRAP),
+            value = config.dnsBootstrap,
+            onValueChange = { v -> state.mutate { it.copy(vpn = it.vpn.copy(dnsBootstrap = v.trim())) } },
+            placeholder = "77.88.8.8",
+            path = "routing.dns_bootstrap"
+        )
+        ZappChoiceRow(
+            label = tr(Str.ROUTING_DNS_STRATEGY),
+            options = listOf(
+                Choice("off", tr(Str.ROUTING_DNS_STRATEGY_OFF)),
+                Choice("prefer_ipv4", tr(Str.ROUTING_STRATEGY_PREFER_V4)),
+                Choice("prefer_ipv6", tr(Str.ROUTING_STRATEGY_PREFER_V6)),
+                Choice("disable_ipv6", tr(Str.ROUTING_STRATEGY_DISABLE_V6))
+            ),
+            selected = config.dnsStrategy,
+            onSelect = { strategy -> state.mutate { it.copy(vpn = it.vpn.copy(dnsStrategy = strategy)) } },
+            path = "routing.dns_strategy"
+        )
+        ZappNumberField(
+            label = tr(Str.ROUTING_DNS_REWRITE_TTL),
+            value = config.dnsRewriteTtl,
+            onValueChange = { v ->
+                state.mutate { it.copy(vpn = it.vpn.copy(dnsRewriteTtl = (v ?: 60).coerceIn(0, 86_400))) }
+            },
+            placeholder = "60",
+            path = "routing.dns_rewrite_ttl"
         )
     }
 }

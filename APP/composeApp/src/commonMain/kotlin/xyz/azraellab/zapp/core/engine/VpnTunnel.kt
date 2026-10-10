@@ -30,7 +30,9 @@ data class VpnTunnelParams(
     /** 0 -- не задавать, взять системный. */
     val mtu: Int,
     /** Приложения, которым разрешено идти мимо туннеля (split tunneling). */
-    val bypassApps: List<String>
+    val bypassApps: List<String>,
+    /** Приложения, которым разрешено идти ЧЕРЕЗ туннель (per-app routing). */
+    val allowedApps: List<String> = emptyList()
 )
 
 /**
@@ -75,7 +77,9 @@ expect object VpnTunnel {
 fun vpnTunnelParams(
     builtJson: String,
     vpn: VpnConfig,
-    session: String
+    session: String,
+    allowedApps: List<String> = emptyList(),
+    excludedApps: List<String> = emptyList()
 ): VpnTunnelParams? {
     val root = runCatching { Json.parseToJsonElement(builtJson).jsonObject }.getOrNull() ?: return null
     val inbound = (root["inbounds"] as? JsonArray)
@@ -97,7 +101,11 @@ fun vpnTunnelParams(
     }
     val dns = (vpn.dnsList()).filter { it.isNotBlank() }
         .ifEmpty { listOf("8.8.8.8", "1.1.1.1") }
-    val bypass = if (vpn.routing.allowPerAppBypass) vpn.routing.bypassAppList() else emptyList()
+    // Оба способа увести приложение мимо туннеля складываются: bypass из
+    // настроек профиля и exclude-режим выбора приложений. В include-режиме
+    // excludedApps приходит пустым -- там всё решает allowedApps.
+    val bypass = (if (vpn.routing.allowPerAppBypass) vpn.routing.bypassAppList() else emptyList()) +
+        excludedApps
 
     return VpnTunnelParams(
         session = session,
@@ -105,7 +113,8 @@ fun vpnTunnelParams(
         routes = routes,
         dns = dns,
         mtu = mtu,
-        bypassApps = bypass
+        bypassApps = bypass,
+        allowedApps = allowedApps
     )
 }
 
@@ -131,7 +140,12 @@ private fun JsonObject.stringList(key: String): List<String>? {
  * непрерывной, пир-адрес получает /32. Маршруты не разбираются --
  * платформа кладёт в туннель всё (0.0.0.0/0), как и в конфиге box.
  */
-fun openvpnTunnelParams(profile: VpnProfile, vpn: VpnConfig): VpnTunnelParams? {
+fun openvpnTunnelParams(
+    profile: VpnProfile,
+    vpn: VpnConfig,
+    allowedApps: List<String> = emptyList(),
+    excludedApps: List<String> = emptyList()
+): VpnTunnelParams? {
     val words = profile.rawConfig.lineSequence()
         .map { it.trim().split(Regex("\\s+")) }
         .firstOrNull { it.firstOrNull().equals("ifconfig", ignoreCase = true) }
@@ -141,7 +155,8 @@ fun openvpnTunnelParams(profile: VpnProfile, vpn: VpnConfig): VpnTunnelParams? {
     val prefix = netmaskPrefix(words[2]) ?: 32
     val dns = vpn.dnsList().filter { it.isNotBlank() }
         .ifEmpty { listOf("8.8.8.8", "1.1.1.1") }
-    val bypass = if (vpn.routing.allowPerAppBypass) vpn.routing.bypassAppList() else emptyList()
+    val bypass = (if (vpn.routing.allowPerAppBypass) vpn.routing.bypassAppList() else emptyList()) +
+        excludedApps
 
     return VpnTunnelParams(
         session = profile.name.ifBlank { "ZAPP" },
@@ -149,7 +164,8 @@ fun openvpnTunnelParams(profile: VpnProfile, vpn: VpnConfig): VpnTunnelParams? {
         routes = listOf("0.0.0.0/0"),
         dns = dns,
         mtu = profile.mtu,
-        bypassApps = bypass
+        bypassApps = bypass,
+        allowedApps = allowedApps
     )
 }
 

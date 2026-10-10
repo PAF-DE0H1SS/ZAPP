@@ -5,15 +5,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.ZapretStrategy
+import xyz.azraellab.zapp.core.domains.DpiScope
+import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.components.ZappTextField
 import xyz.azraellab.zapp.ui.tr
+
+/** Подпись стратегии на языке интерфейса; в списке -- не код строки. */
+private fun ZapretStrategy.strategyLabel(): String =
+    if (AppLangState.current == AppLang.RU) ru else en
 
 /**
  * Страница Zapret.
@@ -51,7 +58,7 @@ fun ZapretPage(state: AppState) {
             if (!config.autoStrategy) {
                 ZappChoiceRow(
                     label = tr(Str.ZAPRET_STRATEGY),
-                    options = ZapretStrategy.selectable.map { Choice(it.code, it.code) },
+                    options = ZapretStrategy.selectable.map { Choice(it.code, it.strategyLabel()) },
                     selected = config.strategy,
                     onSelect = { code ->
                         // Пресет применяется целиком: одна строка strategy
@@ -81,6 +88,15 @@ fun ZapretPage(state: AppState) {
                 supportingText = tr(Str.LIST_DOMAINS) + ": ${config.domainList().size}",
                 path = "zapret.domains"
             )
+            // Без выбора приложений и без доменов запуск блокируется --
+            // причина видна до нажатия, а не только в журнале после.
+            if (!DpiScope.zapret(state.config.perApp, config)) {
+                Text(
+                    text = tr(Str.DAEMON_NEED_SCOPE),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
 
         // --- Команда, которая получится: короткая сводка вместо стены флагов ---

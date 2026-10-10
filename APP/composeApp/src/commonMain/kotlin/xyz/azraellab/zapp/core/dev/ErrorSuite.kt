@@ -5,10 +5,13 @@ import xyz.azraellab.zapp.core.daemon.DaemonEvent
 import xyz.azraellab.zapp.core.gps.GpsEvent
 import xyz.azraellab.zapp.core.log.ErrorLog
 import xyz.azraellab.zapp.core.log.capLines
+import xyz.azraellab.zapp.core.log.causeChain
+import xyz.azraellab.zapp.core.log.diagnosisLine
 import xyz.azraellab.zapp.core.log.errorEvent
 import xyz.azraellab.zapp.core.log.errorLine
 import xyz.azraellab.zapp.core.log.isError
 import xyz.azraellab.zapp.core.log.looksLikeErrorLine
+import xyz.azraellab.zapp.core.log.redactSensitive
 
 /**
  * Причины сбоя в журналах.
@@ -203,5 +206,61 @@ internal fun errorTextTests(out: MutableList<DevTest>) {
         checkFalse(looksLikeErrorLine("[notice] Bootstrapped 100% (done)"), "тор notice -- не ошибка")
         checkTrue(looksLikeErrorLine("OPTIONS ERROR: --management-query-passwords failed"), "openvpn error")
         checkFalse(looksLikeErrorLine("2026-10-06 12:07:50 INFO: using --management"), "openvpn info")
+    }
+
+    // --- Одна строка диагностики ---
+
+    out += DevTest("log/diagnosis-line-full", DevCategory.UI, "Диагностика: время, компонент, причина") {
+        val line = diagnosisLine("12:34:56", "nfqws", listOf("nfq_create_queue(): Operation not permitted"))
+        checkEq("12:34:56 · nfqws · nfq_create_queue(): Operation not permitted", line, "полная строка")
+    }
+
+    out += DevTest("log/diagnosis-line-trims-and-skips", DevCategory.UI, "Пустые части диагностики пропускаются") {
+        checkEq("nfqws · refused", diagnosisLine("", "nfqws", listOf("", "refused")), "без времени")
+        checkEq("12:00:00", diagnosisLine("12:00:00", "", emptyList()), "без причины -- только время")
+        checkEq("", diagnosisLine("", "", listOf("")), "совсем пусто")
+    }
+
+    out += DevTest("log/diagnosis-line-chain-cap", DevCategory.UI, "Причин -- не больше четырёх, без повторов") {
+        val causes = listOf("a", "b", "c", "d", "e")
+        val line = diagnosisLine("t", "box", causes)
+        checkContains(line, "a → b → c → d", "четыре звена")
+        checkNotContains(line, " → e", "пятая причина отброшена")
+        val deduped = diagnosisLine("t", "box", listOf("same", "same", "other"))
+        checkContains(deduped, "same → other", "дубликат схлопнут")
+    }
+
+    out += DevTest("log/diagnosis-line-redacts-tokens", DevCategory.UI, "Длинные ключи в диагностике под маской") {
+        val secret = "a".repeat(44) + "="
+        val line = diagnosisLine("", "box", listOf("reality private_key=$secret ok"))
+        checkNotContains(line, secret, "секрет не уехал в показ")
+        checkContains(line, "***", "маска на месте")
+        checkEq("***", redactSensitive(secret), "голый токен маскируется целиком")
+        checkContains(
+            diagnosisLine("", "box", listOf("/data/local/tmp/zapp/bin/nfqws")),
+            "nfqws",
+            "короткие пути не трогаются"
+        )
+    }
+
+    out += DevTest("log/cause-chain-walks-wrappers", DevCategory.UI, "Цепочка причин идёт по cause вглубь") {
+        val root = IllegalStateException("Connection refused")
+        val middle = RuntimeException("urltest dial", root)
+        val outer = IllegalStateException("box start", middle)
+        val chain = outer.causeChain()
+        checkContains(chain, "box start", "корень цепочки")
+        checkContains(chain, "urltest dial", "среднее звено")
+        checkContains(chain, "Connection refused", "корневая причина")
+        checkContains(chain, " → ", "звенья соединены")
+    }
+
+    out += DevTest("log/cause-chain-depth-limit", DevCategory.UI, "Цепочка причин ограничена четырьмя звеньями") {
+        var deepest = IllegalStateException("level0")
+        for (i in 1..6) deepest = IllegalStateException("level$i", deepest)
+        val chain = deepest.causeChain()
+        checkContains(chain, "level6", "корень виден")
+        checkContains(chain, "level3", "граница глубины -- четвёртое звено")
+        checkNotContains(chain, "level2", "пятое звено отброшено")
+        checkEq("", IllegalStateException().causeChain(), "без сообщений -- пустая строка")
     }
 }

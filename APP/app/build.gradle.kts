@@ -19,7 +19,7 @@ android {
         applicationId = "xyz.azraellab.zapp"
         minSdk = 33
         targetSdk = 36
-        versionCode = 3
+        versionCode = 7
         versionName = zappVersion
 
         // STL не отключаем. `ANDROID_STL=none` убирает libc++ из sysroot, и
@@ -32,8 +32,8 @@ android {
     //   root   -- текущее поведение (su, iptables, NFQUEUE, ядро WireGuard);
     //   noroot -- ни одной root-команды (RootShell принудительно Mode.NONE,
     //            демоны под uid приложения, tun/box вместо ядра и iptables).
-    // Флаг ZAPP_ROOT из BuildConfig читает MainActivity и кладёт в
-    // composeApp.BuildMode ДО первого кадра.
+    // Флаг ZAPP_ROOT из BuildConfig читает ZappApp и кладёт в
+    // composeApp.BuildMode до Activity и до плиток шторки.
     flavorDimensions += "mode"
     productFlavors {
         create("root") {

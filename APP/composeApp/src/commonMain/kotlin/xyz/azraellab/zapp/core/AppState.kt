@@ -22,17 +22,25 @@ import xyz.azraellab.zapp.core.daemon.DaemonEvent
 import xyz.azraellab.zapp.core.daemon.DaemonId
 import xyz.azraellab.zapp.core.daemon.DaemonSpec
 import xyz.azraellab.zapp.core.daemon.DaemonState
+import xyz.azraellab.zapp.core.daemon.DpiAppFilter
 import xyz.azraellab.zapp.core.daemon.DpiFirewall
 import xyz.azraellab.zapp.core.daemon.DpiOverlay
 import xyz.azraellab.zapp.core.daemon.createDaemonEngine
+import xyz.azraellab.zapp.core.daemon.dpiAppFilter
+import xyz.azraellab.zapp.core.domains.AppDomains
+import xyz.azraellab.zapp.core.domains.DpiScope
+import xyz.azraellab.zapp.core.perApp.PerAppConfig
+import xyz.azraellab.zapp.core.perApp.installedApps
 import xyz.azraellab.zapp.core.engine.TunnelEngine
 import xyz.azraellab.zapp.core.engine.TunnelState
 import xyz.azraellab.zapp.core.engine.createTunnelEngine
+import xyz.azraellab.zapp.core.engine.isLive
 import xyz.azraellab.zapp.core.gps.GpsEngine
 import xyz.azraellab.zapp.core.gps.GpsEvent
 import xyz.azraellab.zapp.core.gps.GpsState
 import xyz.azraellab.zapp.core.gps.createGpsEngine
 import xyz.azraellab.zapp.core.log.AppLog
+import xyz.azraellab.zapp.core.log.causeChain
 import xyz.azraellab.zapp.core.log.errorEvent
 import xyz.azraellab.zapp.core.native.NativeBinaries
 import xyz.azraellab.zapp.core.net.ConfigImport
@@ -40,23 +48,30 @@ import xyz.azraellab.zapp.core.net.ClashTraffic
 import xyz.azraellab.zapp.core.net.LinkProbe
 import xyz.azraellab.zapp.core.net.LinkTarget
 import xyz.azraellab.zapp.core.net.fetchClashTraffic
-import xyz.azraellab.zapp.core.net.NetworkProbe
-import xyz.azraellab.zapp.core.net.StrategyReport
 import xyz.azraellab.zapp.core.net.httpGetText
 import xyz.azraellab.zapp.core.net.probeLink
 import xyz.azraellab.zapp.core.net.probeTarget
+import xyz.azraellab.zapp.core.notify.NotifierAction
 import xyz.azraellab.zapp.core.notify.createNotifier
 import xyz.azraellab.zapp.core.permissions.PermissionGateway
 import xyz.azraellab.zapp.core.permissions.PermissionId
 import xyz.azraellab.zapp.core.permissions.PermissionState
 import xyz.azraellab.zapp.core.permissions.createPermissionGateway
 import xyz.azraellab.zapp.core.probe.DeviceProbe
+import xyz.azraellab.zapp.core.probe.ProbeHooks
+import xyz.azraellab.zapp.core.probe.StrategyProbe
+import xyz.azraellab.zapp.core.probe.StrategyProbeOutcome
 import xyz.azraellab.zapp.core.probe.probeDevice
 import xyz.azraellab.zapp.core.update.APP_VERSION
 import xyz.azraellab.zapp.core.update.ReleaseInfo
+import xyz.azraellab.zapp.core.update.UpdateDownload
 import xyz.azraellab.zapp.core.update.UpdateState
+import xyz.azraellab.zapp.core.update.cachedUpdateApk
+import xyz.azraellab.zapp.core.update.downloadUpdateApk
 import xyz.azraellab.zapp.core.update.fetchLatestRelease
-import xyz.azraellab.zapp.core.update.isNewerVersion
+import xyz.azraellab.zapp.core.update.installUpdateApk
+import xyz.azraellab.zapp.core.update.localDayEndMs
+import xyz.azraellab.zapp.core.update.updateAvailable
 
 /**
  * Состояние приложения.
@@ -171,6 +186,14 @@ class AppState(
 
     private val notifier = createNotifier()
 
+    /**
+     * Последняя причина, о которой GPS уже рассказал.
+     *
+     * Дедуп heads-up'а: одна и та же причина всплывает один раз на эпизод
+     * (сбрасывается при ACTIVE/OFF), новая причина -- снова всплывает.
+     */
+    private var lastGpsAlertCause: String? = null
+
     /** Результат разведки устройства; null, пока не проверили. */
     private val _probe = MutableStateFlow<DeviceProbe?>(null)
     val probe: StateFlow<DeviceProbe?> = _probe.asStateFlow()
@@ -192,6 +215,20 @@ class AppState(
     private val _release = MutableStateFlow<ReleaseInfo?>(null)
     val release: StateFlow<ReleaseInfo?> = _release.asStateFlow()
 
+    /**
+     * Загрузка APK последнего релиза в кеш.
+     *
+     * Отдельно от [updateState]: проверка могла пройти, а сеть на
+     * загрузке упасть -- пользователь должен увидеть именно отказ
+     * загрузки, а не «проверьте обновление снова».
+     */
+    private val _updateDownload = MutableStateFlow(UpdateDownload.NONE)
+    val updateDownload: StateFlow<UpdateDownload> = _updateDownload.asStateFlow()
+
+    /** Причина неудачной загрузки; пусто, если не качали или всё вышло. */
+    var updateDownloadError: String? by mutableStateOf(null)
+        private set
+
     /** Текущая версия -- та же константа, что участвует в сравнении. */
     val appVersion: String = APP_VERSION
 
@@ -202,6 +239,16 @@ class AppState(
     private var saveJob: Job? = null
     private var meter: TrafficMeter = TrafficMeter()
     private var pollJob: Job? = null
+
+    /**
+     * Была ли загрузка уже выполнена.
+     *
+     * Синглтон переживает пересоздание Activity (та же смена launcher-
+     * иконки), а плитки шторки поднимают процесс вообще без окна --
+     * повторный load() создал бы вторую подписку watchDaemons и
+     * sourceRefreshLoop и сбросил бы живые счётчики трафика.
+     */
+    private var loaded = false
 
     // Объявлен до init: поле, объявленное после init-блока, инициализируется
     // ПОСЛЕ него, и ранний запуск подписки перезаписал бы только что
@@ -222,10 +269,30 @@ class AppState(
             gpsEngine.state.collect { current ->
                 if (current != previous) {
                     when (current) {
-                        GpsState.ACTIVE -> notify(Str.NOTIFY_GPS_ON, tag = TAG_GPS)
-                        GpsState.ERROR -> notify(Str.NOTIFY_GPS_ERROR, arg = gpsErrorCause(), tag = TAG_GPS)
+                        GpsState.ACTIVE -> {
+                            notify(Str.NOTIFY_GPS_ON, tag = TAG_GPS)
+                            lastGpsAlertCause = null
+                        }
+                        GpsState.ERROR -> {
+                            // Честный отказ -- heads-up с причиной и кнопкой
+                            // «открыть настройки», но один раз на эпизод:
+                            // дребезжащий цикл «ошибка -> старт -> ошибка»
+                            // не должен забивать шторку одной и той же строкой.
+                            val cause = gpsErrorCause()
+                            if (cause != lastGpsAlertCause) {
+                                notify(
+                                    Str.NOTIFY_GPS_ERROR,
+                                    arg = cause,
+                                    tag = TAG_GPS,
+                                    action = NotifierAction.OPEN_SETTINGS,
+                                    actionLabel = Str.PERM_OPEN_SETTINGS
+                                )
+                                lastGpsAlertCause = cause
+                            }
+                        }
                         GpsState.OFF -> if (previous == GpsState.ACTIVE || previous == GpsState.ERROR) {
                             notify(Str.NOTIFY_GPS_OFF, tag = TAG_GPS)
+                            lastGpsAlertCause = null
                         }
                         GpsState.STARTING -> Unit
                     }
@@ -552,16 +619,22 @@ class AppState(
      * Загружает настройки и пресеты.
      *
      * Отсутствие файла -- не ошибка: это первый запуск, и тогда применяются
-     * значения по умолчанию.
+     * значения по умолчанию. Повторный вызов (пересоздание Activity, тап
+     * по плитке шторки) ничего не делает: конфиг уже в памяти, а фоновые
+     * циклы уже крутятся.
      */
     fun load() {
+        if (loaded) return
+        loaded = true
         config = runCatching { store.readConfig() }.getOrNull() ?: AppConfig()
+        DpiOverlay.updateRelay(config.relay)
         AppLog.enabled = config.detailLogEnabled
         AppLog.log("app", "start v${APP_VERSION}")
         presets = runCatching { store.readPresets() }.getOrDefault(emptyList())
         meter = TrafficMeter(config.traffic)
         gpsEngine.applyConfig(config.gps)
         tunnel.applyConfig(config.vpn)
+        tunnel.applyPerApp(config.perApp)
 
         // Разведка, разрешения и обновления -- всё фоновое и независимое:
         // старт не должен ждать сеть или ответ `su`.
@@ -581,22 +654,58 @@ class AppState(
 
     /** Заменяет настройки целиком и планирует запись. */
     fun update(next: AppConfig) {
+        val prevPerApp = config.perApp
         config = next
+        DpiOverlay.updateRelay(config.relay)
         AppLog.enabled = config.detailLogEnabled
         gpsEngine.applyConfig(config.gps)
         tunnel.applyConfig(config.vpn)
+        tunnel.applyPerApp(config.perApp)
+        // Выборы приложений меняют NFQUEUE-правила на лету -- демоны
+        // живые, а цепочка перестраивается идемпотентно.
+        if (config.perApp != prevPerApp) refreshDpiFirewall()
         scheduleSave()
     }
 
     /** Точечное изменение: удобно для тумблеров и полей. */
     fun mutate(block: (AppConfig) -> AppConfig) {
-        config = block(config)
+        val prevPerApp = config.perApp
+        config = withDiscoveredDomains(block(config), prevPerApp)
+        DpiOverlay.updateRelay(config.relay)
         AppLog.enabled = config.detailLogEnabled
         // Движок читает конфиг каждый такт, поэтому здесь достаточно
         // передать ссылку -- такт сам подхватит новые значения.
         gpsEngine.applyConfig(config.gps)
         tunnel.applyConfig(config.vpn)
+        tunnel.applyPerApp(config.perApp)
+        // Изменение выбора приложений при живых демонах обхода сразу
+        // перестраивает цепочку: ждать переподключения нечего.
+        if (config.perApp != prevPerApp) refreshDpiFirewall()
         scheduleSave()
+    }
+
+    /**
+     * Выбор приложений тянет за собой их домены.
+     *
+     * Область действия обхода собирается сама: смена пакетов в выборе
+     * zapret/goodbyedpi запускает поиск связанных доменов, и найденное
+     * дописывается к уже введённому -- ручной список не теряется,
+     * повторы отсекаются. Срабатывает в mutate, чтобы путь был один для
+     * пикера, импорта конфига и пресета.
+     */
+    private fun withDiscoveredDomains(next: AppConfig, prev: PerAppConfig): AppConfig {
+        var out = next
+        if (out.perApp.zapret.packages != prev.zapret.packages) {
+            val found = AppDomains.discover(out.perApp.zapret.packages)
+            out = out.copy(zapret = out.zapret.copy(domains = AppDomains.mergeInto(out.zapret.domains, found)))
+            if (found.isNotEmpty()) AppLog.log("zapret", "scope: +${found.size} domains from apps")
+        }
+        if (out.perApp.goodbyeDpi.packages != prev.goodbyeDpi.packages) {
+            val found = AppDomains.discover(out.perApp.goodbyeDpi.packages)
+            out = out.copy(goodbyeDpi = out.goodbyeDpi.copy(domains = AppDomains.mergeInto(out.goodbyeDpi.domains, found)))
+            if (found.isNotEmpty()) AppLog.log("goodbyedpi", "scope: +${found.size} domains from apps")
+        }
+        return out
     }
 
     private fun scheduleSave() {
@@ -847,6 +956,11 @@ class AppState(
      * иначе новые правила не применялись бы.
      */
     fun startZapret() {
+        if (!DpiScope.zapret(config.perApp, config.zapret)) {
+            AppLog.log("zapret", "start blocked: no apps or domains")
+            zapretDaemon.note(DaemonEvent(text = Str.DAEMON_NEED_SCOPE))
+            return
+        }
         AppLog.log("zapret", "start: ${config.zapret.toArgs().joinToString(" ")}")
         if (!config.zapret.enabled) {
             mutate { it.copy(zapret = it.zapret.copy(enabled = true)) }
@@ -876,6 +990,11 @@ class AppState(
      * честнее сказать об этом до запуска.
      */
     fun startDpi() {
+        if (!DpiScope.gdpi(config.perApp, config.goodbyeDpi)) {
+            AppLog.log("goodbyedpi", "start blocked: no apps or domains")
+            dpiDaemon.note(DaemonEvent(text = Str.DAEMON_NEED_SCOPE))
+            return
+        }
         AppLog.log("goodbyedpi", "start: ${config.goodbyeDpi.toArgs().joinToString(" ")}")
         if (GoodbyeDpiMode.of(config.goodbyeDpi.mode) == GoodbyeDpiMode.DISABLED) {
             mutate { it.copy(goodbyeDpi = it.goodbyeDpi.copy(mode = GoodbyeDpiMode.AUTO.code)) }
@@ -901,13 +1020,15 @@ class AppState(
     }
 
     /**
-     * Причина исключения для журнала: текст ошибки или имя класса.
+     * Причина исключения для журнала: цепочка до четырёх звеньев.
      *
      * Никогда пусто: строка причины обязана быть чем-то заполнена, иначе
-     * под статусом появится пустая строка вместо объяснения.
+     * под статусом появится пустая строка вместо объяснения. Цепочка
+     * (а не только корень) нужна, чтобы было видно, что именно обернуло
+     * ошибку: «refused» ничего не говорит без «box -> urltest -> refused».
      */
     private fun Throwable.causeText(): String =
-        message?.takeIf { it.isNotBlank() } ?: (this::class.simpleName ?: "error")
+        causeChain().ifEmpty { this::class.simpleName ?: "error" }
 
     /**
      * Пойманное при запуске демона исключение -- в его журнал и в zapp.log.
@@ -1013,6 +1134,7 @@ class AppState(
             }
             runCatching {
                 tunnel.applyConfig(config.vpn)
+                tunnel.applyPerApp(config.perApp)
                 tunnel.connect()
             }.onFailure { tunnel.fail("connect failed: ${it.causeText()}") }
         }
@@ -1045,10 +1167,59 @@ class AppState(
             }
             updateError = null
             _release.value = found
-            val newer = isNewerVersion(found.version, appVersion)
+            val newer = updateAvailable(found.version, appVersion, config.updateCompareMode)
             _updateState.value = if (newer) UpdateState.AVAILABLE else UpdateState.CURRENT
-            if (newer) notify(Str.NOTIFY_UPDATE, found.version, TAG_UPDATE)
+            // «Не напоминать сегодня» глушит только уведомление: состояние
+            // в настройках и журнал обновляются всегда, иначе отложенное
+            // напоминание выглядело бы как поломка проверки.
+            val snoozed = System.currentTimeMillis() < config.updateSnoozeUntilMs
+            AppLog.log("update", "latest=${found.version} current=$appVersion newer=$newer snoozed=$snoozed")
+            if (newer && !snoozed) notify(Str.NOTIFY_UPDATE, found.version, TAG_UPDATE)
         }
+    }
+
+    /**
+     * Кладёт APK последнего релиза в кеш.
+     *
+     * Повторный тап во время загрузки игнорируется, а после успеха
+     * файл остаётся на диске: перезапуск приложения не начинает качать
+     * его заново.
+     */
+    fun downloadUpdate() {
+        val found = _release.value ?: return
+        if (found.apkUrl.isBlank()) return
+        if (_updateDownload.value == UpdateDownload.RUNNING) return
+        _updateDownload.value = UpdateDownload.RUNNING
+        updateDownloadError = null
+        scope.launch {
+            val ok = runCatching { downloadUpdateApk(found.version, found.apkUrl) }
+                .onFailure { updateDownloadError = it.causeText() }
+                .getOrDefault(false)
+            _updateDownload.value = if (ok) UpdateDownload.NONE else UpdateDownload.ERROR
+            AppLog.log(
+                "update",
+                if (ok) "apk cached ${found.version}" else "apk download failed: ${updateDownloadError ?: "?"}"
+            )
+        }
+    }
+
+    /** Открывает закешированный APK установщиком; файла может не быть. */
+    fun installUpdate() {
+        val found = _release.value ?: return
+        val path = cachedUpdateApk(found.version) ?: return
+        val ok = installUpdateApk(path)
+        AppLog.log("update", if (ok) "installer opened: $path" else "installer refused: $path")
+    }
+
+    /**
+     * Откладывает напоминание об обновлении до конца суток.
+     *
+     * Сами проверки продолжают идти и состояние в настройках остаётся
+     * честным -- отложен только тост.
+     */
+    fun snoozeUpdates() {
+        mutate { it.copy(updateSnoozeUntilMs = localDayEndMs(System.currentTimeMillis())) }
+        AppLog.log("update", "notifications snoozed until tomorrow")
     }
 
     /** Открывает страницу последнего релиза в браузере. */
@@ -1065,12 +1236,28 @@ class AppState(
      * Язык читается здесь, а не передаётся из UI: события возникают в
      * корутинах, где Composable'ов нет, а настройка языка -- та же самая,
      * что и в интерфейсе.
+     *
+     * [action] -- необязательное действие прямо из шторки (например,
+     * «открыть настройки»); [actionLabel] -- уже переведённая подпись.
+     * Действие есть -- уведомление показывается как heads-up: отказ
+     * требует внимания здесь и сейчас, а не при следующем взгляде.
      */
-    private fun notify(str: Str, arg: String = "", tag: String) {
+    private fun notify(
+        str: Str,
+        arg: String = "",
+        tag: String,
+        action: NotifierAction? = null,
+        actionLabel: Str? = null
+    ) {
         if (!notifier.supported) return
-        val chosen = AppLang.of(AppLangStore.read())
-        val lang = resolveLang(chosen, AppLangStore.systemCode())
-        notifier.show(title = str.of(lang), body = arg, tag = tag)
+        val lang = resolveLang(AppLang.of(AppLangStore.read()), AppLangStore.systemCode())
+        notifier.show(
+            title = str.of(lang),
+            body = arg,
+            tag = tag,
+            action = action,
+            actionLabel = actionLabel?.of(lang) ?: ""
+        )
     }
 
     /**
@@ -1391,6 +1578,13 @@ class AppState(
         val wanted = ids.distinct()
         if (wanted.isEmpty()) return
 
+        // Прогресс включается до сбора целей: на тысячах коннектов сбор
+        // probeTarget'ов занимает секунды, и без этого флага приветствие
+        // (и кнопка «Проверить все») видели «не запущено» и решали, что
+        // проверка не состоялась, -- шаг автонастройки помечался ✗ при
+        // полном списке живых коннектов.
+        _checkProgress.value = CheckProgress(running = true)
+
         scope.launch {
             val targets = wanted.mapNotNull { id ->
                 val profile = config.vpn.profileById(id) ?: return@mapNotNull null
@@ -1610,15 +1804,35 @@ class AppState(
         val sets = dpiPortSets()
         val tcp = sets.first
         val udp = sets.second
+        val filter = dpiFilter()
         scope.launch(Dispatchers.IO) {
             if (tcp.isEmpty() && udp.isEmpty()) {
                 DpiFirewall.disable()
             } else {
-                DpiFirewall.enable(tcp.toList(), udp.toList())
+                DpiFirewall.enable(tcp.toList(), udp.toList(), filter.owners, filter.excludes)
             }
         }
         // Noroot: ядерных правил нет, обход переезжает в конфиг туннеля.
         if (!BuildMode.rootAllowed) refreshDpiOverlay(sets)
+    }
+
+    /**
+     * Разделение трафика обхода по выборам живых демонов.
+     *
+     * Выборы живых демонов объединяются: NFQUEUE-правило одно на оба
+     * процесса, и режим фильтра обязан быть общим (см. dpiAppFilter).
+     * Выборы без enabled здесь не встречаются: enabled -- это состояние
+     * пикера, а правила читаются из packages.
+     */
+    private fun dpiFilter(): DpiAppFilter {
+        val up = setOf(DaemonState.STARTING, DaemonState.RUNNING)
+        val selections = buildList {
+            if (zapretDaemon.state.value in up) add(config.perApp.zapret)
+            if (dpiDaemon.state.value in up) add(config.perApp.goodbyeDpi)
+        }
+        if (selections.isEmpty()) return DpiAppFilter()
+        val catalog = runCatching { installedApps() }.getOrDefault(emptyList())
+        return dpiAppFilter(selections, catalog)
     }
 
     /** Порты живых демонов обхода: (tcp, udp), свежие из конфига и состояний. */
@@ -1664,8 +1878,14 @@ class AppState(
                 else -> Unit
             }
         } else if (dpiSessionOwned) {
+            // Рвать можно из любого живого состояния: демон нередко
+            // умирает раньше туннеля (провал пробы -- а connectDpi уже
+            // в полёте), и прежняя проверка только на CONNECTED молча
+            // съедала владение -- осиротевшая сессия держала релейные
+            // маршруты без релея.
+            val ownedLive = tunnel.state.value.isLive
             dpiSessionOwned = false
-            if (tunnel.state.value == TunnelState.CONNECTED) {
+            if (ownedLive) {
                 AppLog.log("dpi", "userland relay: no daemons -- session down")
                 tunnel.disconnect()
             }
@@ -1675,16 +1895,15 @@ class AppState(
     // --- Автоподбор стратегии обхода ---
 
     /**
-     * Итог автоподбора: живой отчёт проверки плюс решение.
+     * Итог автоподбора: кандидаты прогнаны, победитель применён.
      *
      * Один на обе страницы: zapret и goodbyedpi проверяют одну и ту же
-     * сеть, и прогонять замеры дважды ради разных кнопок -- бессмысленно.
-     * Страница показывает только своё решение (по [StrategyOutcome.target]).
+     * сеть, и прогонять перебор дважды ради разных кнопок -- бессмысленно.
+     * Страница показывает свой target, прогресс виден у всех.
      */
     data class StrategyOutcome(
         val target: String,
-        val report: StrategyReport,
-        val decision: AutoStrategy.Decision
+        val probe: StrategyProbeOutcome
     )
 
     private val _strategyRunning = MutableStateFlow(false)
@@ -1693,38 +1912,110 @@ class AppState(
     private val _strategyOutcome = MutableStateFlow<StrategyOutcome?>(null)
     val strategyOutcome: StateFlow<StrategyOutcome?> = _strategyOutcome.asStateFlow()
 
-    /** "zapret" или "gdp". */
+    /** Работающие состояния демонов: и для хуков пробы, и для рестарта. */
+    private val daemonUp = setOf(DaemonState.STARTING, DaemonState.RUNNING)
+
+    /** Был ли основной демон обхода жив до пробы (его останавливали). */
+    private var probeDpiWasRunning = false
+
+    /**
+     * Перебор кандидатов с применением победителя.
+     *
+     * Проба -- не гипотезная проверка сети, а реальный перебор изолированными
+     * инстансами (см. [StrategyProbe]): каждый кандидат обрабатывает трафик
+     * приложения, побеждает лучший скоринг по продуктовым хостам. Победитель
+     * пишется в конфиг, работающие демоны перезапускаются -- движки читают
+     * конфиг только при старте, и без рестарта новый режим существовал бы
+     * только на бумаге. Сеть без данных -- не итог: применять нечего, и
+     * карточка честно показывает отказ.
+     */
     fun autoPickStrategy(target: String) {
         if (_strategyRunning.value) return
+        // Проба без области действия -- перебор стратегий вхолостую:
+        // применять результат не к чему. То же правило, что и у запуска.
+        val scoped = if (target == "zapret") {
+            DpiScope.zapret(config.perApp, config.zapret)
+        } else {
+            DpiScope.gdpi(config.perApp, config.goodbyeDpi)
+        }
+        if (!scoped) {
+            val engine = if (target == "zapret") zapretDaemon else dpiDaemon
+            engine.note(DaemonEvent(text = Str.DAEMON_NEED_SCOPE))
+            return
+        }
         _strategyRunning.value = true
         scope.launch {
-            val report = runCatching { NetworkProbe.run() }.getOrNull()
-            if (report == null) {
-                _strategyRunning.value = false
-                return@launch
-            }
-            val decision = if (target == "zapret") {
-                AutoStrategy.chooseZapretStrategy(report.probe, config.zapret)
-            } else {
-                AutoStrategy.chooseGoodbyeDpiMode(report.probe)
-            }
+            val hooks = object : ProbeHooks {
+                override fun dpiRunning(): Boolean = dpiDaemon.state.value in daemonUp
+                override suspend fun stopDpi() {
+                    probeDpiWasRunning = dpiRunning()
+                    if (probeDpiWasRunning) dpiDaemon.stop()
+                }
 
-            // Сеть недоступна целиком: применять «стратегию» нечего --
-            // это не выбор между обходами, а отсутствие данных.
-            val noData = report.steps.all { it.result == AutoStrategy.ProbeResult.Unknown }
-            if (!noData) {
-                mutate { current ->
-                    if (target == "zapret") {
-                        current.copy(zapret = AutoStrategy.applyZapret(current.zapret, decision))
-                    } else {
-                        current.copy(goodbyeDpi = current.goodbyeDpi.copy(mode = decision.strategy))
-                    }
+                override suspend fun startDpi() {
+                    if (probeDpiWasRunning) startDpi()
                 }
             }
-            _strategyOutcome.value = StrategyOutcome(target, report, decision)
+            val outcome = runCatching {
+                StrategyProbe.run(target, config.zapret, config.goodbyeDpi, config.relay, hooks)
+            }.getOrNull()
+
+            if (outcome != null) {
+                if (!outcome.noData) applyProbeOutcome(outcome)
+                _strategyOutcome.value = StrategyOutcome(target, outcome)
+            }
             _strategyRunning.value = false
         }
     }
+
+    /**
+     * Пишет победителя в конфиг и поднимает демоны под новым режимом.
+     *
+     * Три пути ровно как в пробе: стратегия zapret (root), режим goodbyedpi
+     * (root, демон останавливался хуками и возвращается уже с новым
+     * конфигом) и тюнинг релея (noroot -- конфиг читают лениво, перезапуск
+     * не нужен, хватает обновления DpiOverlay внутри mutate).
+     */
+    private fun applyProbeOutcome(outcome: StrategyProbeOutcome) {
+        val code = outcome.strategyCode
+        when {
+            outcome.target == "zapret" && code != null -> {
+                mutate { current ->
+                    current.copy(
+                        zapret = AutoStrategy.applyZapret(
+                            current.zapret,
+                            AutoStrategy.Decision(code, "probe")
+                        )
+                    )
+                }
+                if (zapretDaemon.state.value in daemonUp) {
+                    zapretDaemon.stop()
+                    startZapret()
+                }
+            }
+
+            code != null -> {
+                mutate { current ->
+                    current.copy(goodbyeDpi = current.goodbyeDpi.copy(mode = code))
+                }
+                if (probeDpiWasRunning) {
+                    dpiDaemon.stop()
+                    startDpi()
+                }
+            }
+
+            outcome.relay != null -> {
+                mutate { current -> current.copy(relay = outcome.relay!!) }
+            }
+        }
+        AppLog.log(
+            "strategy",
+            "probe target=${outcome.target} winner=${outcome.candidate.id} " +
+                "score=${outcome.score?.summary() ?: "-"}"
+        )
+    }
+
+    private fun targetIsZapret(target: String) = target == "zapret"
 
     fun clearStrategyOutcome() {
         _strategyOutcome.value = null

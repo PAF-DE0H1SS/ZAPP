@@ -50,6 +50,15 @@ object AppLog {
 /** Текущее время (epoch millis) -- платформенная функция. */
 internal expect fun platformNowMs(): Long
 
+/**
+ * Часы:мм:сек по локальному поясу из epoch millis -- для строки диагностики.
+ *
+ * Время в диагностике -- контекст «когда это случилось», а не метка
+ * для сортировки, поэтому локальный пояс пользователя и секундная
+ * точность -- ровно столько, сколько нужно глазу.
+ */
+internal expect fun platformFormatTime(ms: Long): String
+
 /** Платформенный вывод в файл лога (android: filesDir, jvm: ~/.config). */
 internal expect fun appendToFile(fileName: String, line: String)
 

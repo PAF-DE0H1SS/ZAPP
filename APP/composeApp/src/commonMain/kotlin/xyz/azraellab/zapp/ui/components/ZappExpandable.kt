@@ -2,7 +2,6 @@ package xyz.azraellab.zapp.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import xyz.azraellab.zapp.ui.glass
 import xyz.azraellab.zapp.ui.theme.AzraelCornerGlass
+import xyz.azraellab.zapp.ui.theme.AzraelMotion
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 
 /**
@@ -53,7 +53,7 @@ fun ZappExpandableCard(
     var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(220),
+        animationSpec = AzraelMotion.spec(),
         label = "expand-chevron"
     )
 
@@ -108,8 +108,8 @@ fun ZappExpandableCard(
 
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically(tween(220)) + fadeIn(tween(180)),
-            exit = shrinkVertically(tween(180)) + fadeOut(tween(120))
+            enter = expandVertically(AzraelMotion.spec()) + fadeIn(AzraelMotion.spec(AzraelMotion.fast)),
+            exit = shrinkVertically(AzraelMotion.spec(AzraelMotion.fast)) + fadeOut(AzraelMotion.spec(AzraelMotion.fast))
         ) {
             Column(
                 modifier = Modifier.padding(

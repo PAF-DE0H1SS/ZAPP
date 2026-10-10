@@ -156,7 +156,7 @@ private fun TunnelStatus(state: TunnelState, label: String) {
         color = when (state) {
             TunnelState.CONNECTED -> MaterialTheme.colorScheme.primary
             TunnelState.ERROR -> MaterialTheme.colorScheme.error
-            TunnelState.CONNECTING -> MaterialTheme.colorScheme.tertiary
+            TunnelState.CONNECTING, TunnelState.RECONNECTING -> MaterialTheme.colorScheme.tertiary
             TunnelState.DISCONNECTED -> return
         },
         label = label

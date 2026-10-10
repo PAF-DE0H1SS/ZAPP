@@ -8,6 +8,7 @@ import xyz.azraellab.zapp.core.RoutePoint
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.log.ErrorLog
 import xyz.azraellab.zapp.core.log.isError
+import xyz.azraellab.zapp.core.log.platformNowMs
 
 /** Состояние подмены геолокации. */
 enum class GpsState {
@@ -40,8 +41,11 @@ data class GpsFix(
  * Строка не собирается в core сразу, потому что здесь нет языка: движок
  * отдаёт ключ [Str] и число, а перевод -- дело UI. Так журнал одинаково
  * живёт на трёх языках, как и весь остальной интерфейс.
+ *
+ * [at] -- момент записи (0, если не проставлен): штампует журнальный
+ * писатель, чтобы диагностика имела время.
  */
-data class GpsEvent(val text: Str, val arg: String = "")
+data class GpsEvent(val text: Str, val arg: String = "", val at: Long = 0)
 
 /**
  * Движок подмены геолокации.
@@ -109,12 +113,14 @@ abstract class BaseGpsEngine : GpsEngine {
     }
 
     protected fun log(event: GpsEvent) {
-        val next = _log.value + event
+        // Штамп времени -- в журнальном писателе (см. DaemonEngine.log).
+        val stamped = if (event.at == 0L) event.copy(at = platformNowMs()) else event
+        val next = _log.value + stamped
         _log.value = if (next.size > LOG_LIMIT) next.takeLast(LOG_LIMIT) else next
         // Сбой подмены -- в отдельный журнал ошибок: событие хранит ключ,
         // перевод по текущему языку делает сам ErrorLog.
-        if (event.isError()) ErrorLog.noteStr("gps", event.text, event.arg)
-        onEvent(event)
+        if (stamped.isError()) ErrorLog.noteStr("gps", stamped.text, stamped.arg)
+        onEvent(stamped)
     }
 
     /**

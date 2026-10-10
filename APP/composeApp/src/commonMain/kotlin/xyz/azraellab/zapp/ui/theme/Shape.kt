@@ -10,7 +10,7 @@ val AzraelCornerSm: Dp = 10.dp
 val AzraelCornerMd: Dp = 14.dp
 val AzraelCornerLg: Dp = 20.dp
 val AzraelCornerXl: Dp = 26.dp
-val AzraelCornerGlass: Dp = 22.dp
+val AzraelCornerGlass: Dp = 16.dp
 
 val AzraelShapes = Shapes(
     extraSmall = RoundedCornerShape(AzraelCornerXs),

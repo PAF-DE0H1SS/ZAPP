@@ -2,6 +2,7 @@ package xyz.azraellab.zapp.core.dpi
 
 import xyz.azraellab.zapp.core.daemon.DpiOverlay
 import xyz.azraellab.zapp.core.daemon.daemonLogcat
+import xyz.azraellab.zapp.core.probe.RelayTuning
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
@@ -15,67 +16,61 @@ import java.util.concurrent.Executors
  * С root обход делает nfqws в NFQUEUE: режет и подменяет пакеты прямо
  * в ядре. Без root NFQUEUE недоступен, но обход можно сделать на уровне
  * данных: box отдаёт целевые TCP-порты сюда, а релей, прежде чем
- * проксировать, рвёт первый TLS-запись на два сегмента с паузой --
+ * проксировать, рвёт первый TLS-запись на несколько сегментов с паузой --
  * домен из SNI не умещается в первый сегмент, и DPI, не собирающий
  * поток обратно, теряет точку матчинга. Так же устроен сплит у zapret
  * (там ещё и fake-пакеты, но их из userland не подсунуть -- сервер бы
  * принял мусор в поток).
  *
- * Жизненный цикл -- счётчик заимствований: zapret и goodbyedpi держат
- * релей вместе, последняя остановка закрывает сокет. Порт один
- * ([DpiOverlay.RELAY_PORT]), двум демонам он и не нужен по отдельности.
+ * Сервер параметризован портом и тюнингом: боевой экземпляр слушает
+ * [DpiOverlay.RELAY_PORT] с текущим [DpiOverlay.relay], а автоподбор
+ * стратегии поднимает свои инстансы на свободных портах со своими
+ * параметрами -- две пробы не мешают друг другу.
  */
-internal object SplitRelay {
+internal class SplitRelayServer(
+    private val port: Int,
+    private val tuning: () -> RelayTuning
+) {
 
-    /** Пауза между сегментами: меньше -- DPI успевает склеить, больше -- ломаем латентность. */
-    private const val SPLIT_DELAY_MS = 10L
-
-    private const val CONNECT_TIMEOUT_MS = 10_000
+    private val CONNECT_TIMEOUT_MS = 10_000
 
     private val pool = Executors.newCachedThreadPool { r ->
         Thread(r, "zapp-relay-worker").apply { isDaemon = true }
     }
 
     private var server: ServerSocket? = null
-    private var refs = 0
 
-    /**
-     * Держит релей открытым. null -- взяли или уже держали; текст --
-     * причина отказа для карточки демона.
-     */
+    /** Открывает сокет; null -- успех, текст -- причина отказа. */
     @Synchronized
-    fun acquire(): String? {
-        val existing = server
-        if (existing != null && !existing.isClosed) {
-            refs++
-            return null
-        }
+    fun start(): String? {
+        if (server?.isClosed == false) return null
         val opened = try {
             ServerSocket().apply {
                 reuseAddress = true
-                bind(InetSocketAddress("127.0.0.1", DpiOverlay.RELAY_PORT))
+                bind(InetSocketAddress("127.0.0.1", port))
             }
         } catch (e: Exception) {
             val why = e.message ?: e::class.simpleName.orEmpty()
             daemonLogcat("ZAPP-RELAY", "bind failed: $why")
-            return "relay port ${DpiOverlay.RELAY_PORT} unavailable: $why"
+            return "relay port $port unavailable: $why"
         }
         server = opened
-        refs = 1
         Thread({ acceptLoop(opened) }, "zapp-relay-accept").apply {
             isDaemon = true
             start()
         }
-        daemonLogcat("ZAPP-RELAY", "listening on 127.0.0.1:${DpiOverlay.RELAY_PORT}")
+        daemonLogcat("ZAPP-RELAY", "listening on 127.0.0.1:$port")
         return null
     }
 
-    /** Отпускает одну ссылку; на нуле сокет закрывается. */
+    /** Фактический порт (для пробных инстансов на порту 0). */
+    @get:Synchronized
+    val localPort: Int
+        get() = server?.localPort ?: port
+
+    /** Закрывает сокет; открытые сессии доедают сами по закрытию. */
     @Synchronized
-    fun release() {
-        if (refs <= 0) return
-        refs--
-        if (refs > 0) return
+    fun stop() {
         runCatching { server?.close() }
         server = null
         daemonLogcat("ZAPP-RELAY", "closed")
@@ -177,10 +172,11 @@ internal object SplitRelay {
      *
      * Сплит ищет в ClientHello начало имени хоста SNI и заводит его во
      * второй сегмент: первый уходит целиком и только потом, с паузой,
-     * идёт остаток. Не-TLS-трафик и не разобранный заголовок проходят
-     * как есть, кроме запасного разрыва по первому байту -- он безопасен
-     * (запись всё равно склеивается сервером) и бьёт по тому же классу
-     * матчинга.
+     * идёт остаток. [RelayTuning.cuts] > 1 рвёт остаток ещё раз по
+     * середине -- так делает multisplit и так проверяется, помогает ли
+     * двойной разрез. Не-TLS-трафик и не разобранный заголовок проходят
+     * как есть; тюнинг читается на каждой новой сессии, чтобы проба
+     * меняла параметры без перезапуска сервера.
      */
     private fun pumpSplit(src: InputStream, dst: OutputStream, upstream: Socket, client: Socket) {
         val buf = ByteArray(32 * 1024)
@@ -192,12 +188,25 @@ internal object SplitRelay {
                 if (n == 0) continue
                 if (first) {
                     first = false
-                    val splitAt = splitOffset(buf, n)
-                    if (splitAt > 0 && splitAt < n) {
-                        dst.write(buf, 0, splitAt)
-                        dst.flush()
-                        Thread.sleep(SPLIT_DELAY_MS)
-                        dst.write(buf, splitAt, n - splitAt)
+                    val current = tuning().normalized()
+                    val splitAt = SplitRelay.splitOffset(buf, n)
+                    if (splitAt > 0 && splitAt < n && current.cuts > 0) {
+                        // Позиции разрезов: первый -- перед SNI-доменом,
+                        // остальные -- равномерно по остатку записи.
+                        val positions = ArrayList<Int>(current.cuts)
+                        positions.add(splitAt)
+                        for (i in 1 until current.cuts) {
+                            positions.add(splitAt + ((n - splitAt) * i) / current.cuts)
+                        }
+                        var from = 0
+                        for (pos in positions) {
+                            if (pos <= from || pos >= n) continue
+                            dst.write(buf, from, pos - from)
+                            dst.flush()
+                            Thread.sleep(current.delayMs.toLong())
+                            from = pos
+                        }
+                        dst.write(buf, from, n - from)
                         dst.flush()
                         continue
                     }
@@ -232,12 +241,70 @@ internal object SplitRelay {
         }
     }
 
+    private fun reply(out: OutputStream, rep: Int) {
+        out.write(byteArrayOf(0x05, rep.toByte(), 0, 0x01, 0, 0, 0, 0, 0, 0))
+        out.flush()
+    }
+
+    private fun readFully(input: InputStream, n: Int): ByteArray? {
+        if (n <= 0) return ByteArray(0)
+        val out = ByteArray(n)
+        var got = 0
+        while (got < n) {
+            val r = input.read(out, got, n - got)
+            if (r < 0) return null
+            got += r
+        }
+        return out
+    }
+}
+
+/**
+ * Боевой экземпляр релея с жизненным циклом "счётчик заимствований".
+ *
+ * Zapret и goodbyedpi держат релей вместе, последняя остановка закрывает
+ * сокет. Порт один ([DpiOverlay.RELAY_PORT]), двум демонам он и не нужен
+ * по отдельности; параметры -- текущие из [DpiOverlay.relay].
+ */
+internal object SplitRelay {
+
+    private var instance: SplitRelayServer? = null
+    private var refs = 0
+
+    /**
+     * Держит релей открытым. null -- взяли или уже держали; текст --
+     * причина отказа для карточки демона.
+     */
+    @Synchronized
+    fun acquire(): String? {
+        val existing = instance
+        if (existing != null) {
+            refs++
+            return null
+        }
+        val server = SplitRelayServer(DpiOverlay.RELAY_PORT) { DpiOverlay.relay }
+        val error = server.start()
+        if (error != null) return error
+        instance = server
+        refs = 1
+        return null
+    }
+
+    /** Отпускает одну ссылку; на нуле сокет закрывается. */
+    @Synchronized
+    fun release() {
+        if (refs <= 0) return
+        refs--
+        if (refs > 0) return
+        instance?.stop()
+        instance = null
+    }
+
     /**
      * Смещение начала имени хоста SNI внутри первого сегмента или -1.
      *
      * Разбор минимальный и строгий: не тот тип рукопожатия, обрезанный
-     * буфер или лишние расширения -- -1, и решение уходит к запасному
-     * разрыву по первому байту. Ошибиться вправо нельзя: сегменты
+     * буфер или лишние расширения -- -1. Ошибиться вправо нельзя: сегменты
      * склеивает сервер, и неправильное смещение ломает рукопожатие целиком.
      * internal ради теста: структура -- контракт со схемой TLS.
      */
@@ -274,22 +341,5 @@ internal object SplitRelay {
             p += len
         }
         return -1
-    }
-
-    private fun reply(out: OutputStream, rep: Int) {
-        out.write(byteArrayOf(0x05, rep.toByte(), 0, 0x01, 0, 0, 0, 0, 0, 0))
-        out.flush()
-    }
-
-    private fun readFully(input: InputStream, n: Int): ByteArray? {
-        if (n <= 0) return ByteArray(0)
-        val out = ByteArray(n)
-        var got = 0
-        while (got < n) {
-            val r = input.read(out, got, n - got)
-            if (r < 0) return null
-            got += r
-        }
-        return out
     }
 }

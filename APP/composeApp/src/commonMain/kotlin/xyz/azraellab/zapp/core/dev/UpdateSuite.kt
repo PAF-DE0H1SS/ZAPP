@@ -1,7 +1,15 @@
 package xyz.azraellab.zapp.core.dev
 
+import xyz.azraellab.zapp.core.AppConfig
+import xyz.azraellab.zapp.core.ConfigCodec
 import xyz.azraellab.zapp.core.update.APP_VERSION
+import xyz.azraellab.zapp.core.update.UPDATE_COMPARE_SEMVER
+import xyz.azraellab.zapp.core.update.UPDATE_COMPARE_TAG
+import xyz.azraellab.zapp.core.update.ZappComponent
 import xyz.azraellab.zapp.core.update.isNewerVersion
+import xyz.azraellab.zapp.core.update.localDayEndMs
+import xyz.azraellab.zapp.core.update.parseComponentVersion
+import xyz.azraellab.zapp.core.update.updateAvailable
 
 /**
  * Сравнение версий: одна строка лога на каждый случай.
@@ -99,5 +107,106 @@ internal fun updateTests(out: MutableList<DevTest>) {
         checkTrue(isNewerVersion("1.0.0", "1.0.0-rc.2"), "release vs rc")
         // Разные пререлизы одной версии не считаются обновлением.
         checkFalse(isNewerVersion("1.0.0-rc.3", "1.0.0-rc.2"), "rc3 vs rc2")
+    }
+
+    out += DevTest(
+        id = "update/compare-modes",
+        category = DevCategory.UPDATE,
+        name = "Режимы сравнения: по номеру и по смене тега"
+    ) {
+        // semver -- обычное «новее ли».
+        checkTrue(updateAvailable("0.2.0", "0.1.0", UPDATE_COMPARE_SEMVER), "semver новее")
+        checkFalse(updateAvailable("0.1.0", "0.1.0", UPDATE_COMPARE_SEMVER), "semver равны")
+        // tag -- любое отличие, в обе стороны: и `beta-next`, и откат
+        // с пререлиза на релиз той же линии.
+        checkTrue(updateAvailable("next", "0.1.0", UPDATE_COMPARE_TAG), "нечисловой тег")
+        checkTrue(updateAvailable("0.1.0", "0.1.0-rc.1", UPDATE_COMPARE_TAG), "тег отличается")
+        checkFalse(updateAvailable("v0.1.0", "0.1.0", UPDATE_COMPARE_TAG), "тег совпал после v")
+        checkFalse(updateAvailable("V0.1.0", "0.1.0", UPDATE_COMPARE_TAG), "тег совпал после V")
+        checkFalse(updateAvailable("", "0.1.0", UPDATE_COMPARE_TAG), "пустой тег не обновление")
+        checkFalse(updateAvailable("0.1.0", "", UPDATE_COMPARE_TAG), "пустая установка -- не сравнение")
+        // Неизвестный режим (конфиг прошлой версии) работает как semver.
+        checkTrue(updateAvailable("0.2.0", "0.1.0", "whatever"), "неизвестный режим -- semver")
+    }
+
+    out += DevTest(
+        id = "update/snooze-day-end",
+        category = DevCategory.UPDATE,
+        name = "Откладывание упирается в ближайшую местную полночь"
+    ) {
+        val now = System.currentTimeMillis()
+        val end = localDayEndMs(now)
+        checkTrue(end > now, "конец суток в будущем")
+        // Сутки с переводом часов бывают 25-часовыми -- граница с запасом
+        // на fall-back, но не дальше следующей ночи.
+        checkTrue(end - now <= 90_000_000L, "не дальше чем через сутки")
+        // Сам момент -- полночь по часовому поясу устройства: в DST-дни
+        // сутки бывают 23 или 25 часов, поэтому проверяем именно
+        // выровненность по местному времени, а не прибавку ровно за сутки.
+        val offset = java.util.TimeZone.getDefault().getOffset(end)
+        checkEq(0L, (end + offset) % 86_400_000L, "конец -- местная полночь")
+        // Из самой полуночи сутки сдвигаются вперёд, а не назад.
+        checkTrue(localDayEndMs(end) > end, "из полуночи -- дальше")
+    }
+
+    out += DevTest(
+        id = "update/component-version-parse",
+        category = DevCategory.UPDATE,
+        name = "Версии компонентов из вывода бинарей"
+    ) {
+        checkEq(
+            "1.260910.0",
+            parseComponentVersion(ZappComponent.BOX, """{"version": "1.260910.0", "listens": []}"""),
+            "box -- JSON"
+        )
+        checkEq(
+            "0.4.9.14",
+            parseComponentVersion(ZappComponent.TOR, "Tor version 0.4.9.14 (git-deadbeef)\ncompiled"),
+            "tor -- строка"
+        )
+        checkEq(
+            "1.22.09.1",
+            parseComponentVersion(ZappComponent.NFQWS, "nfqws 1.22.09.1\nusage follows\n"),
+            "nfqws -- четыре части"
+        )
+        checkEq(
+            "2.7.7",
+            parseComponentVersion(ZappComponent.OPENVPN, "OpenVPN 2.7.7 [SSL] \n"),
+            "openvpn -- три части"
+        )
+        checkEq(
+            "1.0.20220331",
+            parseComponentVersion(ZappComponent.WIREGUARD, "wireguard-tools v1.0.20220331 (x86_64)\n"),
+            "wg -- дата как версия"
+        )
+        checkTrue(parseComponentVersion(ZappComponent.BOX, "") == null, "пустой вывод -- null")
+        checkTrue(
+            parseComponentVersion(ZappComponent.BOX, "cannot execute: file not found") == null,
+            "без версии -- null"
+        )
+        checkTrue(
+            parseComponentVersion(ZappComponent.BOX, "\n\n\n\n\n1.2.3") == null,
+            "версия только в хвосте -- не видим"
+        )
+    }
+
+    out += DevTest(
+        id = "update/config-fields",
+        category = DevCategory.UPDATE,
+        name = "Поля обновлений в конфиге: дефолт и JSON"
+    ) {
+        val defaults = AppConfig()
+        checkEq(UPDATE_COMPARE_SEMVER, defaults.updateCompareMode, "режим по умолчанию")
+        checkEq(0L, defaults.updateSnoozeUntilMs, "откладки по умолчанию нет")
+
+        val tuned = defaults.copy(updateCompareMode = UPDATE_COMPARE_TAG, updateSnoozeUntilMs = 123_456L)
+        val decoded = ConfigCodec.decodeConfig(ConfigCodec.encodeConfig(tuned))
+        checkEq(UPDATE_COMPARE_TAG, decoded.updateCompareMode, "режим пережил JSON")
+        checkEq(123_456L, decoded.updateSnoozeUntilMs, "откладка пережила JSON")
+
+        // Старый конфиг без новых полей читается с дефолтами.
+        val legacy = ConfigCodec.decodeConfig("""{"welcomeDone": true}""")
+        checkEq(UPDATE_COMPARE_SEMVER, legacy.updateCompareMode, "режим из старого конфига")
+        checkEq(0L, legacy.updateSnoozeUntilMs, "откладки в старом конфиге нет")
     }
 }

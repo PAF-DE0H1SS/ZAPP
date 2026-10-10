@@ -142,13 +142,19 @@ object AutoStrategy {
             mss = d.mss ?: config.mss,
 
             fakeTlsMode = d.fakeTlsMode ?: config.fakeTlsMode,
+            fakeTlsMod = d.fakeTlsMod ?: config.fakeTlsMod,
             fakePacket = d.fakePacket ?: config.fakePacket,
             fakeTcp = d.fakeTcp ?: config.fakeTcp,
             fakeCutTls = d.fakeCutTls ?: config.fakeCutTls,
             fakeSeq = d.fakeSeq ?: config.fakeSeq,
             fakeCsum = d.fakeCsum ?: config.fakeCsum,
             fakeRepeats = d.fakeRepeats ?: config.fakeRepeats,
-            foolingTs = d.foolingTs ?: config.foolingTs
+            foolingTs = d.foolingTs ?: config.foolingTs,
+
+            autoTtl = d.autoTtl ?: config.autoTtl,
+            udpLenIncrement = d.udpLenIncrement ?: config.udpLenIncrement,
+            anyProtocol = d.anyProtocol ?: config.anyProtocol,
+            filterUdp = d.filterUdp ?: config.filterUdp
         )
     }
 

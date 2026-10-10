@@ -8,19 +8,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import xyz.azraellab.zapp.core.AndroidCtx
-import xyz.azraellab.zapp.core.BuildMode
 import xyz.azraellab.zapp.core.installPresetFileBridge
 import xyz.azraellab.zapp.core.permissions.AndroidPermissionBridge
+import xyz.azraellab.zapp.ui.nav.AppNavRequest
 
 /**
  * Единственная Activity.
  *
- * Кроме композиции здесь ещё три вещи, которых нельзя сделать из common-кода:
- * передача контекста в хранилище, регистрация launcher'ов SAF и регистрация
- * launcher'ов разрешений. `registerForActivityResult` должен вызываться до
- * `onCreate`, иначе Activity выбросит, -- отсюда инициализация полей, а не
- * создание лаунчеров внутри колбэка.
+ * Кроме композиции здесь ещё две вещи, которых нельзя сделать из common-кода:
+ * регистрация launcher'ов SAF и регистрация launcher'ов разрешений.
+ * `registerForActivityResult` должен вызываться до `onCreate`, иначе Activity
+ * выбросит, -- отсюда инициализация полей, а не создание лаунчеров внутри
+ * колбэка. Контекст и режим сборки приложение получает в ZappApp.onCreate --
+ * раньше, чем эта Activity успевает родиться.
  *
  * Диалоги разрешений приходят из общего кода, который не знает про Activity,
  * поэтому лаунчеры здесь -- это мост [AndroidPermissionBridge]: общий код
@@ -81,12 +81,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Флаг режима (root/noroot) -- до любых движков: RootShell, демоны и
-        // journal AppState читают BuildMode уже во время первого кадра.
-        BuildMode.rootAllowed = BuildConfig.ZAPP_ROOT
-
-        AndroidCtx.attach(this)
-
         // Мост устанавливается до первого Composable: иначе кнопки импорта и
         // экспорта на странице настроек увидят `available = false` до того,
         // как кто-то успеет их нажать.
@@ -121,8 +115,26 @@ class MainActivity : ComponentActivity() {
             openSettings = { intent -> settingsLauncher.launch(intent) }
         )
 
+        // Кнопка «открыть настройки» из шторки: intent приходит сюда,
+        // дальше запрос уходит в общий код и переключает вкладку.
+        consumeOpenSettings(intent)
+
         setContent {
             App()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Та же кнопка, когда приложение уже живо и Activity переиспользуется
+        // (SINGLE_TOP из флага PendingIntent'а).
+        consumeOpenSettings(intent)
+    }
+
+    /** Превращает extra из intent'а в запрос навигации для AppRoot. */
+    private fun consumeOpenSettings(intent: Intent?) {
+        if (intent?.getBooleanExtra(AppNavRequest.EXTRA_OPEN_SETTINGS, false) == true) {
+            AppNavRequest.openSettings.value = true
         }
     }
 

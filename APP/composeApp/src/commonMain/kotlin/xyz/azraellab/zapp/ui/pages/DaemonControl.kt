@@ -4,23 +4,31 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.delay
 import xyz.azraellab.zapp.core.AppState
-import xyz.azraellab.zapp.core.AutoStrategy
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.daemon.DaemonEngine
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.log.isError
+import xyz.azraellab.zapp.core.probe.ProbeProgress
+import xyz.azraellab.zapp.core.probe.StrategyProbeCoordinator
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappExpandableCard
+import xyz.azraellab.zapp.ui.rememberLang
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.tr
 
@@ -44,10 +52,14 @@ fun DaemonControlCard(
     if (!engine.supported) return
 
     // Причина сбоя -- прямо в карточке, а не только в журнале ниже:
-    // «Ошибка» без строки под ним ничего не объясняет. Выбор строки --
-    // общий с журналом (core.log): сырой вывод демона важнее события
-    // «Exit code», потому что объясняет, а не констатирует.
-    val reason = if (state == DaemonState.ERROR) log.errorReason() else null
+    // «Ошибка» без строки под ним ничего не объясняет. Строка --
+    // диагностика одной строкой: время, компонент и причина из журнала
+    // (выбор строки общий с журналом, core.log).
+    val reason = if (state == DaemonState.ERROR) {
+        log.diagnosisReason(engine.id.defaultBinary)
+    } else {
+        null
+    }
 
     ZappCard {
         Row(
@@ -142,20 +154,21 @@ fun DaemonLogCard(engine: DaemonEngine, path: String = "daemon.log.expand") {
 }
 
 /**
- * Автоподбор стратегии: кнопка, шаги проверки и применённое решение.
+ * Автоподбор стратегии: кнопка, ход перебора и применённый победитель.
  *
- * Общая карточка для zapret и goodbyedpi: проверяется одна и та же сеть,
- * отличается набор шагов и то, кому решение применяется. Шаги видны и до
- * запуска, и после -- иначе «стратегия подобрана» превращается в магию
- * без единого проверяемого утверждения.
+ * Общая карточка для zapret и goodbyedpi. Пока идёт проба, видно, какой
+ * именно кандидат сейчас обрабатывает трафик (координатор -- общий на все
+ * страницы), а после -- кто победил и насколько хорошо. Прогресс вместо
+ * списка шагов не случайно: шаги описывали гипотезы о сети, а здесь
+ * проверяются реальные стратегии, и важен именно перебор.
  */
 @Composable
 fun StrategyProbeCard(state: AppState, target: String) {
     val running by state.strategyRunning.collectAsState()
     val outcome by state.strategyOutcome.collectAsState()
+    val progress by StrategyProbeCoordinator.progress.collectAsState()
     val current = outcome?.takeIf { it.target == target }
-    val steps = if (target == "zapret") AutoStrategy.stepsForZapret()
-    else AutoStrategy.stepsForGoodbyeDpi()
+    val lang = rememberLang()
     val scheme = MaterialTheme.colorScheme
 
     ZappCard {
@@ -167,61 +180,56 @@ fun StrategyProbeCard(state: AppState, target: String) {
             path = "$target.probe"
         )
 
-        // Шаги видны только во время проверки и после неё: постоянный список
-        // «? ? ?» до нажатия -- это пустая стена, а не информация.
-        if (running || current != null) {
-            steps.forEach { step ->
-                val probeStep = current?.report?.steps?.firstOrNull { it.id == step.id }
-                val result = probeStep?.result
-                val symbol = when (result) {
-                    AutoStrategy.ProbeResult.Pass -> "✓"
-                    AutoStrategy.ProbeResult.Blocked -> "✗"
-                    else -> "?"
-                }
-                val color = when (result) {
-                    AutoStrategy.ProbeResult.Pass -> scheme.primary
-                    AutoStrategy.ProbeResult.Blocked -> scheme.error
-                    else -> scheme.onSurfaceVariant
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AzraelSpace.md),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = symbol, style = MaterialTheme.typography.bodyLarge, color = color)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = step.title,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = scheme.onSurface
-                        )
-                        if (probeStep?.detail != null && probeStep.detail.isNotEmpty()) {
-                            Text(
-                                text = probeStep.detail,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = scheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
+        // Ход перебора: «Кандидат 3/8: Разрез 1×10 мс». Без label до первого
+        // тика строка выглядит пустой -- тогда просто «Проверка».
+        if (running) {
+            val step = progress
+            Text(
+                text = if (step == null || step.candidate.id.isEmpty()) {
+                    tr(Str.VPN_CHECKING)
+                } else {
+                    "${tr(Str.STRATEGY_CANDIDATE)} ${step.index}/${step.total}: " +
+                        step.candidate.label(lang)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (step != null && step.total > 0) {
+                // Доля завершённых, а не позиция текущего: бар на последнем
+                // кандидате не должен выглядеть законченным, пока идёт проба.
+                val done = (step.index - 1).coerceIn(0, step.total)
+                LinearProgressIndicator(
+                    progress = { done / step.total.toFloat() },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            val eta = rememberEta(step, running)
+            if (eta != null) {
+                Text(
+                    text = "${tr(Str.STRATEGY_ETA)} ${eta.asClock()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 
         if (current != null) {
-            val noData = current.report.steps.all {
-                it.result == AutoStrategy.ProbeResult.Unknown
-            }
+            val probe = current.probe
             Column(verticalArrangement = Arrangement.spacedBy(AzraelSpace.xs)) {
                 Text(
-                    text = tr(if (noData) Str.STRATEGY_NETWORK_FAIL else Str.STRATEGY_APPLIED),
+                    text = tr(if (probe.noData) Str.STRATEGY_NETWORK_FAIL else Str.STRATEGY_APPLIED),
                     style = MaterialTheme.typography.titleSmall,
-                    color = if (noData) scheme.error else scheme.primary
+                    color = if (probe.noData) scheme.error else scheme.primary
                 )
-                Text(
-                    text = "${current.decision.strategy} -- ${current.decision.reason}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant
-                )
+                if (!probe.noData) {
+                    Text(
+                        text = "${probe.candidate.label(lang)} -- ${probe.score?.summary() ?: "-"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant
+                    )
+                }
                 ZappButton(
                     text = tr(Str.COMMON_CLOSE),
                     role = ButtonRole.GHOST,

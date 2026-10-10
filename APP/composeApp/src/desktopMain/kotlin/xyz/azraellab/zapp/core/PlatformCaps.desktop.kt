@@ -9,4 +9,5 @@ package xyz.azraellab.zapp.core
  */
 actual fun platformCaps(): PlatformCaps = object : PlatformCaps {
     override val gpsSpoofingSupported: Boolean = false
+    override val apkUpdatesSupported: Boolean = false
 }

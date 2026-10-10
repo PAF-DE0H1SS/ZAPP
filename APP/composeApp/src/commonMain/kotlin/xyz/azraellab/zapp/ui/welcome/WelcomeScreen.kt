@@ -2,7 +2,6 @@ package xyz.azraellab.zapp.ui.welcome
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -62,6 +61,7 @@ import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
 import xyz.azraellab.zapp.ui.components.ZappListRow
 import xyz.azraellab.zapp.ui.pages.PermissionRow
+import xyz.azraellab.zapp.ui.theme.AzraelMotion
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.tr
 
@@ -95,8 +95,8 @@ fun WelcomeScreen(state: AppState) {
         AnimatedContent(
             targetState = step,
             transitionSpec = {
-                fadeIn(tween(220)) + slideInVertically(tween(240)) { it / 6 } togetherWith
-                    fadeOut(tween(140))
+                fadeIn(AzraelMotion.spec()) + slideInVertically(AzraelMotion.spec()) { it / 6 } togetherWith
+                    fadeOut(AzraelMotion.spec(AzraelMotion.fast))
             },
             label = "welcome-step"
         ) { current ->
@@ -460,7 +460,7 @@ private fun AutoSetupStep(state: AppState) {
     val doneCount = if (presetApplied) steps.size else steps.count { it == AutoStep.DONE || it == AutoStep.FAILED }
     val progress by animateFloatAsState(
         targetValue = doneCount / steps.size.toFloat(),
-        animationSpec = tween(500, easing = LinearEasing),
+        animationSpec = AzraelMotion.spec(AzraelMotion.state),
         label = "welcome-progress"
     )
     LinearProgressIndicator(
@@ -505,7 +505,7 @@ private fun AutoRow(title: String, step: AutoStep) {
         AutoStep.RUNNING -> MaterialTheme.colorScheme.tertiary
         AutoStep.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val color by animateColorAsState(target, tween(300), label = "auto-row-color")
+    val color by animateColorAsState(target, AzraelMotion.spec(AzraelMotion.state), label = "auto-row-color")
 
     val infinite = rememberInfiniteTransition(label = "auto-pulse")
     val rawPulse by infinite.animateFloat(

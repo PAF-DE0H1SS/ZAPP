@@ -6,6 +6,10 @@ import java.io.File
 
 internal actual fun platformNowMs(): Long = System.currentTimeMillis()
 
+internal actual fun platformFormatTime(ms: Long): String =
+    java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT)
+        .format(java.util.Date(ms))
+
 /** Каталог данных приложения (лог, временные файлы). */
 internal expect fun appDataDir(): File
 

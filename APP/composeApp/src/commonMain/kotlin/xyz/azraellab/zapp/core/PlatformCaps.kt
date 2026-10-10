@@ -15,6 +15,15 @@ interface PlatformCaps {
      * его нет, и приложение не будет делать вид, что он есть.
      */
     val gpsSpoofingSupported: Boolean
+
+    /**
+     * Можно ли установить скачанное APK обновление.
+     *
+     * На Android штатный установщик есть всегда; на десктопе APK не
+     * устанавливается, и кнопки «Скачать/Установить» прячутся в пользу
+     * открытия страницы релиза.
+     */
+    val apkUpdatesSupported: Boolean
 }
 
 expect fun platformCaps(): PlatformCaps

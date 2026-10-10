@@ -43,7 +43,18 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+        Список установленных приложений для per-app выбора. С Android 11
+        package visibility отдаёт приложению только видимые пакеты, без
+        этого разрешения каталог был бы усечён до системных и нескольких
+        «желательных», а пользователь должен видеть ВСЕ свои приложения,
+        чтобы выбрать, что идёт через VPN, а что мимо. Разрешение normal:
+        выдаётся молча при установке.
+    -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
     <application
+        android:name=".ZappApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -111,6 +122,68 @@
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
+
+        <!--
+            Плитки быстрого доступа (шторка уведомлений). Три отдельных
+            сервиса одного класса: подпись берётся из android:label, а
+            поведение берётся из подкласса. ACTIVE_TILE обязывает систему
+            переспрашивать состояние при каждом раскрытии шторки, поэтому
+            плитка не врёт после смены статуса из приложения.
+            BIND_QUICK_SETTINGS_TILE выдаётся только системе.
+        -->
+        <service
+            android:name=".tile.TileVpn"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="VPN"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
+
+        <service
+            android:name=".tile.TileTor"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Tor"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
+
+        <service
+            android:name=".tile.TileZapret"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Zapret"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
+
+        <!-- Отдача закешированного APK обновления установщику: прямой
+             file:// на Android 7+ роняет установку с FileUriExposedException. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
     </application>
 
 </manifest>

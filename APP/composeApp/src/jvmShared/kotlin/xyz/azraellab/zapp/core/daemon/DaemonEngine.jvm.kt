@@ -12,6 +12,7 @@ import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.native.BinaryResolver
 import xyz.azraellab.zapp.core.root.RootShell
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Метка logcat: одна на оба демона, различаются по префиксу строки. */
 private const val TAG = "ZAPP-DAEMON"
@@ -66,10 +67,27 @@ private class JvmDaemonEngine(
     private var monitorJob: Job? = null
     private var pkillJob: Job? = null
 
+    /**
+     * Поколение стартов: [stop] и новый старт опережают медленную запись
+     * файлов демона.
+     *
+     * Большой конфиг (группа urltest на тысячах профилей -- мегабайты)
+     * пишется порциями через `su` дольше, чем живёт таймаут запуска. Без
+     * этой проверки отменённый старт всё равно достраивал процесс после
+     * остановки -- на устройстве оставался осиротевший демон, который
+     * движок уже не видел и не мог убить.
+     */
+    private val generation = AtomicInteger()
+
     override val supported: Boolean = true
 
     override fun start(spec: DaemonSpec) {
+        val gen = generation.incrementAndGet()
         scope.launch {
+            // Старт устарел (демон остановили или перезапустили, пока
+            // корутина стояла в очереди): ничего не трогаем, чужой
+            // процесс ей не принадлежит.
+            if (generation.get() != gen) return@launch
             // Перезапуск: старый процесс снимается до нового, иначе `pkill`
             // по пути к бинарю успел бы убить и свежий тоже.
             pkillJob?.cancel()
@@ -90,6 +108,13 @@ private class JvmDaemonEngine(
                 materializeError?.let { log(DaemonEvent(raw = "files not written: $it")) }
                 log(DaemonEvent(Str.DAEMON_FILES_FAILED, arg = binaryName))
                 setState(DaemonState.ERROR)
+                return@launch
+            }
+            // Запись файлов -- самая долгая часть старта, и именно на ней
+            // старт чаще всего устаревает: выходим до состояний и спавна,
+            // чтобы не переписать STOPPED своим STARTING.
+            if (generation.get() != gen) {
+                log(DaemonEvent(raw = "start cancelled: superseded"))
                 return@launch
             }
 
@@ -116,6 +141,15 @@ private class JvmDaemonEngine(
                 return@launch
             }
 
+            // Между последней проверкой и спавном демон могли остановить:
+            // процесс уже создан, но контроль над ним брать нельзя -- гасим
+            // на месте, иначе он останется сиротой после остановки.
+            if (generation.get() != gen) {
+                runCatching { started.destroyForcibly() }
+                log(DaemonEvent(raw = "start cancelled after spawn"))
+                return@launch
+            }
+
             process = started
             resolvedBinary = resolved
             startReader(started)
@@ -124,6 +158,9 @@ private class JvmDaemonEngine(
     }
 
     override fun stop() {
+        // Опережаем старт, который ещё пишет файлы: его спавн отменяется,
+        // и процесс не появится уже после остановки.
+        generation.incrementAndGet()
         val wasActive = state.value == DaemonState.STARTING || state.value == DaemonState.RUNNING
         setState(DaemonState.STOPPED)
         if (wasActive) {

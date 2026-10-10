@@ -159,3 +159,53 @@ fun List<GpsEvent>.errorEvent(): GpsEvent? {
     events.firstOrNull { it.isError() }?.let { return it }
     return events.firstOrNull { it.text != Str.GPS_LOG_STARTING && it.text != Str.GPS_LOG_STOPPED }
 }
+
+// --- Одна строка диагностики ---
+
+/**
+ * Цепочка причин исключения -- до [limit] звеньев через «→».
+ *
+ * «start failed: Connection refused» ничего не говорит о том, что именно
+ * отвергло соединение; цепочка `корень → cause → cause2` -- говорит. Сквозь
+ * обёртки (runCatching, суперклассы) ходим по `cause`, дубликаты и пустые
+ * сообщения отбрасываем: строка должна быть короткой и без повторов.
+ */
+fun Throwable.causeChain(limit: Int = 4): String =
+    generateSequence(this) { it.cause }
+        .mapNotNull { it.message?.takeIf { msg -> msg.isNotBlank() } }
+        .distinct()
+        .take(limit)
+        .joinToString(" → ")
+
+/**
+ * Длинные токены в строке причины -- под маску.
+ *
+ * Конфиги коннектов -- это ключи Reality, пароли и прочие base64-плёнки:
+ * диагностика показывается под статусом и в уведомлениях, и без маски
+ * секрет уезжал бы туда, где его не должно быть видно. Маскируется
+ * всё подозрительно длинное «слово» токенного алфавита; обычные пути,
+ * имена и текст короче -- не трогаются.
+ */
+private val LONG_TOKEN = Regex("""[A-Za-z0-9+/=_-]{40,}""")
+
+fun redactSensitive(line: String): String = LONG_TOKEN.replace(line, "***")
+
+/**
+ * Последняя ошибка одной строкой: `время · компонент · цепочка причин`.
+ *
+ * Тот приём, что делает ошибку читаемой без раскрытия журнала: видно,
+ * когда, где и из-за чего всё сломалось. Пустые части пропускаются
+ * (время может быть неизвестно), причин берётся не больше четырёх,
+ * каждая проходит через [redactSensitive].
+ */
+fun diagnosisLine(time: String, component: String, causes: List<String>): String {
+    val chain = causes.asSequence()
+        .map { redactSensitive(it).trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+        .take(4)
+        .joinToString(" → ")
+    return listOf(time.trim(), component.trim(), chain)
+        .filter { it.isNotEmpty() }
+        .joinToString(" · ")
+}

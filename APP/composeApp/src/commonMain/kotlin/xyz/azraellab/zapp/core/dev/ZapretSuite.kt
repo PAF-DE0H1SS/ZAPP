@@ -1,6 +1,9 @@
 package xyz.azraellab.zapp.core.dev
 
+import xyz.azraellab.zapp.core.AppConfig
 import xyz.azraellab.zapp.core.AutoStrategy
+import xyz.azraellab.zapp.core.ConfigCodec
+import xyz.azraellab.zapp.core.GoodbyeDpiConfig
 import xyz.azraellab.zapp.core.GoodbyeDpiMode
 import xyz.azraellab.zapp.core.ZapretConfig
 import xyz.azraellab.zapp.core.ZapretDefaults
@@ -377,5 +380,149 @@ internal fun zapretTests(out: MutableList<DevTest>) {
             checkEq(expected.first, decision.strategy, expected.third)
             checkEq(expected.second, decision.reason, "${expected.third} reason")
         }
+    }
+
+    // --- Новые техники: fake TLS, UDP, профили задач ---
+
+    out += DevTest("zapret/args-fake-tls-and-udp", DevCategory.ZAPRET, "fake-tls-mod, autottl, udplen, any-protocol") {
+        val args = ZapretConfig(
+            fakeTlsMod = "rnd,rndsni,dupsid",
+            autoTtl = "3:4-10",
+            udpLenIncrement = 16,
+            anyProtocol = true
+        ).toArgs()
+        checkIn("--dpi-desync-fake-tls-mod=rnd,rndsni,dupsid", args, "mods")
+        checkIn("--dpi-desync-autottl=3:4-10", args, "autottl")
+        checkIn("--dpi-desync-udplen-increment=16", args, "udplen")
+        checkIn("--dpi-desync-any-protocol=1", args, "any-protocol")
+
+        // Явное выключение auto-TTL у zapret -- значение `-`.
+        checkIn("--dpi-desync-autottl=-", ZapretConfig(autoTtl = "-").toArgs(), "autottl=-")
+
+        // Пустое и нулевое -- без флага: nfqws читает пустое значение
+        // как имя файла blob и падает на старте.
+        val empty = ZapretConfig(fakeTlsMod = " ", autoTtl = "", udpLenIncrement = null).toArgs()
+        checkTrue(empty.none { it.startsWith("--dpi-desync-fake-tls-mod") }, "пустой mod не эмитируется")
+        checkTrue(empty.none { it.startsWith("--dpi-desync-autottl") }, "пустой autottl не эмитируется")
+        checkTrue(empty.none { it.contains("udplen") }, "null udplen не эмитируется")
+        checkTrue(empty.none { it.contains("any-protocol") }, "выключенный any-protocol не эмитируется")
+        checkEq(DEFAULT_ARGS, ZapretConfig().toArgs(), "дефолт не изменился")
+    }
+
+    out += DevTest("zapret/args-udp-port-range", DevCategory.ZAPRET, "UDP-диапазон уходит в nfqws с дефисом") {
+        val args = ZapretConfig(filterUdp = "3478,27015-27020").toArgs()
+        checkIn("--filter-udp=3478,27015-27020", args, "дефис -- синтаксис nfqws")
+    }
+
+    out += DevTest("zapret/profile-messaging-games", DevCategory.ZAPRET, "Профили Мессенджеры/Игровой и TLS-рандомизация") {
+        val messaging = ZapretStrategy.of("messaging")
+        checkEq(ZapretStrategy.MESSAGING, messaging, "messaging найден")
+        checkEq(ZapretFamily.DESYNC, messaging.family, "desync-семейство")
+        checkEq(setOf("fake"), messaging.defaults.desync, "ядро профиля -- fake")
+        checkEq("443,3478", messaging.defaults.filterUdp, "udp-порты мессенджеров")
+        checkEq(1, messaging.defaults.fakeRepeats, "один фейк на пакет")
+
+        val games = ZapretStrategy.of("games")
+        checkEq(ZapretStrategy.GAMES, games, "games найден")
+        checkEq(2, games.defaults.fakeRepeats, "два фейка на пакет")
+        checkTrue(
+            games.defaults.filterUdp.orEmpty().contains("27015-27020"),
+            "игровые порты в списке: ${games.defaults.filterUdp}"
+        )
+        checkTrue(
+            ZapretStrategy.selectable.containsAll(listOf(messaging, games)),
+            "оба профиля в списке выбора"
+        )
+
+        val rnd = ZapretStrategy.of("fake-tls-rnd")
+        checkEq(ZapretStrategy.FAKE_TLS_RND, rnd, "fake-tls-rnd найден")
+        checkEq("rnd,rndsni,dupsid", rnd.defaults.fakeTlsMod, "моды по умолчанию")
+        checkEq(setOf("fake"), rnd.defaults.desync, "fake остаётся ядром")
+    }
+
+    out += DevTest("zapret/apply-udp-profiles", DevCategory.ZAPRET, "applyZapret переносит udp-ручки профилей") {
+        val messaging = AutoStrategy.applyZapret(ZapretConfig(), AutoStrategy.Decision("messaging", "test"))
+        checkEq("443,3478", messaging.filterUdp, "filterUdp переехал")
+        checkEq(1, messaging.fakeRepeats, "repeats переехали")
+        checkEq(setOf("fake"), messaging.desyncMethods, "desync переехал")
+        checkEq("messaging", messaging.strategy, "код стратегии")
+        checkFalse(messaging.autoStrategy, "автоподбор выключен вручную")
+
+        val games = AutoStrategy.applyZapret(messaging, AutoStrategy.Decision("games", "test"))
+        checkEq("3478,5223,3074,27015-27020", games.filterUdp, "games заменил udp-порты")
+
+        val rnd = AutoStrategy.applyZapret(games, AutoStrategy.Decision("fake-tls-rnd", "test"))
+        checkEq("rnd,rndsni,dupsid", rnd.fakeTlsMod, "моды применены")
+
+        // Стратегия без udp-ручки порт не трогает: null == «оставь как есть».
+        val multi = AutoStrategy.applyZapret(rnd, AutoStrategy.Decision("multipath", "test"))
+        checkEq(rnd.filterUdp, multi.filterUdp, "filterUdp пережил смену стратегии")
+        checkEq(rnd.fakeTlsMod, multi.fakeTlsMod, "fakeTlsMod пережил смену стратегии")
+    }
+
+    out += DevTest("zapret/new-fields-roundtrip", DevCategory.ZAPRET, "Новые поля переживают JSON и старый конфиг") {
+        val config = AppConfig(
+            zapret = ZapretConfig(
+                fakeTlsMod = "rnd,sni=example.com",
+                autoTtl = "3:4-10",
+                udpLenIncrement = -8,
+                anyProtocol = true,
+                filterUdp = "443,3478"
+            )
+        )
+        val decoded = ConfigCodec.decodeConfig(ConfigCodec.encodeConfig(config))
+        checkEq("rnd,sni=example.com", decoded.zapret.fakeTlsMod, "fakeTlsMod")
+        checkEq("3:4-10", decoded.zapret.autoTtl, "autoTtl")
+        checkEq(-8, decoded.zapret.udpLenIncrement, "udpLenIncrement")
+        checkTrue(decoded.zapret.anyProtocol, "anyProtocol")
+        checkEq("443,3478", decoded.zapret.filterUdp, "filterUdp")
+
+        // Старый конфиг без новых полей читается с дефолтами.
+        val legacy = ConfigCodec.decodeConfig("""{"zapret":{"enabled":true}}""")
+        checkEq("", legacy.zapret.fakeTlsMod, "fakeTlsMod из старого конфига")
+        checkEq("", legacy.zapret.autoTtl, "autoTtl из старого конфига")
+        checkTrue(legacy.zapret.udpLenIncrement == null, "udpLenIncrement из старого конфига")
+        checkFalse(legacy.zapret.anyProtocol, "anyProtocol из старого конфига")
+    }
+
+    out += DevTest("zapret/gdpi-args-techniques", DevCategory.ZAPRET, "GoodbyeDPI: новые техники в команде") {
+        val args = GoodbyeDpiConfig(
+            autoTtl = "3-8-10",
+            setTtl = 5,
+            fakeGen = 3,
+            fakeResend = 2,
+            maxPayload = 1400,
+            reverseFrag = true,
+            fragBySni = true
+        ).toArgs()
+        checkIn("--set-ttl=5", args, "set-ttl")
+        checkIn("--auto-ttl=3-8-10", args, "auto-ttl")
+        checkIn("--fake-gen=3", args, "fake-gen")
+        checkIn("--fake-resend=2", args, "fake-resend")
+        checkIn("--max-payload=1400", args, "max-payload")
+        checkIn("--reverse-frag", args, "reverse-frag")
+        checkIn("--frag-by-sni", args, "frag-by-sni")
+        // set-ttl гасит auto-TTL -- фиксированный TTL должен идти первым.
+        checkTrue(args.indexOf("--set-ttl=5") < args.indexOf("--auto-ttl=3-8-10"), "порядок TTL-флагов")
+
+        val bare = GoodbyeDpiConfig().toArgs()
+        val newFlags = listOf("--auto-ttl", "--set-ttl", "--fake-gen", "--fake-resend", "--max-payload", "--reverse-frag", "--frag-by-sni")
+        checkTrue(bare.none { arg -> newFlags.any { arg == it || arg.startsWith("$it=") } }, "дефолт без новых флагов: $bare")
+    }
+
+    out += DevTest("zapret/gdpi-new-fields-roundtrip", DevCategory.ZAPRET, "Новые поля GoodbyeDPI переживают JSON") {
+        val config = AppConfig(
+            goodbyeDpi = GoodbyeDpiConfig(autoTtl = "3-8-10", setTtl = 5, fakeGen = 3, reverseFrag = true)
+        )
+        val decoded = ConfigCodec.decodeConfig(ConfigCodec.encodeConfig(config))
+        checkEq("3-8-10", decoded.goodbyeDpi.autoTtl, "autoTtl")
+        checkEq(5, decoded.goodbyeDpi.setTtl, "setTtl")
+        checkEq(3, decoded.goodbyeDpi.fakeGen, "fakeGen")
+        checkTrue(decoded.goodbyeDpi.reverseFrag, "reverseFrag")
+
+        val legacy = ConfigCodec.decodeConfig("""{"goodbyeDpi":{"mode":"auto"}}""")
+        checkEq("", legacy.goodbyeDpi.autoTtl, "autoTtl из старого конфига")
+        checkTrue(legacy.goodbyeDpi.setTtl == null, "setTtl из старого конфига")
+        checkFalse(legacy.goodbyeDpi.fragBySni, "fragBySni из старого конфига")
     }
 }

@@ -2,6 +2,9 @@ package xyz.azraellab.zapp.core
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import xyz.azraellab.zapp.core.routing.ProxyCascade
+import xyz.azraellab.zapp.core.routing.RouteSection
+import xyz.azraellab.zapp.core.routing.UrlTestFilter
 
 /**
  * Настройки VPN-профиля.
@@ -158,9 +161,32 @@ data class VpnRouting(
     /** Разрешить приложениям обходить туннель. */
     val allowPerAppBypass: Boolean = false,
     /** Приложения вне туннеля, через запятую. */
-    val bypassApps: String = ""
+    val bypassApps: String = "",
+
+    // --- Детальная маршрутизация ---
+    /**
+     * Секции: именованные правила поверх базовых маршрутов.
+     *
+     * Порядок списка -- порядок применения: первая совпавшая секция
+     * решает судьбу соединения.
+     */
+    val sections: List<RouteSection> = emptyList(),
+    /** Каскады: цепочки узлов через detour. */
+    val cascades: List<ProxyCascade> = emptyList(),
+    /**
+     * Метка активного каскада; пусто -- каскады выключены.
+     *
+     * Активный каскад переопределяет финал маршрута: группа автоподбора
+     * и одиночный узел уступают ему, потому что цепочка -- осознанный
+     * ручной выбор.
+     */
+    val activeCascade: String = ""
 ) {
     fun bypassAppList(): List<String> = bypassApps.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** Активный каскад по метке; пустая строка -- выключен. */
+    fun activeCascadeOrNull(): ProxyCascade? =
+        cascades.firstOrNull { it.label == activeCascade && it.label.isNotBlank() }
 }
 
 /** Общие настройки VPN, не привязанные к отдельному профилю. */
@@ -172,6 +198,14 @@ data class VpnConfig(
     val profiles: List<VpnProfile> = emptyList(),
     val routing: VpnRouting = VpnRouting(),
     val killSwitch: Boolean = false,
+    /**
+     * Разрешить DNS-серверы конфига при активном kill switch.
+     *
+     * Без этого резолвер мёртв вместе с сетью: даже переподключение по
+     * доменному имени не сможет разрешиться. Список -- ровно
+     * [dnsList], свои серверы, а не «любой DNS».
+     */
+    val killSwitchDns: Boolean = false,
     val ipv6: Boolean = false,
     val dnsServers: String = "",
     @SerialName("splitTunneling") val splitTunneling: Boolean = false,
@@ -183,6 +217,32 @@ data class VpnConfig(
     val dnsViaProxy: Boolean = false,
     /** Запасной резолвер, когда основной не отвечает. */
     val dnsBackup: String = "",
+
+    // --- Тонкая настройка DNS-серверов ---
+    /**
+     * Транспорт явных DNS-серверов: `udp`, `tcp`, `tls` (DoT) или
+     * `https` (DoH). Относится и к [dnsServers], и к спискам DNS в
+     * профилях -- один тип на весь конфиг, как в исходных настройках.
+     */
+    val dnsType: String = "udp",
+    /**
+     * Bootstrap-резолвер для серверов, заданных доменным именем.
+     *
+     * Пусто -- резолв серверов идёт через основной DNS-сервер (как
+     * раньше); непусто -- имена серверов разрешаются этим адресом, и
+     * петля «DNS-сервер сам себе резолвер» исчезает.
+     */
+    val dnsBootstrap: String = "",
+    /**
+     * Стратегия выбора семейства адреса: `off` (системная), `prefer_ipv4`,
+     * `prefer_ipv6`, `disable_ipv6`.
+     */
+    val dnsStrategy: String = "off",
+    /**
+     * TTL в секундах для DNS-правил секций; 0 -- не задавать поле и
+     * оставить значение sing-box.
+     */
+    val dnsRewriteTtl: Int = 60,
 
     // --- Мониторинг (clash-api у sing-box) ---
     // Включён по умолчанию: это локальный loopback-эндпоинт, по которому
@@ -213,7 +273,12 @@ data class VpnConfig(
      * «автоподбор» -- режим работы движка, а не элемент списка, и
      * путаница между ними стоит лишнего подключения.
      */
-    val groupMode: Boolean = false
+    val groupMode: Boolean = false,
+    /**
+     * Фильтр узлов urltest-группы: какие коннекты участвуют в
+     * автоподборе (имя, страна по флагу, регулярное выражение).
+     */
+    val urlTest: UrlTestFilter = UrlTestFilter()
 ) {
     fun dnsList(): List<String> = dnsServers.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
@@ -318,6 +383,35 @@ data class LinkHealth(
     /** Причина отказа -- коротко, по-английски, для строки в списке. */
     val error: String = ""
 )
+
+/**
+ * Здоровье маршрута как независимая ось.
+ *
+ * «Не проверялось», «живо» и «мёртвое» -- три разных состояния, а не
+ * булево с пропуском: списки показывают и тех, и других, в архив уходят
+ * только проверенные и отказавшие. Enum делает это тройство явным --
+ * ветвление по `when(alive)` легко перепутать местами, а по
+ * [RouteHealth] -- нет.
+ */
+enum class RouteHealth {
+
+    /** Проверялось? Нет. */
+    UNKNOWN,
+
+    /** Проверено и живо. */
+    HEALTHY,
+
+    /** Проверено и не отвечает. */
+    UNHEALTHY
+}
+
+/** Тройство [LinkHealth.alive] -- в явные состояния маршрута. */
+val LinkHealth.route: RouteHealth
+    get() = when (alive) {
+        null -> RouteHealth.UNKNOWN
+        true -> RouteHealth.HEALTHY
+        false -> RouteHealth.UNHEALTHY
+    }
 
 /**
  * Источник коннектов: один файл-подписка из GitHub-репозитория или своя ссылка.

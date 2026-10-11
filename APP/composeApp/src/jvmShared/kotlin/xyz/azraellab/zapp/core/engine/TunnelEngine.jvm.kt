@@ -5,6 +5,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
@@ -20,9 +23,11 @@ import xyz.azraellab.zapp.core.daemon.DaemonSpec
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.daemon.createDaemonEngine
 import xyz.azraellab.zapp.core.log.errorEvent
+import xyz.azraellab.zapp.core.net.DnsFailover
 import xyz.azraellab.zapp.core.net.ProxyUri
 import xyz.azraellab.zapp.core.net.SingboxConfig
 import xyz.azraellab.zapp.core.net.WireGuardIni
+import xyz.azraellab.zapp.core.net.probeDns
 import xyz.azraellab.zapp.core.native.BinaryResolver
 import xyz.azraellab.zapp.core.perApp.AppFamily
 import xyz.azraellab.zapp.core.perApp.AppSelection
@@ -264,7 +269,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         setState(TunnelState.CONNECTING)
         log("connecting")
 
-        val vpn = config
+        val vpn = withAutoDns(config)
         val profile = vpn.activeProfile()
         // DPI-режим игнорирует профиль: пассивной сессии нужен только
         // туннель и конфиг обхода, а выбор пользователя применится при
@@ -330,6 +335,43 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         setState(TunnelState.CONNECTED)
         log("connected")
         startWatch()
+    }
+
+    /**
+     * Автозамена DNS-сервера при пустом списке пользователя.
+     *
+     * Ядро при пустом списке стартует с 8.8.8.8 вслепую: оператор может
+     * резать или подменять UDP/53 к чужим резолверам, и туннель, поднявшись,
+     * умирает на первом же домене. Поэтому кандидаты пробуются настоящим
+     * DNS-запросом до старта демона и берётся первый ответивший.
+     *
+     * Пользовательский список не трогается никогда: если человек задал
+     * свои серверы, он знает лучше, и замена молча подменила бы его выбор.
+     * Ни один кандидат не ответил -- конфиг уходит как есть, ядро
+     * сработает по своему фолбэку, а ошибка адреса будет видна в логе.
+     */
+    private suspend fun withAutoDns(config: VpnConfig): VpnConfig {
+        if (config.dnsList().isNotEmpty()) return config
+        val picked = try {
+            coroutineScope {
+                DnsFailover.candidates
+                    .map { server ->
+                        async { server to probeDns(server, DnsFailover.probeName, DnsFailover.probeTimeoutMs) }
+                    }
+                    .awaitAll()
+                    .let { DnsFailover.pick(it) }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        if (picked == null) {
+            log("note: dns auto-probe found nothing, keeping default")
+            return config
+        }
+        log("note: dns auto -> $picked")
+        return config.copy(dnsServers = picked)
     }
 
     // --- Ядерный WireGuard / Amnezia WG ---

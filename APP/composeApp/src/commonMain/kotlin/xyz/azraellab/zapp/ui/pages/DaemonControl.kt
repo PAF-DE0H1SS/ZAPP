@@ -251,3 +251,34 @@ private fun DaemonState.labelKey(): Str = when (this) {
 }
 
 private const val JOURNAL_VISIBLE = 12
+
+/**
+ * Оставшееся время перебора -- тикает раз в секунду, пока идёт проба.
+ *
+ * Отсчёт живёт не здесь, а в [StrategyProbeCoordinator] (он общий на все
+ * страницы и переживает закрытие карточки), здесь только периодический
+ * пересчёт по нему. null -- пробы нет или завершённых кандидатов ещё нет,
+ * оценивать не по чему.
+ */
+@Composable
+private fun rememberEta(step: ProbeProgress?, running: Boolean): Long? {
+    if (!running || step == null || step.total <= 0) return null
+    var tick by remember(step) { mutableStateOf(0) }
+    LaunchedEffect(step.index, running) {
+        while (true) {
+            delay(1000)
+            tick++
+        }
+    }
+    return remember(step.index, step.total, tick) {
+        StrategyProbeCoordinator.etaSec(StrategyProbeCoordinator.elapsedSec(), step.index, step.total)
+    }
+}
+
+/** Секунды -> «м:сс»; часы не нужны: перебор кандидатов -- минутное дело. */
+private fun Long.asClock(): String {
+    val total = coerceAtLeast(0L)
+    val m = total / 60
+    val s = total % 60
+    return "%d:%02d".format(m, s)
+}

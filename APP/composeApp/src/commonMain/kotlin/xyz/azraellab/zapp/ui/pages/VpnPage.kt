@@ -4,10 +4,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -26,6 +29,7 @@ import xyz.azraellab.zapp.core.PingBus
 import xyz.azraellab.zapp.core.RouteHealth
 import xyz.azraellab.zapp.core.route
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.TrafficFormat
 import xyz.azraellab.zapp.core.VpnConnects
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
@@ -40,6 +44,7 @@ import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.ConnectionOrb
+import xyz.azraellab.zapp.ui.components.TrafficSparkline
 import xyz.azraellab.zapp.ui.components.ZappBanner
 import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappButtonRow
@@ -50,6 +55,7 @@ import xyz.azraellab.zapp.ui.components.ZappExpandableCard
 import xyz.azraellab.zapp.ui.components.ZappListRow
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.components.ZappTextField
+import xyz.azraellab.zapp.ui.theme.AzraelInfo
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.theme.monoData
 import xyz.azraellab.zapp.ui.tr
@@ -634,8 +640,14 @@ internal fun TunnelState.labelKey(): Str = when (this) {
 internal fun SpeedLine(state: AppState, tunnelState: TunnelState) {
     val linkSpeed by LinkSpeedBus.current.collectAsState()
     val ping by PingBus.current.collectAsState()
+    val history by state.trafficHistory.collectAsState()
+    val summary by state.trafficSummaryFlow.collectAsState()
+    val connected = tunnelState == TunnelState.CONNECTED
+    // Опрос счётчиков нужен спарклайну: пока подключены, держим его живым,
+    // чтобы история копилась без открытого окна мониторинга.
+    LaunchedEffect(connected) { if (connected) state.ensureTrafficPolling() }
     val line = statusLine(
-        connected = tunnelState == TunnelState.CONNECTED,
+        connected = connected,
         speed = linkSpeed,
         pingMs = ping,
         modes = activeModes(state, tunnelState)
@@ -646,6 +658,27 @@ internal fun SpeedLine(state: AppState, tunnelState: TunnelState) {
             style = monoData(),
             color = MaterialTheme.colorScheme.primary
         )
+    }
+    // Мини-график под строкой: только пока подключены и есть что показывать.
+    if (connected) {
+        TrafficSparkline(history = history)
+        // Счётчик трафика за сеанс: скачано и отправлено с начала опроса.
+        // Цвета строк совпадают с линиями спарклайна (rx -- красный,
+        // tx -- синий), чтобы читать график и числа одной парой глаз.
+        val trafficConfig = state.config.traffic
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "↓ ${TrafficFormat.bytes(summary.rxBytes, trafficConfig)}",
+                style = monoData(),
+                color = MaterialTheme.colorScheme.error
+            )
+            Spacer(modifier = Modifier.width(AzraelSpace.md))
+            Text(
+                text = "↑ ${TrafficFormat.bytes(summary.txBytes, trafficConfig)}",
+                style = monoData(),
+                color = AzraelInfo
+            )
+        }
     }
 }
 

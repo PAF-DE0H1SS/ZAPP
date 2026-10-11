@@ -13,7 +13,7 @@ import xyz.azraellab.zapp.core.net.httpGetText
  * настройках и сравнивается с тегом релиза, и расхождение в одном знаке
  * заставило бы пользователя думать, что обновление сломано.
  */
-const val APP_VERSION: String = "2.5.0"
+const val APP_VERSION: String = "2.7.0"
 
 /** Ссылка на последний официальный релиз: prerelease сюда не попадают. */
 private const val RELEASES_URL = "https://api.github.com/repos/PAF-DE0H1SS/ZAPP/releases/latest"

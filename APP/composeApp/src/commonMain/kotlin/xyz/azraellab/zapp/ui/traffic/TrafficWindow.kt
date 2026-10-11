@@ -38,6 +38,7 @@ import xyz.azraellab.zapp.core.TrafficConfig
 import xyz.azraellab.zapp.core.TrafficFormat
 import xyz.azraellab.zapp.core.TrafficPoint
 import xyz.azraellab.zapp.core.TrafficSummary
+import xyz.azraellab.zapp.ui.theme.AzraelInfo
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.theme.monoData
 import xyz.azraellab.zapp.ui.components.debugPath
@@ -168,8 +169,10 @@ private fun SummaryRow(label: String, value: String) {
 /** Линии Rx и Tx поверх лёгкой сетки. */
 @Composable
 private fun TrafficChart(history: List<TrafficPoint>) {
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
+    // Скачивание (rx) -- красным, загрузка (tx) -- синим, как в спарклайне
+    // статусной карточки: один язык цветов на обоих графиках.
+    val primary = MaterialTheme.colorScheme.error
+    val secondary = AzraelInfo
     val grid = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
 
     Canvas(modifier = Modifier.fillMaxSize()) {

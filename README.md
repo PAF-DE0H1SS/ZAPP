@@ -45,6 +45,29 @@ server -- it is a set of local tools working on the machine it runs on.
 Build coordinates are kept in one place, `APP/gradle.properties`: `zappVersion=2.7.0`,
 `minSdk=33` (Android 13), `targetSdk=36`, `versionCode=9`.
 
+### 📲 Which APK to pick
+
+Each build ships as five APKs -- one per CPU architecture plus a universal one.
+The native daemons (`tor`, `nfqws`, `goodbyedpi`, `sing-box`, ...) account for
+almost the whole size, and a universal APK carries four copies of them, so a
+split is about **four times smaller**:
+
+| Your device | Download | Size |
+|---|---|---|
+| 📱 Most modern phones | `ZAPP-<ver>-arm64-v8a.apk` | 31 MB |
+| 📱 Older / budget phones | `ZAPP-<ver>-armeabi-v7a.apk` | 30 MB |
+| 📱 x86 emulator, 64-bit | `ZAPP-<ver>-x86_64.apk` | 32 MB |
+| 📱 x86 emulator, 32-bit | `ZAPP-<ver>-x86.apk` | 32 MB |
+| ❓ Not sure | `ZAPP-<ver>.apk` (universal) | 115 MB |
+
+The same set exists for the **root** build, with `ZAPP-ROOT-` in front of the
+name. Everything else is identical -- the root build just runs `nfqws` and
+`goodbyedpi` with elevated privileges.
+
+All five carry the same `versionCode`, so installing any one of them on top of
+another is an ordinary update, never a downgrade. Android picks the APK matching
+your CPU, and the split you install really is the smaller one.
+
 ### 🎯 Features
 
 Settings are stored, presets import and export, and the traffic counters are live. What is in place:
@@ -63,7 +86,7 @@ Settings are stored, presets import and export, and the traffic counters are liv
 | 🌗 **Theme** | dark only -- there is no light scheme and nothing to switch to |
 | ⚙️ **Settings** | 11 sections, presets with import/export, debounced save to disk |
 | 📶 **Traffic monitor** | system counters, speed graph, session summary; native C++ reader on Android with a Kotlin fallback |
-| 📦 **Packaging** | local APK/MSI/`.deb`/AppImage builds; GitHub Actions builds the same on push to `main` and on `v*` tags and publishes a release |
+| 📦 **Packaging** | local APK/MSI/`.deb`/AppImage builds; APK split by ABI (four architectures plus a universal); GitHub Actions builds the same on push to `main` and on `v*` tags and publishes a release |
 | 🧪 **Tests** | 1298 cases in `desktopTest`: WCAG contrast, locale resolution, config codecs, link parsing, sing-box config, bridge selection, sparkline math, DNS autoselect |
 
 ### 🧭 Architecture
@@ -180,7 +203,7 @@ for a short, abstract description.
 - [x] **10** GoodbyeDPI: root daemon running next to zapret on one NFQUEUE chain
 - [ ] **11** GPS: the settings page exists, scenarios and map are not built
 - [ ] **12** packaging: APK/MSI/AppImage/`.deb` build locally and in CI; Nix and PKGBUILD are not
-- [ ] **13** contrast, polish, i18n EN/RU/ZH -- done; signed release APK -- not yet
+- [x] **13** contrast, polish, i18n EN/RU/ZH -- done; signed release APK -- done, CI signs the published build with a secret keystore
 
 ### 🌿 Branches
 
@@ -231,6 +254,29 @@ compliance with the laws that apply to you.
 Координаты сборки лежат в одном месте, `APP/gradle.properties`: `zappVersion=2.7.0`,
 `minSdk=33` (Android 13), `targetSdk=36`, `versionCode=9`.
 
+### 📲 Какой APK скачивать
+
+Каждая сборка выходит в пяти APK -- по одному на архитектуру процессора плюс
+универсальный. Нативные демоны (`tor`, `nfqws`, `goodbyedpi`, `sing-box`, ...)
+составляют почти весь размер, а универсальный APK несёт их четыре копии,
+поэтому сплит примерно **в четыре раза меньше**:
+
+| Ваше устройство | Скачать | Размер |
+|---|---|---|
+| 📱 Большинство современных телефонов | `ZAPP-<ver>-arm64-v8a.apk` | 31 МБ |
+| 📱 Старые и бюджетные телефоны | `ZAPP-<ver>-armeabi-v7a.apk` | 30 МБ |
+| 📱 x86-эмулятор, 64 бит | `ZAPP-<ver>-x86_64.apk` | 32 МБ |
+| 📱 x86-эмулятор, 32 бита | `ZAPP-<ver>-x86.apk` | 32 МБ |
+| ❓ Не уверены | `ZAPP-<ver>.apk` (универсал) | 115 МБ |
+
+Тот же набор есть для **root**-сборки -- с приставкой `ZAPP-ROOT-` в имени.
+Остальное полностью совпадает: root-сборка лишь запускает `nfqws` и
+`goodbyedpi` с повышенными правами.
+
+У всех пяти один `versionCode`, поэтому установка любого из них поверх любого
+-- обычная обновление, а не понижение версии. Android сам выберает APK под
+ваш процессор, и достанется именно сплит, а не тяжёлый универсал.
+
 ### 🎯 Возможности
 
 Настройки сохраняются, пресеты импортируются и выгружаются, счётчики трафика живые.
@@ -250,7 +296,7 @@ compliance with the laws that apply to you.
 | 🌗 **Тема** | только тёмная: светлой схемы нет и переключаться не на что |
 | ⚙️ **Настройки** | 11 разделов, пресеты с импортом и выгрузкой, отложенная запись на диск |
 | 📶 **Мониторинг трафика** | системные счётчики, график скорости, сводка за сессию; на Android -- нативный C++ с откатом на Kotlin |
-| 📦 **Упаковка** | локальные сборки APK/MSI/`.deb`/AppImage; GitHub Actions собирает то же самое на пуш в `main` и теги `v*` и публикует релиз |
+| 📦 **Упаковка** | локальные сборки APK/MSI/`.deb`/AppImage; сплит APK по ABI (четыре архитектуры плюс универсал); GitHub Actions собирает то же самое на пуш в `main` и теги `v*` и публикует релиз |
 | 🧪 **Тесты** | 1298 кейсов в `desktopTest`: контраст WCAG, разбор локали, кодеки конфигов, разбор ссылок, конфиг sing-box, выбор мостов, математика спарклайна, автоподбор DNS |
 
 ### 🧭 Архитектура
@@ -368,7 +414,7 @@ DNS-кандидатов. `--rerun-tasks` обязателен: без него
 - [x] **10** GoodbyeDPI: root-демон рядом с zapret на одной NFQUEUE-цепочке
 - [ ] **11** GPS: страница настроек есть, сценарии и карта не сделаны
 - [ ] **12** упаковка: APK/MSI/AppImage/`.deb` собираются локально и в CI; Nix и PKGBUILD нет
-- [ ] **13** контрасты, полировка, i18n EN/RU/ZH -- сделано; подписанный release-APK -- нет
+- [x] **13** контрасты, полировка, i18n EN/RU/ZH -- сделано; подписанный release-APK -- сделано, CI подписывает опубликованную сборку секретным keystore
 
 ### 🌿 Ветки
 
@@ -420,6 +466,26 @@ ZAPP предоставляется «КАК ЕСТЬ», без гарантий
 构建坐标集中放在一处，`APP/gradle.properties`：`zappVersion=2.7.0`、
 `minSdk=33`（Android 13）、`targetSdk=36`、`versionCode=9`。
 
+### 📲 该下载哪个 APK
+
+每次构建会产出五个 APK -- 每种 CPU 架构一个，外加一个通用包。原生守护进程
+（`tor`、`nfqws`、`goodbyedpi`、`sing-box`……）几乎占满全部体积，而通用包里
+它们有四份，所以拆分包大约**小四倍**：
+
+| 你的设备 | 下载 | 体积 |
+|---|---|---|
+| 📱 大多数新手机 | `ZAPP-<ver>-arm64-v8a.apk` | 31 MB |
+| 📱 旧款与低端手机 | `ZAPP-<ver>-armeabi-v7a.apk` | 30 MB |
+| 📱 x86 模拟器，64 位 | `ZAPP-<ver>-x86_64.apk` | 32 MB |
+| 📱 x86 模拟器，32 位 | `ZAPP-<ver>-x86.apk` | 32 MB |
+| ❓ 不确定 | `ZAPP-<ver>.apk`（通用包） | 115 MB |
+
+**root** 版本有同样的全套，文件名前缀是 `ZAPP-ROOT-`。其余完全相同 --
+root 版只是以更高权限运行 `nfqws` 和 `goodbyedpi`。
+
+五个包的 `versionCode` 相同，所以任意一个覆盖安装另一个都是正常升级，
+绝不会被当成降级。Android 会自己挑匹配 CPU 的包，你装到的正是更小的那个。
+
 ### 🎯 功能
 
 设置可以保存，预设支持导入导出，流量计数已经可用。已就位的部分：
@@ -436,7 +502,7 @@ ZAPP предоставляется «КАК ЕСТЬ», без гарантий
 | 🌗 **主题** | 只有深色：没有浅色方案，也没有可切换的对象 |
 | ⚙️ **设置** | 11 个分区、预设导入导出、写盘防抖 |
 | 📶 **流量监控** | 系统计数、速度曲线、会话汇总；Android 上优先使用原生 C++，失败时退回 Kotlin |
-| 📦 **打包** | 本地构建 APK/MSI/`.deb`/AppImage；GitHub Actions 在推送 `main` 与 `v*` 标签时构建同样的产物并发布 release |
+| 📦 **打包** | 本地构建 APK/MSI/`.deb`/AppImage；按 ABI 拆分 APK（四种架构加通用包）；GitHub Actions 在推送 `main` 与 `v*` 标签时构建同样的产物并发布 release |
 | 🧪 **测试** | `desktopTest` 共 1298 个用例：WCAG 对比度、语言环境解析、配置编解码、链接解析、sing-box 配置生成、桥接选择、迷你图数学、DNS 自动选择 |
 
 ### 🧭 架构
@@ -549,7 +615,7 @@ sing-box 配置生成、桥接选择与流量采样、迷你图数学与 DNS 自
 - [x] **10** GoodbyeDPI：与 zapret 共用一条 NFQUEUE 链的 root 守护进程
 - [ ] **11** GPS：设置页已有，场景与地图未做
 - [ ] **12** 打包：APK/MSI/AppImage/`.deb` 本地与 CI 均可构建；Nix 与 PKGBUILD 未做
-- [ ] **13** 对比度、打磨、多语言 EN/RU/ZH -- 已完成；已签名 release APK -- 未做
+- [x] **13** 对比度、打磨、多语言 EN/RU/ZH -- 已完成；已签名 release APK -- 已完成，CI 用密钥库为发布产物签名
 
 ### 🌿 分支
 

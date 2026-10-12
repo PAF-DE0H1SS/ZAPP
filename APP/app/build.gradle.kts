@@ -103,6 +103,22 @@ android {
         }
     }
 
+    // Сплит по ABI: по APK на архитектуру плюс универсальный.
+    //
+    // Без сплита APK несёт четыре копии одних и тех же нативных демонов
+    // (~29 МБ каждая) и выходит 121 МБ, из которых dex с ресурсами --
+    // всего 3.4 МБ. Сплит отдаёт устройству только свою архитектуру:
+    // arm64-телефону -- 32 МБ вместо 121. Универсальный остаётся на случай
+    // платформы, которую в списке не угадали.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     // Нативный счётчик трафика на C++.
     //
     // Собирается именно здесь, а не в :composeApp: у KMP-расширения
@@ -122,21 +138,42 @@ android {
 }
 
 // Имена APK по условиям задачи:
-//   ZAPP-ROOT-<version>.apk / ZAPP-<version>.apk (release),
+//   ZAPP-ROOT-<version>[-<abi>].apk / ZAPP-<version>[-<abi>].apk (release),
 //   с суффиксом -debug для debug-сборок.
+// Сплит по ABI даёт пять выходов на вариант: четыре по архитектурам и
+// универсальный. Универсальный -- единственный, у которого нет фильтра в
+// `output.filters`, и он сохраняет прежнее имя без хвоста, чтобы
+// ссылки вроде ZAPP-2.7.0.apk продолжали работать.
 // Одинаковый applicationId -- установка одного поверх другого сохраняет данные.
 androidComponents {
+    fun variantFileName(prefix: String, variantName: String, abi: String?) = buildString {
+        append(prefix).append('-').append(zappVersion)
+        if (variantName.endsWith("Debug")) append("-debug")
+        // Универсальный APK остаётся без суффикса: он -- «тот самый»
+        // установочник, а ABI-варианты -- его дешёвые одиночные версии.
+        if (abi != null) append('-').append(abi)
+        append(".apk")
+    }
+
     onVariants(selector().withFlavor("mode" to "root")) { variant ->
         variant.outputs.forEach { output ->
             output.outputFileName.set(
-                "ZAPP-ROOT-$zappVersion${if (variant.name.endsWith("Debug")) "-debug" else ""}.apk"
+                variantFileName(
+                    "ZAPP-ROOT",
+                    variant.name,
+                    output.filters.firstOrNull()?.identifier
+                )
             )
         }
     }
     onVariants(selector().withFlavor("mode" to "noroot")) { variant ->
         variant.outputs.forEach { output ->
             output.outputFileName.set(
-                "ZAPP-$zappVersion${if (variant.name.endsWith("Debug")) "-debug" else ""}.apk"
+                variantFileName(
+                    "ZAPP",
+                    variant.name,
+                    output.filters.firstOrNull()?.identifier
+                )
             )
         }
     }

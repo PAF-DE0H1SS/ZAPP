@@ -15,8 +15,8 @@
 </div>
 
 > [!IMPORTANT]
-> **Status: working interface (v0.1.0).** The project builds for Android and desktop.
-> The app opens on a dark themed window with a bottom bar: VPN, Zapret, GoodbyeDPI, GPS
+> **Status: working interface (v2.7.0).** The project builds for Android and desktop.
+> The app opens on a dark themed window with a bottom bar: Tor, VPN, Zapret, GPS
 > and Settings, plus a separate traffic monitor window. See the Roadmap for what comes next.
 
 ZAPP is a network toolkit written in Kotlin with **Compose Multiplatform**: one shared UI
@@ -42,8 +42,8 @@ server -- it is a set of local tools working on the machine it runs on.
 | 🖥️ **Windows 10/11** | MSI installer (jpackage) | `.msi` |
 | 🐧 **Linux** | Ubuntu / Debian · AppImage | `.deb` · `.AppImage` |
 
-Build coordinates are kept in one place, `APP/gradle.properties`: `zappVersion=0.1.0`,
-`minSdk=33` (Android 13), `targetSdk=36`, `versionCode=1`.
+Build coordinates are kept in one place, `APP/gradle.properties`: `zappVersion=2.7.0`,
+`minSdk=33` (Android 13), `targetSdk=36`, `versionCode=9`.
 
 ### 🎯 Features
 
@@ -55,6 +55,8 @@ Settings are stored, presets import and export, and the traffic counters are liv
 | 🌐 **VPN** | WireGuard / AmneziaWG, OpenVPN and sing-box engines (vless, vmess, trojan, ss, hysteria2, tuic), grouped configs with urltest, kill-switch, VpnService permission flow |
 | 🛹 **Zapret / GoodbyeDPI** | root daemons `nfqws` and `goodbyedpi` share one NFQUEUE chain (`ZAPP_DPI`), strategy presets, auto-strategy picker, both run at the same time, auto-restart on crash |
 | 📊 **Speed plaque** | live counters plus the active modes in brackets -- `(T\|V\|Z\|GDPI)`; the same line goes to the notification shade |
+| 📈 **Speed sparkline** | rx/tx mini-graph on the status card (download red, upload blue) plus a session traffic counter right under it |
+| 🧭 **DNS autoselect** | with an empty user DNS list the tunnel probes public resolvers (8.8.8.8, 1.1.1.1, 77.88.8.8, ...) with a real A-query before start and rides the first one that answers |
 | 🧱 **Shared UI** | Compose Multiplatform module `:composeApp` compiled for Android and JVM desktop |
 | 🧭 **Navigation** | bottom bar with five tabs; the traffic monitor opens as a separate window |
 | 🎨 **Design system** | one dark colour scheme, typography, shapes, spacing scale, ripples, starfield/glass background |
@@ -62,7 +64,7 @@ Settings are stored, presets import and export, and the traffic counters are liv
 | ⚙️ **Settings** | 11 sections, presets with import/export, debounced save to disk |
 | 📶 **Traffic monitor** | system counters, speed graph, session summary; native C++ reader on Android with a Kotlin fallback |
 | 📦 **Packaging** | local APK/MSI/`.deb`/AppImage builds; GitHub Actions builds the same on push to `main` and on `v*` tags and publishes a release |
-| 🧪 **Tests** | 131 cases in `desktopTest` across 16 classes: WCAG contrast, locale resolution, config codecs, link parsing, sing-box config, bridge selection |
+| 🧪 **Tests** | 1298 cases in `desktopTest`: WCAG contrast, locale resolution, config codecs, link parsing, sing-box config, bridge selection, sparkline math, DNS autoselect |
 
 ### 🧭 Architecture
 
@@ -149,10 +151,11 @@ take the desktop packages from CI, which builds them on `ubuntu` and `windows`.
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-131 test cases across 16 classes, all green: WCAG contrast for component and palette
+1298 test cases, all green: WCAG contrast for component and palette
 colour pairs, system locale mapping (including the country part of a locale tag),
 config codecs (`AppConfig`, `VpnConfig`), proxy link parsing, sing-box config
-generation, bridge selection and traffic sampling. `--rerun-tasks` matters: without it
+generation, bridge selection, traffic sampling, sparkline math and DNS autoselect
+probing. `--rerun-tasks` matters: without it
 an unchanged task reports `UP-TO-DATE` and the test count is not recomputed.
 
 The palette tests are not decoration. Replace `outline` with `#D4D4D8` and `ThemeTest`
@@ -225,8 +228,8 @@ compliance with the laws that apply to you.
 | 🖥️ **Windows 10/11** | MSI-установщик (jpackage) | `.msi` |
 | 🐧 **Linux** | Ubuntu / Debian · AppImage | `.deb` · `.AppImage` |
 
-Координаты сборки лежат в одном месте, `APP/gradle.properties`: `zappVersion=0.1.0`,
-`minSdk=33` (Android 13), `targetSdk=36`, `versionCode=1`.
+Координаты сборки лежат в одном месте, `APP/gradle.properties`: `zappVersion=2.7.0`,
+`minSdk=33` (Android 13), `targetSdk=36`, `versionCode=9`.
 
 ### 🎯 Возможности
 
@@ -239,6 +242,8 @@ compliance with the laws that apply to you.
 | 🌐 **VPN** | WireGuard / AmneziaWG, OpenVPN и движок sing-box (vless, vmess, trojan, ss, hysteria2, tuic), групповые конфиги с urltest, kill-switch, запрос разрешения VpnService |
 | 🛹 **Zapret / GoodbyeDPI** | root-демоны `nfqws` и `goodbyedpi` на одной NFQUEUE-цепочке (`ZAPP_DPI`), пресеты стратегий, автоподбор стратегии, работают одновременно, автоперезапуск после падения |
 | 📊 **Плашка скорости** | живые счётчики и активные режимы в скобках -- `(T\|V\|Z\|GDPI)`; та же строка уходит в уведомление |
+| 📈 **Спарклайн скорости** | мини-график rx/tx на статусной карточке (скачивание красным, загрузка синим) и сразу под ним счётчик трафика за сеанс |
+| 🧭 **Автозамена DNS** | при пустом списке DNS пользователя туннель до старта пробует публичные резолверы (8.8.8.8, 1.1.1.1, 77.88.8.8, ...) настоящим A-запросом и берёт первый ответивший |
 | 🧱 **Общий UI** | модуль Compose Multiplatform `:composeApp`, собирается под Android и JVM-десктоп |
 | 🧭 **Навигация** | нижняя панель из пяти разделов; мониторинг трафика открывается отдельным окном |
 | 🎨 **Дизайн-система** | одна тёмная цветовая схема, типографика, формы, шкала отступов, ripple, фон «звёздное небо» со стеклом |
@@ -246,7 +251,7 @@ compliance with the laws that apply to you.
 | ⚙️ **Настройки** | 11 разделов, пресеты с импортом и выгрузкой, отложенная запись на диск |
 | 📶 **Мониторинг трафика** | системные счётчики, график скорости, сводка за сессию; на Android -- нативный C++ с откатом на Kotlin |
 | 📦 **Упаковка** | локальные сборки APK/MSI/`.deb`/AppImage; GitHub Actions собирает то же самое на пуш в `main` и теги `v*` и публикует релиз |
-| 🧪 **Тесты** | 131 кейс в `desktopTest` в 16 классах: контраст WCAG, разбор локали, кодеки конфигов, разбор ссылок, конфиг sing-box, выбор мостов |
+| 🧪 **Тесты** | 1298 кейсов в `desktopTest`: контраст WCAG, разбор локали, кодеки конфигов, разбор ссылок, конфиг sing-box, выбор мостов, математика спарклайна, автоподбор DNS |
 
 ### 🧭 Архитектура
 
@@ -334,10 +339,11 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-131 тестовый кейс в 16 классах, все зелёные: контраст пар цветов компонентов и
+1298 тестовых кейсов, все зелёные: контраст пар цветов компонентов и
 палитры по WCAG, отображение локали системы (включая страну в теге), кодеки
 конфигов (`AppConfig`, `VpnConfig`), разбор ссылок протоколов, генерация конфига
-sing-box, выбор мостов и сэмплирование трафика. `--rerun-tasks` обязателен: без него
+sing-box, выбор мостов, сэмплирование трафика, математика спарклайна и проба
+DNS-кандидатов. `--rerun-tasks` обязателен: без него
 неизменившаяся задача отдаёт `UP-TO-DATE`, и счётчик тестов не пересчитывается.
 
 Тесты палитры -- не для галочки. Подставьте вместо `outline` цвет `#D4D4D8`, и `ThemeTest`
@@ -411,8 +417,8 @@ ZAPP предоставляется «КАК ЕСТЬ», без гарантий
 | 🖥️ **Windows 10/11** | MSI 安装包 (jpackage) | `.msi` |
 | 🐧 **Linux** | Ubuntu / Debian · AppImage | `.deb` · `.AppImage` |
 
-构建坐标集中放在一处，`APP/gradle.properties`：`zappVersion=0.1.0`、
-`minSdk=33`（Android 13）、`targetSdk=36`、`versionCode=1`。
+构建坐标集中放在一处，`APP/gradle.properties`：`zappVersion=2.7.0`、
+`minSdk=33`（Android 13）、`targetSdk=36`、`versionCode=9`。
 
 ### 🎯 功能
 
@@ -431,7 +437,7 @@ ZAPP предоставляется «КАК ЕСТЬ», без гарантий
 | ⚙️ **设置** | 11 个分区、预设导入导出、写盘防抖 |
 | 📶 **流量监控** | 系统计数、速度曲线、会话汇总；Android 上优先使用原生 C++，失败时退回 Kotlin |
 | 📦 **打包** | 本地构建 APK/MSI/`.deb`/AppImage；GitHub Actions 在推送 `main` 与 `v*` 标签时构建同样的产物并发布 release |
-| 🧪 **测试** | `desktopTest` 共 131 个用例、16 个类：WCAG 对比度、语言环境解析、配置编解码、链接解析、sing-box 配置生成、桥接选择 |
+| 🧪 **测试** | `desktopTest` 共 1298 个用例：WCAG 对比度、语言环境解析、配置编解码、链接解析、sing-box 配置生成、桥接选择、迷你图数学、DNS 自动选择 |
 
 ### 🧭 架构
 
@@ -517,9 +523,9 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-131 个测试用例、16 个类，全部通过：组件与调色板配色的 WCAG 对比度、系统语言环境
+1298 个测试用例，全部通过：组件与调色板配色的 WCAG 对比度、系统语言环境
 （含地区部分）映射、配置编解码（`AppConfig`、`VpnConfig`）、代理链接解析、
-sing-box 配置生成、桥接选择与流量采样。
+sing-box 配置生成、桥接选择与流量采样、迷你图数学与 DNS 自动选择探测。
 `--rerun-tasks` 很关键：没有它，未变更的任务会报 `UP-TO-DATE`，测试计数不会重新统计。
 
 调色板测试不是摆设。把 `outline` 换成 `#D4D4D8`，`ThemeTest` 会失败，这正是它该做的：

@@ -217,11 +217,10 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # APK сюда НЕ попадает: в CI keystore нет (signing/ в .gitignore,
-          # подпись -- только локально через signing/keystore.properties),
-          # поэтому android-джоб отдаёт неподписанные debug/unsigned. Публикуется
-          # только production-сборка, загруженная владельцем через
-          # `gh release upload`. Неподписанный APK в релиз не выкладываем.
+          # APK сюда попадает подписанным production-сборкой: в CI keystore нет
+          # (signing/ в .gitignore, подпись -- только локально через
+          # signing/keystore.properties), поэтому android-джоб отдаёт неподписанные
+          # APK, а подпись ставит отдельный шаг релиза. Debug в релиз не идёт.
           mapfile -d '' files < <(find artifacts -type f \( -name '*.msi' -o -name '*.AppImage' \) -print0)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "Нет ни одного production-артефакта - релиз не создаём" >&2
@@ -229,18 +228,23 @@ jobs:
           fi
           # Подписанный production APK идёт к релизу вместе с десктопными
           # образами. upload-artifact сохраняет структуру каталогов,
-          # поэтому ищем рекурсивно. Имена flavor'ов заданы в
-          # app/build.gradle.kts: ZAPP-ROOT-<version>.apk и
-          # ZAPP-<version>.apk (оба -- финальные имена пользовательских
-          # файлов). APK публикуется, только если в нём есть нативные
-          # демоны (признак полной сборки -- libbox.so) и он не debug.
+          # поэтому ищем рекурсивно. Имена заданы в app/build.gradle.kts:
+          # ZAPP-ROOT-<version>[-<abi>].apk и ZAPP-<version>[-<abi>].apk
+          # (оба флейвора, универсал без суффикса, сплиты -- с ним).
+          # APK публикуется, только если в нём есть нативные демоны (признак
+          # полной сборки -- libbox.so) и он не debug.
+          #
+          # '*-debug*' обязательно со звёздочкой с обеих сторон: у сплитов
+          # имя заканчивается на архитектуру (ZAPP-2.7.0-debug-x86.apk), и
+          # фильтр '*-debug.apk' их пропускал -- в релиз утекали восемь
+          # debug-APK, а универсальные при этом отсекались.
           while IFS= read -r apk; do
             [ -n "$apk" ] || continue
             unzip -l "$apk" | grep -q 'libbox\.so' || continue
             base=$(basename "$apk")
             cp "$apk" "$base"
             files+=("$base")
-          done < <(find artifacts -type f -name 'ZAPP-*.apk' ! -name '*-debug.apk' ! -name '*unsigned*' -print)
+          done < <(find artifacts -type f -name 'ZAPP-*.apk' ! -name '*-debug*' ! -name '*unsigned*' -print)
           if ! printf '%s\n' "${files[@]}" | grep -q '^ZAPP-.*\.apk$'; then
             echo "CI-APK без нативных демонов -- в релиз не добавляем"
           fi

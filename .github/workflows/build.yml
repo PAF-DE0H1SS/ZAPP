@@ -88,7 +88,15 @@ jobs:
 
       - name: Build Android
         working-directory: APP
-        run: ./gradlew :app:assembleDebug :app:assembleRelease
+        # --stacktrace обязателен: падение package<Variant> в CI не
+        # оставляло ни причины, ни следа, кроме «Run with --stacktrace».
+        # df/free -- чтобы была видна нехватка диска: на раннере 14 ГБ,
+        # а четыре варианта со сплитами пишут около 20 APK и по нескольку
+        # копий нативных библиотек в intermediates.
+        run: |
+          df -h /
+          free -h
+          ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace
 
       - name: Upload APKs
         uses: actions/upload-artifact@v7.0.1

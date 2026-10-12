@@ -110,9 +110,8 @@ ZAPP/
 │   └── build-all.sh         release | dev | linux
 ├── native/                  scripts and patches that build the daemons
 ├── ABOUT.md                 what the app does, in plain words
-├── DOC.md                   technical documentation
+├── DOCX.md                  technical documentation
 ├── DEVELOPMENT.md           how it works, forking guide, preset format
-├── DOCX.docx                the same documentation as a Word file
 └── LICENSE                  free and open for everyone
 ```
 
@@ -184,7 +183,7 @@ exception. `workers.max=1` serialises the splits so the pool is empty by
 signing time.
 
 Removing either flag does not slow the build down -- it makes it hang, and
-reproducibly. See [DOC.md](DOC.md) for the full analysis.
+reproducibly. See [DOCX.md](DOCX.md) for the full analysis.
 </details>
 
 <details>
@@ -257,9 +256,8 @@ for a short, abstract description.
 ### 📚 Docs
 
 - [ABOUT.md](ABOUT.md) - what the app does, in plain words
-- [DOC.md](DOC.md) - full technical documentation: stack, modules, build pitfalls, tests
+- [DOCX.md](DOCX.md) - full technical documentation: stack, modules, build pitfalls, tests
 - [DEVELOPMENT.md](DEVELOPMENT.md) - how it works, the forking guide, and the full preset format with examples
-- [DOCX.docx](DOCX.docx) - the same document as a Word file (GitHub does not preview `.docx`, download it)
 
 ### 📄 License
 
@@ -358,9 +356,8 @@ ZAPP/
 │   └── build-all.sh         release | dev | linux
 ├── native/                  скрипты и патчи для сборки демонов
 ├── ABOUT.md                 что делает приложение, простыми словами
-├── DOC.md                   техническая документация
+├── DOCX.md                  техническая документация
 ├── DEVELOPMENT.md           как устроено, гайд по форку, формат пресетов
-├── DOCX.docx                та же документация в Word
 └── LICENSE                  свободно для всех
 ```
 
@@ -434,7 +431,7 @@ org.gradle.workers.max=1
 сериализует сплиты, и к моменту подписи пул пуст.
 
 Убрать эти флаги -- не ускорить сборку, а повесить её, причём
-воспроизводимо. Полный разбор -- в [DOC.md](DOC.md).
+воспроизводимо. Полный разбор -- в [DOCX.md](DOCX.md).
 </details>
 
 <details>
@@ -508,9 +505,8 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ### 📚 Документы
 
 - [ABOUT.md](ABOUT.md) -- что делает приложение, простыми словами
-- [DOC.md](DOC.md) -- полная техническая документация: стек, модули, грабли сборки, тесты
+- [DOCX.md](DOCX.md) -- полная техническая документация: стек, модули, грабли сборки, тесты
 - [DEVELOPMENT.md](DEVELOPMENT.md) -- как устроено, гайд по форку и полный формат пресетов с примерами
-- [DOCX.docx](DOCX.docx) -- та же документация в Word (GitHub не показывает `.docx`, скачайте файл)
 
 ### 📄 Лицензия
 
@@ -607,9 +603,8 @@ ZAPP/
 │   └── build-all.sh         release | dev | linux
 ├── native/                  构建守护进程的脚本与补丁
 ├── ABOUT.md                 应用做什么，用平实的话
-├── DOC.md                   技术文档
+├── DOCX.md                  技术文档
 ├── DEVELOPMENT.md           工作原理、Fork 指南、预设格式
-├── DOCX.docx                同一份文档的 Word 版本
 └── LICENSE                  对所有人自由开放
 ```
 
@@ -676,7 +671,7 @@ org.gradle.workers.max=1
 也无异常。`workers.max=1` 串行化拆分，使签名时线程池为空。
 
 移除这两个开关不会让构建变慢 -- 而是让它挂起，而且可稳定复现。
-完整分析见 [DOC.md](DOC.md)。
+完整分析见 [DOCX.md](DOCX.md)。
 </details>
 
 <details>
@@ -747,9 +742,8 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ### 📚 文档
 
 - [ABOUT.md](ABOUT.md) -- 应用做什么，用平实的话
-- [DOC.md](DOC.md) -- 完整技术文档：技术栈、模块、构建陷阱、测试
+- [DOCX.md](DOCX.md) -- 完整技术文档：技术栈、模块、构建陷阱、测试
 - [DEVELOPMENT.md](DEVELOPMENT.md) -- 工作原理、Fork 指南，以及带示例的完整预设格式
-- [DOCX.docx](DOCX.docx) -- 同一份文档的 Word 版本（GitHub 不预览 `.docx`，请下载）
 
 ### 📄 许可证
 

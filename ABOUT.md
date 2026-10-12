@@ -1,4 +1,28 @@
-# About ZAPP
+<div align="center">
+
+# 🛰️ ZAPP
+
+**What the application does, in plain words**
+
+[![Platform: Android 13+](https://img.shields.io/badge/Android-13%2B-3DDC84?style=flat&logo=android&logoColor=white)](https://github.com/PAF-DE0H1SS/ZAPP/releases)
+[![Platform: Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D6?style=flat&logo=windows&logoColor=white)](https://github.com/PAF-DE0H1SS/ZAPP/releases)
+[![Platform: Linux](https://img.shields.io/badge/Linux-deb%20%7C%20AppImage-FCC624?style=flat&logo=linux&logoColor=black)](https://github.com/PAF-DE0H1SS/ZAPP/releases)
+[![CI](https://github.com/PAF-DE0H1SS/ZAPP/actions/workflows/build.yml/badge.svg)](https://github.com/PAF-DE0H1SS/ZAPP/actions/workflows/build.yml)
+[![License: Free for everyone](https://img.shields.io/badge/License-free%20for%20everyone-2EA44F?style=flat)](LICENSE)
+
+</div>
+
+This page explains ZAPP without build details: what each area is for, what the
+app asks from the system, what it deliberately does not do, and where the
+project stands now. For versions, modules and build pitfalls see
+[DOCX.md](DOCX.md); for the repository overview see [README.md](README.md).
+
+---
+
+## Language / Язык / 语言
+
+<details open>
+<summary><b>🇬🇧 English</b></summary>
 
 A network toolkit that runs entirely on your own device. There is no account to
 create, no sign-up, no server of ours in the middle, and nothing is reported
@@ -183,18 +207,24 @@ no agreement to sign, no permission asked in advance.
 
 ## Where it is now
 
-The interface is in place: the shared code builds for both platforms, the design
-system is finished, and the component, palette and language tests pass. There is a
-bottom bar with five sections, a settings page and a separate traffic monitor
-window, and the settings survive a restart. What is not there yet is the actual
-tunnelling and DPI unblocking, device probing with permissions, pulling configs
-from outside, and a map for location spoofing.
+The main things work: connecting through WireGuard/AmneziaWG, OpenVPN, sing-box
+and Tor via bridges; DPI bypass — zapret and goodbyedpi sharing one NFQUEUE
+chain with automatic strategy selection; traffic monitoring with a speed
+sparkline and a session counter; automatic DNS replacement before the tunnel
+starts. The shared code builds for both platforms, the design system is
+finished, and all 1303 tests pass.
+
+The bottom bar has six sections — Tor, VPN, Zapret, GoodbyeDPI, GPS and
+Settings — and the traffic monitor opens as a separate window. Settings survive
+a restart. What is not there yet are scenarios and a map for location spoofing
+(GPS), plus Nix and PKGBUILD for the desktop packages.
 
 The work is staged, and each stage ends with a green build and green tests.
 
----
+</details>
 
-# О приложении (RU)
+<details>
+<summary><b>🇷🇺 Русский</b></summary>
 
 Сетевой инструмент, который целиком работает на вашем устройстве. Не нужно ни
 создавать аккаунт, ни где-то регистрироваться, ни доверять нашему серверу, и никто
@@ -386,9 +416,10 @@ The work is staged, and each stage ends with a green build and green tests.
 Работа разбита на этапы, и каждый этап заканчивается зелёной сборкой и зелёными
 тестами.
 
----
+</details>
 
-# 关于本应用 (ZH)
+<details>
+<summary><b>🇨🇳 中文</b></summary>
 
 一个完全在你自己的设备上运行的网络工具。无需注册账号，无需登录，没有我们的
 服务器夹在中间，也不会向任何地方上报任何信息。打开应用，它在本地完成所有工作。
@@ -538,8 +569,15 @@ The work is staged, and each stage ends with a green build and green tests.
 
 ## 现在到哪一步了
 
-界面已经在了：共享代码在两个平台上都能构建，设计系统完成，组件、调色板和语言的
-测试都通过。底部五个分区、设置页和独立的流量监控窗口都在，设置可以跨重启保留。
-还没有的是真正的隧道与 DPI 解绕、带权限的设备探测、外部配置拉取，以及坐标伪装用的地图。
+主要功能都能用：WireGuard/AmneziaWG、OpenVPN、sing-box 和经桥接的 Tor 连接；
+DPI 解绕 —— zapret 与 goodbyedpi 共用一条 NFQUEUE 链并自动选择策略；带速度
+迷你图和会话计数器的流量监控；隧道启动前自动替换 DNS。共享代码在两个平台上
+都能构建，设计系统完成，1303 个测试全部通过。
+
+底部有六个分区 —— Tor、VPN、Zapret、GoodbyeDPI、GPS 和设置，流量监控单独开窗。
+设置跨重启保留。还没做的是坐标伪装的场景与地图（GPS），以及桌面包的 Nix 和
+PKGBUILD。
 
 工作按阶段推进，每个阶段都以构建通过、测试通过收尾。
+
+</details>

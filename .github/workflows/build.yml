@@ -217,10 +217,11 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # APK сюда попадает подписанным production-сборкой: в CI keystore нет
-          # (signing/ в .gitignore, подпись -- только локально через
-          # signing/keystore.properties), поэтому android-джоб отдаёт неподписанные
-          # APK, а подпись ставит отдельный шаг релиза. Debug в релиз не идёт.
+          # APK сюда попадает подписанным: джоб android на шаге
+          # "Prepare release keystore" раскладывает секреты репозитория в
+          # APP/signing/ и подписывает build type release. Если секретов нет,
+          # сборка неподписанная, и фильтр *unsigned* её отсекает.
+          # Debug в релиз не идёт.
           mapfile -d '' files < <(find artifacts -type f \( -name '*.msi' -o -name '*.AppImage' \) -print0)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "Нет ни одного production-артефакта - релиз не создаём" >&2

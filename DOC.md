@@ -526,7 +526,7 @@ private const val TRAIL_LEN_PX = 120f
 ## 8. Тесты
 
 Source set `desktopTest`: параметризованный прогон `DevTests` — все
-`core/dev/*Suite.kt` (24 суиты, 1298 кейсов) плюс отдельные
+`core/dev/*Suite.kt` (24 суиты, 1165 кейсов) плюс отдельные
 `desktopTest/.../SingboxConfigTest`, `WireGuardIniTest` и другие.
 
 | Что проверяется | Примеры кейсов |
@@ -643,7 +643,7 @@ keyPassword=...
 
 | Джоба | Runner | Артефакты |
 |---|---|---|
-| `android` | `ubuntu-latest` | debug и unsigned release APK |
+| `android` | `ubuntu-latest` | debug и release APK по ABI-сплитам, release подписан секретным keystore |
 | `windows` | `windows-latest` | MSI |
 | `linux` | `ubuntu-latest` | AppImage |
 | `release` | `ubuntu-latest` | GitHub Release по тегу `v*` |
@@ -659,13 +659,39 @@ keyPassword=...
 Доработка -- `scripts/finish-deb.sh`, но `scripts/` в `.gitignore` и в репозиторий
 не идёт, поэтому `.deb` остаётся для локальной сборки через `build-all.sh`.
 
-Джоба `release` кладёт в релиз только десктоп-артефакты: MSI и AppImage. APK туда
-не идёт: в CI нет keystore, а неподписанный APK в релиз выкладывать нельзя. Если десктопных
-артефактов не найдено, релиз не создаётся вовсе, а не создаётся пустой.
+### Подпись в CI
 
-На момент написания файл workflow лежит локально и не запушен: токен доступа
-репозитория не имеет области `workflow`, а GitHub не даёт записать такой файл ни
-через push, ни через API. Все остальные файлы в репозитории.
+Keystore в репозитории нет и не должен быть. Джоба `android` на шаге
+`Prepare release keystore` раскладывает секреты репозитория (`KS_B64`,
+`KS_PASS`, `KS_ALIAS`, `KEY_PASS`) в `APP/signing/` и пишет
+`keystore.properties`, после чего build type `release` подписывается сам.
+Если секреты не заданы, шаг печатает предупреждение и release собирается
+неподписанным, но такой APK в релиз не попадает -- фильтр отсекает
+`*unsigned*`.
+
+Перед сборкой та же джоба качает нативные демоны из релиза с тегом
+`native-bins` (`native-jniLibs.tar.gz`) в `APP/app/src/main/jniLibs/`.
+Без них APK соберётся, но останется без VPN/Zapret/Tor и не пройдёт
+проверку на `libbox.so`.
+
+### Состав релиза
+
+Джоба `release` собирает из артефактов две выборки:
+
+```bash
+find artifacts -type f \( -name '*.msi' -o -name '*.AppImage' \)
+find artifacts -type f -name 'ZAPP-*.apk' ! -name '*-debug*' ! -name '*unsigned*'
+```
+
+Каждый APK перед добавлением проверяется на наличие `libbox.so` внутри:
+без нативного демона в релиз он не идёт. Звёздочки в фильтре обязательны
+с обеих сторон: имя сплита заканчивается на архитектуру
+(`ZAPP-2.7.0-debug-x86.apk`), и вариант `*-debug.apk` пропускал восемь
+debug-сборок, а универсальные при этом отсекались.
+
+Если production-артефактов нет вообще, релиз не создаётся, а не создаётся
+пустой. Состав релиза v2.7.0 -- десять release-APK (по пять на root и
+noroot), MSI и AppImage.
 
 ---
 
@@ -712,7 +738,7 @@ ZAPP/
     │       ├── androidMain/.../core/     AndroidCtx, ConfigStore (SAF),
     │       │                             TrafficSource (JNI), PlatformCaps
     │       ├── desktopMain/.../core/     ConfigStore (файлы), TrafficSource (/proc)
-    │       └── desktopTest/.../          прогон DevTests (core/dev: 24 суиты, 1298 кейсов)
+    │       └── desktopTest/.../          прогон DevTests (core/dev: 24 суиты, 1165 кейсов)
     │                                     + SingboxConfigTest, WireGuardIniTest
     └── desktopApp/                 десктоп-приложение
         ├── .gitignore
@@ -754,14 +780,15 @@ adb logcat -d | grep -iE "FATAL|AndroidRuntime"
 ## 13. Что ещё предстоит
 
 Сделано: общий код собирается под обе платформы, дизайн-система закончена,
-тесты зелёные (1298 кейсов). Работает подключение — WireGuard/AmneziaWG,
+тесты зелёные (1303 кейса). Работает подключение — WireGuard/AmneziaWG,
 OpenVPN, sing-box (vless/vmess/trojan/ss/hysteria2/tuic), Tor через мосты,
 kill-switch; обход DPI — zapret и goodbyedpi на одной NFQUEUE-цепочке с
 автоподбором стратегии; мониторинг трафика со спарклайном и счётчиком
 сеанса; автозамена DNS перед стартом туннеля.
 
-Не сделано: GPS-сценарии и карта (страница настроек есть), Nix/PKGBUILD,
-подписанный release APK локально (CI подписывает секретом).
+Не сделано: GPS-сценарии и карта (страница настроек есть), Nix и PKGBUILD.
+Подпись release-APK работает и локально (`APP/signing/keystore.properties`),
+и в CI (секреты репозитория).
 
 Очередь по этапам, как в README:
 
@@ -769,4 +796,4 @@ kill-switch; обход DPI — zapret и goodbyedpi на одной NFQUEUE-ц�
 |---|---|---|
 | 11 | GPS: сценарии и карта | подмена координат видна в стороннем приложении |
 | 12 | упаковка: Nix, PKGBUILD | все форматы собираются из чистого чекаута |
-| 13 | полировка | подписанный release APK из локальной сборки |
+| 13 | полировка, i18n, подпись | сделано: EN/RU/ZH, подписанный релиз публикует CI |

@@ -39,6 +39,18 @@ jobs:
         working-directory: APP
         run: ./gradlew :composeApp:desktopTest
 
+      # Отчёты о тестах -- при падении: лог раннера обрезан по размеру, а
+      # в XML лежит полное исключение каждого упавшего теста.
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: desktop-test-report
+          path: |
+            APP/composeApp/build/test-results/desktopTest/*.xml
+            APP/composeApp/build/reports/tests/desktopTest/**
+          if-no-files-found: ignore
+
       # Подпись release-APK. Секреты задаются владельцем репозитория
       # (gh secret set); без них сборка идёт без signingConfigs и выдаёт
       # app-release-unsigned.apk -- такой в релиз не публикуется.

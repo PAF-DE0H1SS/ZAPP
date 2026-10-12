@@ -394,6 +394,7 @@ enum class Str {
     /** Строка состояния под навигацией. */
     STATUS_PERMS_NEEDED,
     STATUS_DPI,
+    STATUS_RELAY,
 
     /** Названия протоколов -- как в спецификации, без перевода смысла. */
     PROTO_WIREGUARD,
@@ -1122,6 +1123,7 @@ enum class Str {
         UPD_COMPARE_TAG -> pick(lang, "By tag change", "По смене тега", "按标签变化")
         STATUS_PERMS_NEEDED -> pick(lang, "Permissions needed", "Нужны разрешения", "需要权限")
         STATUS_DPI -> pick(lang, "DPI", "DPI", "DPI")
+        STATUS_RELAY -> pick(lang, "Relay", "Релей", "中继")
         NOTIFY_GPS_ON -> pick(lang, "GPS spoofing on", "Подмена GPS включена", "GPS 伪造已开启")
         NOTIFY_GPS_OFF -> pick(lang, "GPS spoofing off", "Подмена GPS выключена", "GPS 伪造已关闭")
         NOTIFY_GPS_ERROR -> pick(lang, "GPS spoofing failed", "Подмена GPS не запустилась", "GPS 伪造失败")

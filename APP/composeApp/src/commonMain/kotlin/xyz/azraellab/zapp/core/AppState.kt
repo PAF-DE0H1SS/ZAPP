@@ -31,6 +31,7 @@ import xyz.azraellab.zapp.core.domains.AppDomains
 import xyz.azraellab.zapp.core.domains.DpiScope
 import xyz.azraellab.zapp.core.perApp.PerAppConfig
 import xyz.azraellab.zapp.core.perApp.installedApps
+import xyz.azraellab.zapp.core.engine.SessionKind
 import xyz.azraellab.zapp.core.engine.TunnelEngine
 import xyz.azraellab.zapp.core.engine.TunnelState
 import xyz.azraellab.zapp.core.engine.createTunnelEngine
@@ -317,6 +318,12 @@ class AppState(
                         startLinkSpeed()
                         startPing()
                         startTorAutoSwitch()
+                        // Опрос счётчиков нужен спарклайну: пока туннель
+                        // поднят, держим его живым, чтобы история копилась
+                        // без открытого окна мониторинга. Здесь, а не в
+                        // плашке: пассивную сессию обхода вкладки не
+                        // показывают, но трафик по ней идёт.
+                        ensureTrafficPolling()
                     } else {
                         stopLinkSpeed()
                         stopPing()
@@ -1058,14 +1065,36 @@ class AppState(
      */
     fun connectVpn() {
         if (!tunnel.supported) return
-        // Пользовательский коннект забирает сессию у noroot-обхода: её
+        // Сессия достаётся вкладке VPN, а релей обхода отдаёт её: её
         // поднимала автоматика, а гасить выбор пользователя нельзя.
-        dpiSessionOwned = false
+        adoptVpnProfile()
+        sessionOwner = SessionKind.VPN
         AppLog.log("vpn", "connect requested (group=${config.vpn.groupMode})")
         // Синхронная часть подключения: исключение здесь иначе ушло бы
         // мимо UI, а карточка осталась бы в DISCONNECTED без объяснений.
         runCatching { tunnel.connect() }
             .onFailure { tunnel.fail("connect failed: ${it.causeText()}") }
+    }
+
+    /**
+     * Приводит активный коннект к виду, пригодному для вкладки VPN.
+     *
+     * Выбор профиля один на обе вкладки, и на вкладке Tor активным
+     * становится мост -- которого список VPN не показывает вовсе, а
+     * движок идёт по [VpnConfig.activeProfileId]. Без этой проверки
+     * СТАРТ на вкладке VPN поднимал бы tor, что и наблюдалось: пользователь
+     * нажал VPN, а получил чужую сессию. Мост заменяется на самый быстрый
+     * живой коннект; коннектов нет -- выбор сбрасывается, и движок дал бы
+     * внятную «no active profile» вместо молчаливого tor (или соберёт
+     * группу, если включён автоподбор).
+     */
+    private fun adoptVpnProfile() {
+        val active = config.vpn.activeProfile()
+        if (active == null || active.protocol != VpnProtocol.TOR.code) return
+        val best = VpnConnects.sort(config.vpn.visibleProfiles(), byPing = true).firstOrNull()
+        val label = best?.let { it.name.ifBlank { it.id } } ?: "no profile"
+        AppLog.log("vpn", "bridge was active -- $label")
+        mutate { it.copy(vpn = it.vpn.copy(activeProfileId = best?.id ?: "")) }
     }
 
     fun disconnectVpn() {
@@ -1118,7 +1147,7 @@ class AppState(
     /** Поднимает туннель ровно через [bridge]; см. [connectTor]. */
     private fun connectTorBridge(bridge: VpnProfile) {
         if (!tunnel.supported) return
-        dpiSessionOwned = false
+        sessionOwner = SessionKind.TOR
         selectProfile(bridge.id)
         AppLog.log("vpn", "tor connect requested (bridge=${bridge.name.ifBlank { bridge.id }})")
         if (tunnel.state.value == TunnelState.DISCONNECTED) {
@@ -1783,14 +1812,21 @@ class AppState(
     }
 
     /**
-     * Признак владельца туннельной сессии для noroot-обхода.
+     * Чья сессия сейчас поднимается или работает в туннеле.
      *
-     * true -- сессию подняла автоматика обхода (демоны живут, туннель
-     * стоял), и гасить её вместе с демонами. Ложь -- сессия
-     * пользовательская (VPN/Tor): снимать её из-за остановки zapret
-     * нельзя, а обычный connect() режим уже переключает сам.
+     * Ставится в момент запроса, а не выводится из активного профиля:
+     * ошибка должна остаться «своей» для вкладки, которая её вызвала, а
+     * чужая вкладка не должна показывать сбой незнакомого подключения.
+     * Профиль при этом к этому моменту уже приведён в порядок (см.
+     * [adoptVpnProfile], [connectTor]), так что владелец всегда
+     * соответствует тому, что движок реально поднимает.
+     *
+     * Для noroot-обхода это же прежний признак владельца сессии:
+     * [SessionKind.DPI] значит «подняла автоматика» -- такую сессию
+     * можно снять вместе с демонами, а пользовательскую нельзя.
      */
-    private var dpiSessionOwned = false
+    var sessionOwner: SessionKind by mutableStateOf(SessionKind.NONE)
+        private set
 
     /**
      * Свежие NFQUEUE-правила под текущее состояние демонов.
@@ -1862,7 +1898,7 @@ class AppState(
      * правилам уже поднятого туннеля, поэтому здесь решается три вещи:
      * поднять пассивную сессию, если туннель стоит; переподнять её, если
      * правила изменились; снять её, если обход выключили, а сессию подняли
-     * именно мы (см. [dpiSessionOwned]).
+     * именно мы (см. [SessionKind.DPI]).
      */
     private fun refreshDpiOverlay(sets: Pair<Set<String>, Set<String>>) {
         val (tcp, udp) = sets
@@ -1871,20 +1907,20 @@ class AppState(
             when (tunnel.state.value) {
                 TunnelState.DISCONNECTED -> {
                     AppLog.log("dpi", "userland relay: starting passthrough session")
-                    dpiSessionOwned = true
+                    sessionOwner = SessionKind.DPI
                     tunnel.connectDpi()
                 }
                 TunnelState.CONNECTED -> if (changed) tunnel.refreshDpi()
                 else -> Unit
             }
-        } else if (dpiSessionOwned) {
+        } else if (sessionOwner == SessionKind.DPI) {
             // Рвать можно из любого живого состояния: демон нередко
             // умирает раньше туннеля (провал пробы -- а connectDpi уже
             // в полёте), и прежняя проверка только на CONNECTED молча
             // съедала владение -- осиротевшая сессия держала релейные
             // маршруты без релея.
             val ownedLive = tunnel.state.value.isLive
-            dpiSessionOwned = false
+            sessionOwner = SessionKind.NONE
             if (ownedLive) {
                 AppLog.log("dpi", "userland relay: no daemons -- session down")
                 tunnel.disconnect()

@@ -65,6 +65,13 @@ kotlin {
         testLogging {
             showStandardStreams = true
             events("passed", "skipped", "failed")
+            // Причина падения обязана быть в логе целиком: сборка идёт на
+            // чужом раннере, и без текста исключения флак читается только
+            // как «где-то упало».
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            showExceptions = true
+            showCauses = true
+            showStackTraces = true
         }
     }
 }

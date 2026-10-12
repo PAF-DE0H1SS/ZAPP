@@ -20,8 +20,10 @@ import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.TorBridges
 import xyz.azraellab.zapp.core.VpnConnects
 import xyz.azraellab.zapp.core.VpnProtocol
+import xyz.azraellab.zapp.core.engine.SessionKind
 import xyz.azraellab.zapp.core.engine.TunnelState
 import xyz.azraellab.zapp.core.engine.isLive
+import xyz.azraellab.zapp.core.engine.shownFor
 import xyz.azraellab.zapp.core.log.errorLine
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.Choice
@@ -55,6 +57,11 @@ fun TorPage(state: AppState) {
     val tunnelState by state.tunnel.state.collectAsState()
     val tunnelLog by state.tunnel.log.collectAsState()
     val checkProgress by state.checkProgress.collectAsState()
+    // Чужая сессия здесь не показывается: туннель один, а вкладок две, и
+    // подключённый VPN не должен выглядеть подключённым Tor -- и наоборот,
+    // пассивный релей обхода не выдаётся за чью-то сессию. Нажатие орба
+    // при чужой сессии -- это СТАРТ, и поднимается уже своя.
+    val ownState = tunnelState.shownFor(SessionKind.TOR, state.sessionOwner)
 
     PageScaffold(title = tr(Str.TAB_TOR)) {
         // --- Как это работает: одна строка, всегда на виду ---
@@ -75,9 +82,9 @@ fun TorPage(state: AppState) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = tr(tunnelState.labelKey()),
+                        text = tr(ownState.labelKey()),
                         style = MaterialTheme.typography.titleMedium,
-                        color = when (tunnelState) {
+                        color = when (ownState) {
                             TunnelState.CONNECTED -> MaterialTheme.colorScheme.primary
                             TunnelState.ERROR -> MaterialTheme.colorScheme.error
                             TunnelState.CONNECTING, TunnelState.RECONNECTING ->
@@ -89,16 +96,16 @@ fun TorPage(state: AppState) {
                     // Тот же орб, что и на VPN: одна кнопка-статус на обеих
                     // вкладках, действие -- сессия туннеля.
                     ConnectionOrb(
-                        state = tunnelState,
-                        label = tr(if (tunnelState.isLive) Str.COMMON_STOP else Str.COMMON_START),
+                        state = ownState,
+                        label = tr(if (ownState.isLive) Str.COMMON_STOP else Str.COMMON_START),
                         animate = state.config.perf.animatedBackground,
                         onClick = {
-                            if (tunnelState.isLive) state.disconnectVpn()
+                            if (ownState.isLive) state.disconnectVpn()
                             else state.connectTor()
                         }
                     )
                 }
-                if (tunnelState == TunnelState.ERROR) {
+                if (ownState == TunnelState.ERROR) {
                     val reason = tunnelLog.errorLine()
                     if (reason != null) {
                         Text(
@@ -109,18 +116,22 @@ fun TorPage(state: AppState) {
                     }
                 }
                 // Чем именно подключены: под статусом, чтобы не гадать.
-                state.config.vpn.activeProfile()?.let { active ->
-                    if (active.protocol == VpnProtocol.TOR.code) {
-                        Text(
-                            text = tr(Str.TOR_ACTIVE_HINT),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                // Только пока подключены: на выключенном туннеле это был
+                // бы «подключённый мост» без единого соединения.
+                if (ownState.isLive) {
+                    state.config.vpn.activeProfile()?.let { active ->
+                        if (active.protocol == VpnProtocol.TOR.code) {
+                            Text(
+                                text = tr(Str.TOR_ACTIVE_HINT),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
                 // Скорость туннеля, пинг и активные режимы: живут, пока
                 // подключены, обновляются фоновыми опросами.
-                SpeedLine(state, tunnelState)
+                SpeedLine(state, ownState)
             }
         }
 

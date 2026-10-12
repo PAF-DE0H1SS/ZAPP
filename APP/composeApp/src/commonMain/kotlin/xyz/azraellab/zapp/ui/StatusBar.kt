@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.daemon.DaemonState
+import xyz.azraellab.zapp.core.engine.SessionKind
 import xyz.azraellab.zapp.core.engine.TunnelState
 import xyz.azraellab.zapp.core.gps.GpsState
 import xyz.azraellab.zapp.core.permissions.PermissionId
@@ -78,7 +79,10 @@ fun StatusBar(state: AppState) {
         // демона здесь же сообщает, что правила обхода сейчас применены.
         DaemonStatus(zapretState, tr(Str.TAB_ZAPRET))
         DaemonStatus(dpiState, tr(Str.STATUS_DPI))
-        TunnelStatus(tunnelState, tr(Str.TAB_VPN))
+        // Подпись -- по владельцу сессии: поднятый мост Tor называется Tor,
+        // а пассивный релей обхода на сборках без root не должен выглядеть
+        // подключённым VPN.
+        TunnelStatus(tunnelState, tr(state.sessionOwner.labelKey()))
 
         // Разрешения важны только рядом с работающей или запрошенной
         // подменой: спокойному пользователю строка не должна напоминать
@@ -161,6 +165,14 @@ private fun TunnelStatus(state: TunnelState, label: String) {
         },
         label = label
     )
+}
+
+/** Метка туннеля по владельцу сессии. */
+private fun SessionKind.labelKey(): Str = when (this) {
+    SessionKind.TOR -> Str.TAB_TOR
+    SessionKind.VPN -> Str.TAB_VPN
+    SessionKind.DPI -> Str.STATUS_RELAY
+    SessionKind.NONE -> Str.TAB_VPN
 }
 
 /** Состояние движка -- ключ строки для перевода. */

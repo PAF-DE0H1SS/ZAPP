@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -35,8 +34,10 @@ import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.VpnSource
 import xyz.azraellab.zapp.core.daemon.DaemonState
+import xyz.azraellab.zapp.core.engine.SessionKind
 import xyz.azraellab.zapp.core.engine.TunnelState
 import xyz.azraellab.zapp.core.engine.isLive
+import xyz.azraellab.zapp.core.engine.shownFor
 import xyz.azraellab.zapp.core.log.errorLine
 import xyz.azraellab.zapp.core.log.looksLikeErrorLine
 import xyz.azraellab.zapp.core.statusLine
@@ -76,6 +77,12 @@ fun VpnPage(state: AppState) {
     val tunnelLog by state.tunnel.log.collectAsState()
     val checkProgress by state.checkProgress.collectAsState()
     val notice = state.vpnNotice
+    // Чужая сессия здесь не показывается: туннель один, а вкладок две,
+    // и запущенный мост Tor не должен выглядеть подключённым VPN -- и
+    // наоборот, пассивный релей обхода вообще не выдаётся за чью-то
+    // сессию. Нажатие орба при чужой сессии -- это СТАРТ, и поднимается
+    // уже своя: движок снимает чужую сам.
+    val ownState = tunnelState.shownFor(SessionKind.VPN, state.sessionOwner)
 
     PageScaffold(title = tr(Str.TAB_VPN)) {
         // --- Туннель: статус и кнопка в одной карточке ---
@@ -87,9 +94,9 @@ fun VpnPage(state: AppState) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = tr(tunnelState.labelKey()),
+                        text = tr(ownState.labelKey()),
                         style = MaterialTheme.typography.titleMedium,
-                        color = when (tunnelState) {
+                        color = when (ownState) {
                             TunnelState.CONNECTED -> MaterialTheme.colorScheme.primary
                             TunnelState.ERROR -> MaterialTheme.colorScheme.error
                             TunnelState.CONNECTING, TunnelState.RECONNECTING ->
@@ -101,11 +108,11 @@ fun VpnPage(state: AppState) {
                     // Орб -- и статус, и кнопка: тон по состоянию туннеля,
                     // нажатие ставит сессию или снимает её.
                     ConnectionOrb(
-                        state = tunnelState,
-                        label = tr(if (tunnelState.isLive) Str.COMMON_STOP else Str.COMMON_START),
+                        state = ownState,
+                        label = tr(if (ownState.isLive) Str.COMMON_STOP else Str.COMMON_START),
                         animate = state.config.perf.animatedBackground,
                         onClick = {
-                            if (tunnelState.isLive) state.disconnectVpn()
+                            if (ownState.isLive) state.disconnectVpn()
                             else state.connectVpn()
                         }
                     )
@@ -113,9 +120,9 @@ fun VpnPage(state: AppState) {
                 // Скорость туннеля, пинг и активные режимы: живут, пока
                 // подключены, обновляются фоновыми опросами. Режимы --
                 // только работающие: неактивные в строку не попадают.
-                SpeedLine(state, tunnelState)
+                SpeedLine(state, ownState)
                 // Причина сбоя -- под статусом, не только в журнале внизу.
-                if (tunnelState == TunnelState.ERROR) {
+                if (ownState == TunnelState.ERROR) {
                     val reason = tunnelLog.errorLine()
                     if (reason != null) {
                         Text(
@@ -643,9 +650,6 @@ internal fun SpeedLine(state: AppState, tunnelState: TunnelState) {
     val history by state.trafficHistory.collectAsState()
     val summary by state.trafficSummaryFlow.collectAsState()
     val connected = tunnelState == TunnelState.CONNECTED
-    // Опрос счётчиков нужен спарклайну: пока подключены, держим его живым,
-    // чтобы история копилась без открытого окна мониторинга.
-    LaunchedEffect(connected) { if (connected) state.ensureTrafficPolling() }
     val line = statusLine(
         connected = connected,
         speed = linkSpeed,
@@ -696,8 +700,16 @@ internal fun activeModes(state: AppState, tunnelState: TunnelState): String {
     val dpi by state.dpiDaemon.state.collectAsState()
     val parts = buildList {
         if (tunnelState == TunnelState.CONNECTED) {
-            val viaTor = state.config.vpn.activeProfile()?.protocol == VpnProtocol.TOR.code
-            add(if (viaTor) "T" else "V")
+            // Буква по владельцу сессии, а не по активному профилю: тот
+            // меняется выбором в списке и не обязан совпадать с тем, что
+            // реально поднято. Пассивный релей обхода буквы не получает --
+            // это не пользовательский VPN.
+            val letter = when (state.sessionOwner) {
+                SessionKind.TOR -> "T"
+                SessionKind.VPN -> "V"
+                SessionKind.NONE, SessionKind.DPI -> null
+            }
+            if (letter != null) add(letter)
         }
         if (zapret == DaemonState.RUNNING) add("Z")
         if (dpi == DaemonState.RUNNING) add("GDPI")

@@ -11,6 +11,8 @@ import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
 import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
@@ -35,6 +37,7 @@ import xyz.azraellab.zapp.core.toDisplayString
 import java.io.File
 import java.net.Inet6Address
 import java.net.InetAddress
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Форграунд-сервис, который владеет туннелем Android.
@@ -60,13 +63,23 @@ class ZappVpnService : VpnService() {
     private var speedJob: Job? = null
 
     /**
-     * Колбэк дефолтной сети: перечитывает таблицу обхода uid0.
+     * Колбэк физической сети: перечитывает таблицу обхода uid0.
      *
      * Обход держится на имени таблицы текущей дефолтной сети, а оно
      * меняется при Wi-Fi <-> симка. Без этого правила демоны root после
      * переключения снова уходят в собственный туннель.
+     *
+     * Подписка именно на **физическую** сеть, а не на дефолтную: пока
+     * VPN поднят, дефолтной считается он сам, и смена WiFi на симку
+     * колбэк дефолтной сети не вызывает -- правило оставалось на таблице
+     * выключенного wlan0, обход переставал работать, и uid0 возвращался
+     * в туннель с петлёй.
      */
     private var defaultNetCb: ConnectivityManager.NetworkCallback? = null
+
+    /** Флаги дренажа: колбэки сыплются пачками, обход нужен один за последний. */
+    private val bypassRefreshPending = AtomicBoolean(false)
+    private val bypassRefreshRunning = AtomicBoolean(false)
 
     override fun onCreate() {
         super.onCreate()
@@ -177,22 +190,45 @@ class ZappVpnService : VpnService() {
             return
         }
         val cb = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                if (!UidZeroBypass.isActive()) return
-                daemonLogcat(TAG, "default network changed, refreshing uid0 bypass")
-                // `su` + ip блокируют вызывающего -- в ConnectivityThread
-                // это задержало бы все остальные уведомления сети.
-                Thread {
-                    UidZeroBypass.refresh { line -> daemonLogcat(TAG, line) }
-                }.start()
-            }
+            override fun onAvailable(network: Network) = refreshBypassLater()
+            override fun onLost(network: Network) = refreshBypassLater()
         }
-        runCatching { cm.registerDefaultNetworkCallback(cb) }
+        // NOT_VPN -- реальная сеть под туннелем; у самого VPN этого
+        // флага нет, иначе подписка ловила бы только его самого.
+        val req = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        runCatching { cm.registerNetworkCallback(req, cb) }
             .onSuccess {
                 defaultNetCb = cb
-                daemonLogcat(TAG, "default network callback: registered")
+                daemonLogcat(TAG, "underlying network callback: registered")
             }
-            .onFailure { daemonLogcat(TAG, "default network callback failed: ${it.message}") }
+            .onFailure { daemonLogcat(TAG, "underlying network callback failed: ${it.message}") }
+    }
+
+    /**
+     * Перечитывает таблицу обхода uid0 вне потока сети.
+     *
+     * `su` + `ip` блокируют вызывающего -- в ConnectivityThread это
+     * задержало бы все остальные уведомления сети. Пачка колбэков
+     * сводится к одному обходу по последнему состоянию: пока обход
+     * выполняется, новые запросы ставят только флаг, а поток дорабатывает
+     * его в цикле после завершения.
+     */
+    private fun refreshBypassLater() {
+        if (!UidZeroBypass.isActive()) return
+        bypassRefreshPending.set(true)
+        if (bypassRefreshRunning.getAndSet(true)) return
+        Thread {
+            try {
+                while (bypassRefreshPending.getAndSet(false)) {
+                    UidZeroBypass.refresh { line -> daemonLogcat(TAG, line) }
+                }
+            } finally {
+                bypassRefreshRunning.set(false)
+            }
+        }.start()
     }
 
     private fun unregisterDefaultNetworkCb() {

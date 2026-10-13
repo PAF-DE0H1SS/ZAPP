@@ -1223,6 +1223,16 @@ internal object UidZeroBypass {
     /** Между tethering/tun (11000/12000) и tun-правилом VPN (13000). */
     private const val PREF = 12500
 
+    /**
+     * Подсеть tun -- на приоритете выше [PREF].
+     *
+     * Правило [PREF] обязано пропускать мимо туннеля всё подряд, но подсеть
+     * самой VPN остаётся рабочей: иначе ответ system-стека sing-box на SYN
+     * уходит в дефолтную сеть вместо tun0 и рукопожатие умирает. gvisor
+     * такой маршрут не требует, однако правило верно при любом стеке.
+     */
+    private const val PREF_TUN_SUBNET = 12400
+
     // Цели вне RFC1918, чтобы маршрут точно ушёл в дефолтную сеть,
     // а не в локальную таблицу.
     private const val PROBE_V4 = "1.1.1.1"
@@ -1246,6 +1256,10 @@ internal object UidZeroBypass {
         if (!RootShell.available()) return false
         clear()
         active = true
+        tunSubnet(logger)?.let { (prefix, table) ->
+            val r = RootShell.run("ip rule add pref $PREF_TUN_SUBNET iif lo to $prefix lookup $table", 3000)
+            if (r.ok) logger("uid0 bypass: tun subnet $prefix -> $table")
+        }
         tableOf(PROBE_V4, v6 = false, logger)?.let { table ->
             val r = RootShell.run("ip rule add pref $PREF iif lo uidrange 0-0 lookup $table", 3000)
             logger(if (r.ok) "uid0 bypass: ipv4 via table $table" else "note: uid0 bypass ipv4 failed: ${r.output.trim().take(80)}")
@@ -1277,7 +1291,34 @@ internal object UidZeroBypass {
     private fun clear() {
         RootShell.run("ip rule del pref $PREF 2>/dev/null", 3000)
         RootShell.run("ip -6 rule del pref $PREF 2>/dev/null", 3000)
+        RootShell.run("ip rule del pref $PREF_TUN_SUBNET 2>/dev/null", 3000)
     }
+
+    /**
+     * Подсеть tun и её таблица маршрутов.
+     *
+     * Ищем в таблицах маршрут вида `172.19.0.0/30 dev tun0 ...` -- так kernel
+     * описывает адресную зону VPN-интерфейса. Таблица у Android называется
+     * по имени самого интерфейса (`tun0`), поэтому имя `dev` и есть ответ.
+     *
+     * `null` -- tun ещё не поднялся; вызывающий просто пропускает правило.
+     */
+    private fun tunSubnet(logger: (String) -> Unit): Pair<String, String>? = runCatching {
+        val r = RootShell.run("ip -4 route show table all", 4000)
+        if (!r.ok) return@runCatching null
+        for (line in r.output.lineSequence()) {
+            val tokens = line.trim().split(Regex("\\s+"))
+            val dev = tokens.indexOf("dev")
+            // Первое поле -- префикс (172.19.0.0/30); `local`/`broadcast`/`default`
+            // и одиночные адреса вида 8.8.8.8 отбрасываем по отсутствию «/».
+            if (dev < 1 || dev + 1 >= tokens.size || !tokens[0].contains('/')) continue
+            val name = tokens[dev + 1]
+            if (!name.startsWith("tun")) continue
+            return@runCatching tokens[0] to name
+        }
+        logger("note: uid0 bypass: tun subnet not found")
+        null
+    }.getOrNull()
 
     /**
      * Таблица маршрута для uid самого приложения.

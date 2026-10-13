@@ -322,7 +322,13 @@ object SingboxConfig {
             if (vpn.ipv6) add(JsonPrimitive("fdfe:dcba:9876::1/126"))
         })
         put("auto_route", true)
-        put("stack", "system")
+        // system-стек держит TCP-слушателя на адресе tun, а ответ ядра на его
+        // SYN уходит на «соседний» адрес подсети tun (172.19.0.2) -- маршрута
+        // в tun0 для него нет ни у одного uid: приложение исключает само себя
+        // из VPN (см. ZappVpnService), а без root правило не поставить.
+        // Хендшейк умирал, и весь TCP через туннель пропадал. gvisor ведёт
+        // TCP прямо из пакетов tun и никакой маршрутизации не требует.
+        put("stack", "gvisor")
         put("sniff", true)
         // Ни strict_route, ни авто-маршрутизации multicast'а через tun:
         // оба ломают локальную сеть на части Android-прошивок, а их задачу

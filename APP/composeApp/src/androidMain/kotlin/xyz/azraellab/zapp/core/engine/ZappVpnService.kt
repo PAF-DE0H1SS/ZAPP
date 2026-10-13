@@ -6,9 +6,11 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
 import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
+import android.net.Network
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
@@ -28,6 +30,7 @@ import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.LinkSpeedBus
 import xyz.azraellab.zapp.core.PingBus
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.daemon.daemonLogcat
 import xyz.azraellab.zapp.core.toDisplayString
 import java.io.File
 import java.net.Inet6Address
@@ -56,9 +59,19 @@ class ZappVpnService : VpnService() {
     private val speedScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var speedJob: Job? = null
 
+    /**
+     * Колбэк дефолтной сети: перечитывает таблицу обхода uid0.
+     *
+     * Обход держится на имени таблицы текущей дефолтной сети, а оно
+     * меняется при Wi-Fi <-> симка. Без этого правила демоны root после
+     * переключения снова уходят в собственный туннель.
+     */
+    private var defaultNetCb: ConnectivityManager.NetworkCallback? = null
+
     override fun onCreate() {
         super.onCreate()
         instance = this
+        registerDefaultNetworkCb()
         // Контракт startForegroundService закрывается как можно раньше:
         // если закрытие туннеля обгоняет доставку старт-намерения, onCreate
         // остаётся единственным местом, где startForeground гарантированно
@@ -119,6 +132,7 @@ class ZappVpnService : VpnService() {
 
     override fun onDestroy() {
         instance = null
+        unregisterDefaultNetworkCb()
         stopSpeedTicker()
         // Scope живёт ровно столько, сколько сервис: после onDestroy
         // инстанса больше нет, и возобновить его некому.
@@ -147,6 +161,45 @@ class ZappVpnService : VpnService() {
             stopForeground(true)
         }
         stopSelf()
+    }
+
+    /**
+     * Следит за дефолтной сетью ради таблицы обхода uid0.
+     *
+     * Android переписывает свои маршруты при смене сети сам, а наше
+     * правило построено на имени таблицы, которое тогда устаревает --
+     * и демоны root возвращаются в туннель с петлёй. Колбэк зовёт
+     * [UidZeroBypass.refresh], который без поднятого туннеля -- no-op.
+     */
+    private fun registerDefaultNetworkCb() {
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager ?: run {
+            daemonLogcat(TAG, "default network callback: no ConnectivityManager")
+            return
+        }
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                if (!UidZeroBypass.isActive()) return
+                daemonLogcat(TAG, "default network changed, refreshing uid0 bypass")
+                // `su` + ip блокируют вызывающего -- в ConnectivityThread
+                // это задержало бы все остальные уведомления сети.
+                Thread {
+                    UidZeroBypass.refresh { line -> daemonLogcat(TAG, line) }
+                }.start()
+            }
+        }
+        runCatching { cm.registerDefaultNetworkCallback(cb) }
+            .onSuccess {
+                defaultNetCb = cb
+                daemonLogcat(TAG, "default network callback: registered")
+            }
+            .onFailure { daemonLogcat(TAG, "default network callback failed: ${it.message}") }
+    }
+
+    private fun unregisterDefaultNetworkCb() {
+        val cb = defaultNetCb ?: return
+        defaultNetCb = null
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        runCatching { cm.unregisterNetworkCallback(cb) }
     }
 
     /**
@@ -395,6 +448,7 @@ class ZappVpnService : VpnService() {
     internal companion object {
         private const val CHANNEL_ID = "zapp-vpn"
         private const val NOTIFICATION_ID = 43
+        private const val TAG = "ZAPP-VPN"
 
         /** Действие «СТОП» в уведомлении (отдельный старт-интент). */
         private const val ACTION_STOP = "xyz.azraellab.zapp.action.STOP_VPN"

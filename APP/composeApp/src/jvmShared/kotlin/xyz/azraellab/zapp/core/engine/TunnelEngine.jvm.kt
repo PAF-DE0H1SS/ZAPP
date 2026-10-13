@@ -920,30 +920,17 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         log("kill switch: off")
     }
 
-    /**
-     * Правила VpnService исключают из VPN только uid самого приложения
-     * (uidrange-дырка вокруг VPN-owner): демоны noroot (uid приложения)
-     * идут мимо туннеля сами, protect им не нужен. А вот демоны root
-     * сидят на uid0, которого эта дырка не покрывает: их дайлы уходят
-     * в собственный tun и зацикливаются (SYN-SENT на свой же адрес,
-     * urltest мёртв). Бит protectedFromVpn (0x10000) уводит пакеты
-     * uid0 в таблицу мимо VPN. Ставится только при поднятом
-     * VpnService-tun и только в root-билде.
-     */
+    /** Выводит демоны root мимо туннеля; см. [UidZeroBypass]. */
     private fun enableUidZeroBypass() {
         if (uidZeroBypassOn) return
-        val add = "iptables -t mangle -I OUTPUT 1 -m owner --uid-owner 0 -j MARK --set-xmark 0x10000/0x10000"
-        val r = RootShell.run("iptables -t mangle -C OUTPUT -m owner --uid-owner 0 -j MARK --set-xmark 0x10000/0x10000 2>/dev/null || $add", 3000)
-        uidZeroBypassOn = r.ok
-        if (r.ok) log("uid0 bypass: daemon sockets protected from VPN")
-        else log("note: uid0 bypass unavailable")
+        uidZeroBypassOn = UidZeroBypass.install { log(it) }
+        if (!uidZeroBypassOn) log("note: uid0 bypass unavailable")
     }
 
     private fun disableUidZeroBypass() {
         if (!uidZeroBypassOn) return
         uidZeroBypassOn = false
-        if (!RootShell.available()) return
-        RootShell.run("iptables -t mangle -D OUTPUT -m owner --uid-owner 0 -j MARK --set-xmark 0x10000/0x10000 2>/dev/null", 3000)
+        UidZeroBypass.remove()
     }
 
     // --- Наблюдение и автопереподключение ---
@@ -1199,4 +1186,149 @@ internal fun torProgressPercent(lines: List<DaemonEvent>): Int {
         return pct.coerceIn(0, 100)
     }
     return -1
+}
+
+/**
+ * Правило маршрута, выводящее демоны root мимо собственного туннеля.
+ *
+ * Правила VpnService исключают из tun только uid самого приложения
+ * (`addDisallowedApplication`), а правила Android гонят в tun всех
+ * остальных:
+ *
+ *     13000: from all fwmark 0x0/0x20000 iif lo uidrange 0-10236 lookup tun
+ *
+ * Демоны root (box/tor/wg) сидят на uid0, которого дыра не покрывает:
+ * их дайлы входят в собственный tun и зацикливаются. Пока петля жива,
+ * Clash API отдаёт `downloadTotal = 0`, реальное скачивание -- 0 байт,
+ * а `zapp-errors.log` растёт на мегабайты за полчаса.
+ *
+ * iptables-марка в mangle OUTPUT здесь **не работает** и раньше вела в
+ * заблуждение: маршрут локального соединения выбирается в `connect()`
+ * по `sk_mark`, а netfilter меняет mark уже у готового skb. Проверено
+ * на устройстве: правило срабатывало на сотни пакетов, а сокеты
+ * оставались на 172.19.0.1. Работает только `ip rule` по uid: он
+ * исполняется при выборе маршрута и стоит выше tun-правила.
+ *
+ * Таблица не зашивается по имени (`wlan0`): её отдаёт `ip route get`,
+ * выполненный **без** `su`, то есть от uid приложения. Приложение из
+ * туннеля исключено, поэтому запрос всегда указывает на действующую
+ * дефолтную сеть: на Wi-Fi -- `wlan0`, на симке -- `ccmni0`. Отсюда и
+ * [refresh]: после переключения сети старая таблица пустеет, правило
+ * перестаёт работать и демоны снова уходят в tun.
+ *
+ * Ставится только при поднятом VpnService-tun и только в root-билде.
+ */
+internal object UidZeroBypass {
+
+    /** Между tethering/tun (11000/12000) и tun-правилом VPN (13000). */
+    private const val PREF = 12500
+
+    // Цели вне RFC1918, чтобы маршрут точно ушёл в дефолтную сеть,
+    // а не в локальную таблицу.
+    private const val PROBE_V4 = "1.1.1.1"
+    private const val PROBE_V6 = "2606:4700:4700::1111"
+
+    /** Правило установлено и ждёт снятия; пустой [refresh] работает только с ним. */
+    @Volatile
+    private var active = false
+
+    fun isActive(): Boolean = active
+
+    /**
+     * Ставит правила на текущую дефолтную сеть.
+     *
+     * true -- правила могли появиться, то есть `remove()` обязан быть
+     * вызван при остановке. Судьба отдельных семейств логируется, но
+     * на общий результат не влияет: если таблицы не нашлось, повторная
+     * попытка нужнее, чем пропуск снятия.
+     */
+    fun install(logger: (String) -> Unit = {}): Boolean {
+        if (!RootShell.available()) return false
+        clear()
+        active = true
+        tableOf(PROBE_V4, v6 = false, logger)?.let { table ->
+            val r = RootShell.run("ip rule add pref $PREF iif lo uidrange 0-0 lookup $table", 3000)
+            logger(if (r.ok) "uid0 bypass: ipv4 via table $table" else "note: uid0 bypass ipv4 failed: ${r.output.trim().take(80)}")
+        }
+        tableOf(PROBE_V6, v6 = true, logger)?.let { table ->
+            val r = RootShell.run("ip -6 rule add pref $PREF iif lo uidrange 0-0 lookup $table", 3000)
+            if (r.ok) logger("uid0 bypass: ipv6 via table $table")
+        }
+        return true
+    }
+
+    /** Снимает оба правила; зовётся при остановке туннеля. */
+    fun remove() {
+        active = false
+        if (!RootShell.available()) return
+        clear()
+    }
+
+    /**
+     * Перечитывает таблицу после смены дефолтной сети.
+     *
+     * Ничего не делает, пока туннель не поднят: правило нужно ровно
+     * столько, сколько живёт tun.
+     */
+    fun refresh(logger: (String) -> Unit = {}) {
+        if (active) install(logger)
+    }
+
+    private fun clear() {
+        RootShell.run("ip rule del pref $PREF 2>/dev/null", 3000)
+        RootShell.run("ip -6 rule del pref $PREF 2>/dev/null", 3000)
+    }
+
+    /**
+     * Таблица маршрута для uid самого приложения.
+     *
+     * Первый путь -- `ip route get` **без** `su`: процесс остаётся на
+     * uid приложения, который правила VPN исключают, поэтому запрос
+     * честно отвечает, куда уйдёт трафик в обход туннеля. Второй --
+     * правило дефолтной сети из `ip rule show` под root: некоторые
+     * прошивки не пускают untrusted_app в netlink-запрос маршрута,
+     * а само правило netd переписывает при смене сети сам.
+     *
+     * `null` -- сети нет; вызывающий обязан сообщить об этом в журнал.
+     */
+    private fun tableOf(target: String, v6: Boolean, logger: (String) -> Unit): String? {
+        routeTable(target, v6)?.let { return it }
+        ruleTable(v6)?.let { return it }
+        logger("uid0 bypass: no default route for $target")
+        return null
+    }
+
+    /** Путь 1: маршрут, который получит uid приложения. */
+    private fun routeTable(target: String, v6: Boolean): String? = runCatching {
+        val argv = buildList {
+            // Абсолютный путь: у приложений PATH не гарантирован,
+            // а искать `ip` по PATH -- лишний повод не найти.
+            add("/system/bin/ip")
+            if (v6) add("-6")
+            addAll(listOf("route", "get", target))
+        }
+        val process = ProcessBuilder(argv).redirectErrorStream(true).start()
+        val out = process.inputStream.bufferedReader().use { it.readText() }
+        val code = process.waitFor()
+        val line = out.trim().lineSequence().firstOrNull().orEmpty()
+        val tokens = line.split(Regex("\\s+"))
+        val at = tokens.indexOf("table")
+        if (code == 0 && at >= 0 && at + 1 < tokens.size) tokens[at + 1] else null
+    }.getOrNull()
+
+    /**
+     * Путь 2: таблица из правила дефолтной сети.
+     *
+     * `29998: from all fwmark 0x0/0xffff iif lo uidrange 0-2147483647
+     * lookup wlan0` -- именно его netd указывает на текущий дефолтный
+     * выход; берём последнее поле (значение после `lookup`).
+     */
+    private fun ruleTable(v6: Boolean): String? = runCatching {
+        val r = RootShell.run(if (v6) "ip -6 rule show" else "ip rule show", 4000)
+        if (!r.ok) return@runCatching null
+        val fallback = r.output.lineSequence().firstOrNull { it.contains("fwmark 0x0/0xffff") }
+        val line = r.output.lineSequence().firstOrNull { it.contains("uidrange 0-2147483647") }
+            ?: fallback
+        line?.trim()?.split(Regex("\\s+"))?.lastOrNull()?.takeIf { it.isNotBlank() && it != "lookup" }
+    }.getOrNull()
 }

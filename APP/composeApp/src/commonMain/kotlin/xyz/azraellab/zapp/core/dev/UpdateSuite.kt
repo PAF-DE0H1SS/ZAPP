@@ -180,6 +180,11 @@ internal fun updateTests(out: MutableList<DevTest>) {
             "wg -- дата как версия"
         )
         checkTrue(parseComponentVersion(ZappComponent.BOX, "") == null, "пустой вывод -- null")
+        checkEq(
+            "devel",
+            parseComponentVersion(ZappComponent.LYREBIRD, "lyrebird devel\n"),
+            "lyrebird -- версии нет, слово после имени бинаря"
+        )
         checkTrue(
             parseComponentVersion(ZappComponent.BOX, "cannot execute: file not found") == null,
             "без версии -- null"

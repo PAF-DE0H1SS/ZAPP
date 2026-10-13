@@ -13,6 +13,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.input.KeyboardType
@@ -112,7 +117,80 @@ fun ZappNumberField(
     }
 }
 
-/** Вариант выбора со своим кодом и подписью. */
+/**
+ * Поле для дробного числа.
+ *
+ * Целочисленного [ZappNumberField] координатам не хватает: широта и долгота
+ * живут с дробной частью, а фильтр цифр точку отбрасывал молча -- в поле
+ * уходило `557558` вместо `55.7558`, значение уезжало за пределы диапазона
+ * и подмена GPS отказывалась стартовать. Здесь разрешены одна точка и
+ * минус в начале.
+ *
+ * Текст живёт отдельно от значения: иначе наборная `55.` превратилась бы в
+ * `55` при следующей перерисовке, потому что значение уже число 55.0.
+ */
+@Composable
+fun ZappDecimalField(
+    label: String,
+    value: Double?,
+    onValueChange: (Double?) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    supportingText: String? = null,
+    path: String? = null
+) {
+    var text by rememberSaveable { mutableStateOf(value?.let { decimalText(it) } ?: "") }
+
+    LaunchedEffect(value) {
+        // Тянется только чужое изменение: свой ввод значение уже догнало.
+        if (text.toDoubleOrNull() != value) {
+            text = value?.let { decimalText(it) } ?: ""
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AzraelSpace.xs)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedTextField(
+            value = text,
+            onValueChange = { raw ->
+                val filtered = buildString {
+                    var dotted = false
+                    raw.forEachIndexed { index, ch ->
+                        when {
+                            ch.isDigit() -> append(ch)
+                            ch == '-' && index == 0 -> append(ch)
+                            ch == '.' && !dotted -> {
+                                append(ch)
+                                dotted = true
+                            }
+                        }
+                    }
+                }
+                text = filtered
+                onValueChange(filtered.toDoubleOrNull())
+            },
+            placeholder = placeholder?.let { { Text(it) } },
+            singleLine = true,
+            supportingText = supportingText?.let { { Text(it) } },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier
+                .fillMaxWidth()
+                .debugPath(path ?: "input:$label")
+        )
+    }
+}
+
+/** Целое без хвоста `.0`, дробное -- как есть: `0`, `55.7558`. */
+private fun decimalText(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
 data class Choice<T>(
     val value: T,
     val label: String

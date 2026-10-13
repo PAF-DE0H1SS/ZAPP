@@ -48,11 +48,23 @@ object BinaryResolver {
      * null -- нечего копировать или копирование не понадобилось (нет root,
      * каталог недоступен). В обоих случаях вызывающий просто берёт
      * исходный путь: это не ошибка, а разные способы запуска.
+     *
+     * Повторный вызов копирует заново только если файла ещё нет или он
+     * другого размера: раньше 76 МБ бинарей переписывались на каждое
+     * открытие страницы компонентов и на каждый старт демона, а размер
+     * внутри одной сборки APK не меняется.
      */
     private fun shareForRoot(local: String, name: String): String? {
         if (!RootShell.available()) return null
         if (!RootShell.run("mkdir -p $SHARED_DIR", 2000).ok) return null
         val dst = "$SHARED_DIR/$name"
+        val size = runCatching { File(local).length() }.getOrDefault(0L)
+        val unchanged = RootShell.run(
+            "[ -f ${RootShell.quote(dst)} ] && " +
+                "[ \"$(wc -c < ${RootShell.quote(dst)})\" = \"$size\" ]",
+            2000
+        )
+        if (unchanged.ok) return dst
         val copy = RootShell.run(
             "cp -f ${RootShell.quote(local)} ${RootShell.quote(dst)} && chmod 755 ${RootShell.quote(dst)}",
             15000

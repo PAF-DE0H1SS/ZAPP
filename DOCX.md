@@ -394,6 +394,11 @@ Tab availability depends on the platform: `AppTab.available(gpsSupported)`
 hides GPS on desktop, where there is no coordinate spoofing. Six tabs on
 Android, five on desktop.
 
+A tab does not always get a slot of its own. `tabSlots()` in `AppRoot.kt` walks
+the list and pairs a tab with its partner: `partnerOf()` returns `VPN` for
+`TOR` and `GOODBYE_DPI` for `ZAPRET`, so six tabs fill four slots and five fill
+three. The icons inside one slot are tapped one by one.
+
 Traffic monitoring is not a tab. `state.trafficWindowOpen` switches the screen
 to `ui/traffic/TrafficWindow.kt`, and the navigation bar disappears there: this
 window is opened from settings and closed with the X.
@@ -1390,6 +1395,11 @@ private const val TRAIL_LEN_PX = 120f
 прячет GPS на десктопе, где спуфинга координат не будет. На Android — шесть
 вкладок, на десктопе — пять.
 
+Вкладка получает не всегда отдельный слот. `tabSlots()` в `AppRoot.kt`
+проходит по списку и парит вкладку с её партнёром: `partnerOf()` возвращает
+`VPN` для `TOR` и `GOODBYE_DPI` для `ZAPRET`, поэтому шесть вкладок занимают
+четыре слота, а пять — три. Иконки внутри одного слота нажимаются по одной.
+
 Мониторинг трафика — не вкладка. `state.trafficWindowOpen` переключает экран
 на `ui/traffic/TrafficWindow.kt`, и панель навигации на нём исчезает: это окно
 открывают из настроек и закрывают крестиком.
@@ -2360,6 +2370,10 @@ private const val TRAIL_LEN_PX = 120f
 
 标签的可用性取决于平台：`AppTab.available(gpsSupported)`
 在桌面隐藏 GPS，桌面不会有坐标伪装。Android 上六个标签，桌面上五个。
+
+标签未必独占一个槽位。`AppRoot.kt` 里的 `tabSlots()` 遍历列表，把标签和它的
+搭档配对：`partnerOf()` 对 `TOR` 返回 `VPN`，对 `GOODBYE_DPI` 返回 `ZAPRET`，
+所以六个标签占四个槽位，五个占三个。同一个槽位里的图标逐个点按。
 
 流量监控不是标签。`state.trafficWindowOpen` 把屏幕切换到
 `ui/traffic/TrafficWindow.kt`，它上面的导航栏会消失：这个窗口从设置里打开，

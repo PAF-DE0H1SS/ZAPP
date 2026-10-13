@@ -73,9 +73,19 @@ private const val DNS_OK_TOKEN = "noerror"
  * она только мешает. Строка без уровня (tor, openvpn, stderr) решается
  * маркерами, как и раньше.
  */
+/**
+ * Строка журнала без ANSI-окраски -- то, что имеет смысл показать на экране.
+ *
+ * Демоны пишут в stderr с цветами: в файле это правильно (так их узнаёт
+ * [looksLikeErrorLine] и так их удобно читать в багрепорте), но на экране
+ * пользователь видит вместо «WARN» мусор `[33mWARN[0m`. Покраска при этом
+ * остаётся на месте: цвет строки по-прежнему задаётся по уровню в UI.
+ */
+fun stripAnsi(line: String): String = ANSI.replace(line, "")
+
 fun looksLikeErrorLine(line: String): Boolean {
     if (line.isBlank()) return false
-    val plain = ANSI.replace(line, "")
+    val plain = stripAnsi(line)
     when (LEVEL_TAG.find(plain)?.groupValues?.get(1)) {
         "ERROR" -> return true
         "DEBUG", "INFO", "TRACE" -> return false

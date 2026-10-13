@@ -43,8 +43,40 @@ fun parseComponentVersion(component: ZappComponent, output: String): String? {
     val full = Regex("\\d+(?:\\.\\d+){2,}(?:[-+][0-9A-Za-z.]+)?").find(head)?.value
     if (full != null) return full
     // Компоненты вида 0.4.9 (короткий хвост) или 1.0.20220331 (wg).
-    return Regex("\\d+\\.\\d+(?:[-+][0-9A-Za-z]+)?").find(head)?.value
+    val short = Regex("\\d+\\.\\d+(?:[-+][0-9A-Za-z]+)?").find(head)?.value
+    if (short != null) return short
+    // Версии нет вовсе, есть дата сборки: nfqws печатает
+    // `self-built android version Oct  3 2026 03:28:49`, amnezia-wg --
+    // `amneziawg-tools vawg-20260812`. Дата читается однозначно и по ней
+    // видно, свежий ли бинарь стоит -- для диагностики это главное.
+    val packed = Regex("\\b(20\\d{2})[-_.]?(\\d{2})[-_.]?(\\d{2})\\b").find(head)
+    if (packed != null) {
+        val g = packed.groupValues
+        return "${g[1]}-${g[2]}-${g[3]}"
+    }
+    val dated = Regex("\\b([A-Z][a-z]{2})\\s+(\\d{1,2})\\s+(20\\d{2})\\b").find(head)
+    if (dated != null) {
+        val g = dated.groupValues
+        val month = MONTHS[g[1].lowercase()]
+        if (month != null) return "${g[3]}-$month-${g[2].padStart(2, '0')}"
+    }
+    // Ни версии, ни даты. Хвост берём только когда строка вида
+    // `<имя бинаря> <слово>`: lyrebird отвечает просто `lyrebird devel`,
+    // и без подсказки в карточке нечем показать. Словесный вывод ошибки
+    // (`cannot execute: file not found`) мы обязаны отдать как null -- иначе
+    // на месте версии появится «execute:».
+    val line = output.lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }
+    val parts = line?.split(Regex("\\s+")) ?: return null
+    return parts.getOrNull(1)
+        ?.takeIf { parts[0].equals(component.binary, ignoreCase = true) && it.isNotBlank() }
 }
+
+/** Английские сокращения месяцев, как их пишут бинари из мира tor/nfqws. */
+private val MONTHS = mapOf(
+    "jan" to "01", "feb" to "02", "mar" to "03", "apr" to "04",
+    "may" to "05", "jun" to "06", "jul" to "07", "aug" to "08",
+    "sep" to "09", "oct" to "10", "nov" to "11", "dec" to "12"
+)
 
 /**
  * Запускает компонент и читает его версию.

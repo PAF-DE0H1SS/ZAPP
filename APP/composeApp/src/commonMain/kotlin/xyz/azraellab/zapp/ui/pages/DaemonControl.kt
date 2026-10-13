@@ -22,6 +22,7 @@ import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.daemon.DaemonEngine
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.log.isError
+import xyz.azraellab.zapp.core.log.stripAnsi
 import xyz.azraellab.zapp.core.probe.ProbeProgress
 import xyz.azraellab.zapp.core.probe.StrategyProbeCoordinator
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
@@ -139,7 +140,7 @@ fun DaemonLogCard(engine: DaemonEngine, path: String = "daemon.log.expand") {
                 lines.takeLast(JOURNAL_VISIBLE).forEach { (line, isError) ->
                     // Ошибка -- цветом: причину надо видеть, не читая всё.
                     Text(
-                        text = line,
+                        text = stripAnsi(line),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (isError) {
                             MaterialTheme.colorScheme.error

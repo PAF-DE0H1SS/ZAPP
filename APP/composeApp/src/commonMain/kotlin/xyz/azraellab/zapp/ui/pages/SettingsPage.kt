@@ -39,6 +39,7 @@ import xyz.azraellab.zapp.core.dev.isDebugBuild
 import xyz.azraellab.zapp.core.log.AppLog
 import xyz.azraellab.zapp.core.log.ErrorLog
 import xyz.azraellab.zapp.core.log.looksLikeErrorLine
+import xyz.azraellab.zapp.core.log.stripAnsi
 import xyz.azraellab.zapp.core.native.NativeBinaries
 import xyz.azraellab.zapp.core.permissions.PermissionId
 import xyz.azraellab.zapp.core.permissions.PermissionState
@@ -1159,7 +1160,9 @@ private fun LogSection(state: AppState) {
                     // Признаки общие с журналами демонов (core.log).
                     val isError = looksLikeErrorLine(line)
                     Text(
-                        text = line,
+                        // Окраску снимаем: в строке лежит ANSI из stderr, а
+                        // цвет задаём сами по уровню -- дубль не нужен.
+                        text = stripAnsi(line),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (isError) {
                             MaterialTheme.colorScheme.error
@@ -1209,7 +1212,7 @@ private fun ErrorLogCard() {
             // Только хвост: журнал и так ограничен, а экран -- про последние.
             errors.takeLast(50).forEach { line ->
                 Text(
-                    text = line,
+                    text = stripAnsi(line),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.fillMaxWidth()

@@ -186,4 +186,36 @@ class SingboxConfigTest {
         assertTrue(rules.none { it["outbound"]?.jsonPrimitive?.content == DpiOverlay.RELAY_TAG })
         assertTrue(rules.none { it["protocol"]?.jsonPrimitive?.content == "quic" })
     }
+
+    // --- utls: мусор из источников не должен валить весь туннель ---
+
+    private fun fingerprints(built: SingboxConfig.Built): List<String> =
+        outboundsOf(built).mapNotNull { ob ->
+            ob["tls"]?.jsonObject?.get("utls")?.jsonObject?.get("fingerprint")
+                ?.jsonPrimitive?.content
+        }
+
+    @Test
+    fun unknownUtlsFingerprintFallsBackToChrome() {
+        // В источниках реально встречаются ссылки вида `...&fp=unsafe&type=ws`.
+        // sing-box отвергает такое значение FATAL'ом на старте и не поднимает
+        // туннель целиком: группа «Автовыбор лучшего» содержит все профили,
+        // поэтому один битый ломал подключение независимо от выбранного коннекта.
+        val bad = "vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443" +
+            "?encryption=none&security=tls&sni=example.com&fp=unsafe&type=ws#bad"
+        val fps = fingerprints(SingboxConfig.buildGroup(VpnConfig(), listOf(ss1, bad)))
+        assertTrue(fps.isNotEmpty(), "vless-профиль обязан получить utls")
+        assertTrue("unsafe" !in fps, "неизвестный отпечаток обязан быть срезан")
+        assertEquals(listOf("chrome"), fps.distinct())
+    }
+
+    @Test
+    fun knownUtlsFingerprintIsKeptAsIs() {
+        // Проверка в другую сторону: валидную версию из ссылки менять нельзя,
+        // иначе профиль молча потеряет заявленный клиент-отпечаток.
+        val good = "vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443" +
+            "?encryption=none&security=tls&sni=example.com&fp=chrome_100&type=ws#good"
+        val fps = fingerprints(SingboxConfig.buildGroup(VpnConfig(), listOf(good)))
+        assertEquals(listOf("chrome_100"), fps)
+    }
 }

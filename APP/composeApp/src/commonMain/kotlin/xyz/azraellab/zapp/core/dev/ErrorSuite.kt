@@ -12,6 +12,7 @@ import xyz.azraellab.zapp.core.log.errorLine
 import xyz.azraellab.zapp.core.log.isError
 import xyz.azraellab.zapp.core.log.looksLikeErrorLine
 import xyz.azraellab.zapp.core.log.redactSensitive
+import xyz.azraellab.zapp.core.log.stripAnsi
 
 /**
  * Причины сбоя в журналах.
@@ -199,6 +200,14 @@ internal fun errorTextTests(out: MutableList<DevTest>) {
         checkFalse(looksLikeErrorLine(colored), "успешный DNS с цветами -- не ошибка")
         checkTrue(looksLikeErrorLine("+0000 2026-10-06 12:07:50 \u001b[31mERROR\u001b[0m create service: failed"), "цветной ERROR -- ошибка")
         checkFalse(looksLikeErrorLine("2026-10-06 12:07:50 NOERROR 838"), "голый NOERROR -- не ошибка")
+        // На экране ANSI быть не должно: иначе вместо «WARN» пользователь
+        // читает мусор `[33mWARN[0m`. В файле окраска остаётся.
+        checkEq(
+            "+0000 2026-10-06 12:07:50 WARN network: netlink unavailable",
+            stripAnsi("+0000 2026-10-06 12:07:50 \u001b[33mWARN\u001b[0m network: netlink unavailable"),
+            "stripAnsi убирает цвет, текст сохраняется"
+        )
+        checkEq("без кодов", stripAnsi("без кодов"), "строка без кодов -- как была")
     }
 
     out += DevTest("log/error-line-untagged-daemon-kept", DevCategory.UI, "Строки тор/openvpn без уровня решают маркеры") {

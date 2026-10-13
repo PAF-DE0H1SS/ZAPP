@@ -24,6 +24,7 @@ import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
 import xyz.azraellab.zapp.ui.components.ZappEmptyState
+import xyz.azraellab.zapp.ui.components.ZappDecimalField
 import xyz.azraellab.zapp.ui.components.ZappExpandableCard
 import xyz.azraellab.zapp.ui.components.ZappNumberField
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
@@ -145,22 +146,20 @@ fun GpsPage(state: AppState) {
         if (GpsMode.of(config.mode) == GpsMode.FIXED) {
             PageGroup(tr(Str.GPS_LOCATION)) {
                 ZappCard {
-                    ZappNumberField(
+                    ZappDecimalField(
                         label = tr(Str.GPS_LATITUDE),
-                        value = config.latitude.toLong().takeIf { it.toDouble() == config.latitude }
-                            ?.toInt(),
+                        value = config.latitude,
                         onValueChange = { v ->
-                            state.mutate { it.copy(gps = it.gps.copy(latitude = v?.toDouble() ?: 0.0)) }
+                            state.mutate { it.copy(gps = it.gps.copy(latitude = v ?: 0.0)) }
                         },
                         placeholder = "55.7558",
                         path = "gps.latitude"
                     )
-                    ZappNumberField(
+                    ZappDecimalField(
                         label = tr(Str.GPS_LONGITUDE),
-                        value = config.longitude.toLong().takeIf { it.toDouble() == config.longitude }
-                            ?.toInt(),
+                        value = config.longitude,
                         onValueChange = { v ->
-                            state.mutate { it.copy(gps = it.gps.copy(longitude = v?.toDouble() ?: 0.0)) }
+                            state.mutate { it.copy(gps = it.gps.copy(longitude = v ?: 0.0)) }
                         },
                         placeholder = "37.6173",
                         path = "gps.longitude"
@@ -174,12 +173,15 @@ fun GpsPage(state: AppState) {
                         placeholder = "10",
                         path = "gps.accuracy"
                     )
-                    ZappNumberField(
+                    // Высота тоже бывает дробной и отрицательной: берег Мёртвого
+                    // моря -- минус сорок с лишним метров.
+                    ZappDecimalField(
                         label = tr(Str.GPS_ALTITUDE),
-                        value = config.altitudeMeters.toLong().toInt(),
+                        value = config.altitudeMeters,
                         onValueChange = { v ->
-                            state.mutate { it.copy(gps = it.gps.copy(altitudeMeters = (v ?: 0).toDouble())) }
+                            state.mutate { it.copy(gps = it.gps.copy(altitudeMeters = v ?: 0.0)) }
                         },
+                        placeholder = "0",
                         path = "gps.altitude"
                     )
                 }

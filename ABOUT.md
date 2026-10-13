@@ -214,10 +214,11 @@ sparkline and a session counter; automatic DNS replacement before the tunnel
 starts. The shared code builds for both platforms, the design system is
 finished, and all 1303 tests pass.
 
-The bottom bar has six sections — Tor, VPN, Zapret, GoodbyeDPI, GPS and
-Settings — and the traffic monitor opens as a separate window. Settings survive
-a restart. What is not there yet are scenarios and a map for location spoofing
-(GPS), plus Nix and PKGBUILD for the desktop packages.
+There are six sections — Tor, VPN, Zapret, GoodbyeDPI, GPS and Settings. The
+bar packs them into four slots, because full names do not fit: Tor sits next to
+VPN, Zapret next to GoodbyeDPI. The traffic monitor opens as a separate window,
+and settings survive a restart. What is not there yet are scenarios and a map
+for location spoofing (GPS), plus Nix and PKGBUILD for the desktop packages.
 
 The work is staged, and each stage ends with a green build and green tests.
 
@@ -410,8 +411,11 @@ The work is staged, and each stage ends with a green build and green tests.
 автоподбором стратегии; мониторинг трафика со спарклайном скорости и счётчиком
 трафика за сеанс; автозамена DNS-сервера перед стартом туннеля. Общий код
 собирается под обе платформы, дизайн-система закончена, все 1303 теста
-зелёные. Ещё не готовы: сценарии и карта для подмены координат (GPS),
-а для десктопа — Nix и PKGBUILD.
+зелёные. Разделов шесть — Tor, VPN, Zapret, GoodbyeDPI, GPS и Настройки, но
+панель собирает их в четыре слота, полные названия не помещаются: Tor делит
+слот с VPN, Zapret с GoodbyeDPI. Монитор трафика открывается отдельным окном,
+настройки переживают перезапуск. Ещё не готовы: сценарии и карта для подмены
+координат (GPS), а для десктопа — Nix и PKGBUILD.
 
 Работа разбита на этапы, и каждый этап заканчивается зелёной сборкой и зелёными
 тестами.
@@ -574,9 +578,10 @@ DPI 解绕 —— zapret 与 goodbyedpi 共用一条 NFQUEUE 链并自动选择�
 迷你图和会话计数器的流量监控；隧道启动前自动替换 DNS。共享代码在两个平台上
 都能构建，设计系统完成，1303 个测试全部通过。
 
-底部有六个分区 —— Tor、VPN、Zapret、GoodbyeDPI、GPS 和设置，流量监控单独开窗。
-设置跨重启保留。还没做的是坐标伪装的场景与地图（GPS），以及桌面包的 Nix 和
-PKGBUILD。
+共有六个分区 —— Tor、VPN、Zapret、GoodbyeDPI、GPS 和设置，但底部栏把它们收进
+四个槽位，完整名字放不下：Tor 与 VPN 同槽，Zapret 与 GoodbyeDPI 同槽。流量
+监控单独开窗，设置跨重启保留。还没做的是坐标伪装的场景与地图（GPS），以及
+桌面包的 Nix 和 PKGBUILD。
 
 工作按阶段推进，每个阶段都以构建通过、测试通过收尾。
 

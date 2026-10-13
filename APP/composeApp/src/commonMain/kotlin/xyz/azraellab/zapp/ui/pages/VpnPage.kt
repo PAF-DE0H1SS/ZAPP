@@ -26,6 +26,7 @@ import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.LinkSpeedBus
 import xyz.azraellab.zapp.core.PingBus
 import xyz.azraellab.zapp.core.RouteHealth
+import xyz.azraellab.zapp.core.log.stripAnsi
 import xyz.azraellab.zapp.core.route
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.TrafficFormat
@@ -433,7 +434,12 @@ internal fun SourcesExpandable(
     ZappExpandableCard(
         title = tr(title),
         badge = sources.size.toString(),
-        subtitle = sources.count { it.enabled }.toString(),
+        // Подпись -- какие источники включены, а не голое число: бейдж и так
+        // несёт всего, а «2» под ним ничего не объясняет. Имена свои,
+        // пользовательские, переводить их нечего.
+        subtitle = sources.filter { it.enabled }
+            .joinToString(", ") { it.name.ifBlank { it.url } }
+            .ifBlank { "—" },
         path = "$prefix.sources.expand"
     ) {
         ZappButtonRow {
@@ -599,7 +605,7 @@ internal fun JournalExpandable(tunnelLog: List<String>, path: String = "log.expa
             tunnelLog.takeLast(12).forEach { line ->
                 val isError = looksLikeErrorLine(line)
                 Text(
-                    text = line,
+                    text = stripAnsi(line),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isError) MaterialTheme.colorScheme.error
                     else MaterialTheme.colorScheme.onSurfaceVariant

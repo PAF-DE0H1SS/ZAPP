@@ -858,6 +858,29 @@ object SingboxConfig {
         else -> null
     }
 
+    /**
+     * Допустимые семейства utls-отпечатков sing-box (имена ClientHelloID из
+     * refraction-networking/utls): chrome_100, firefox_63, safari_15_0, ios_14_5...
+     *
+     * Источники отдают и мусор -- в частности `fp=unsafe`. Раньше значение уходило
+     * в конфиг как есть, из-за чего sing-box отвечал `unknown uTLS fingerprint`
+     * FATAL'ом и отказывался поднимать весь туннель: один битый профиль в группе
+     * «Автовыбор лучшего» ломал подключение целиком, независимо от выбранного
+     * коннекта. Неизвестное значение срезаем до chrome -- соединение поднимается.
+     */
+    private val UTLS_FAMILIES = listOf(
+        "chrome", "firefox", "safari", "edge", "ios", "android", "randomized", "random",
+    )
+
+    private val UTLS_SHAPE = Regex("^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
+
+    private fun utlsFingerprint(raw: String): String {
+        val v = raw.trim().lowercase()
+        val known = UTLS_SHAPE.matches(v) &&
+            UTLS_FAMILIES.any { v == it || v.startsWith("${it}_") }
+        return if (known) v else "chrome"
+    }
+
     private fun tlsOf(p: ProxyConfig): JsonObject = buildJsonObject {
         val reality = p.security == "reality"
         put("enabled", true)
@@ -876,7 +899,7 @@ object SingboxConfig {
         if (utlsWorthy) {
             put("utls", buildJsonObject {
                 put("enabled", true)
-                put("fingerprint", p.fingerprint.ifBlank { "chrome" })
+                put("fingerprint", utlsFingerprint(p.fingerprint))
             })
         }
         if (reality) {

@@ -23,6 +23,7 @@ import xyz.azraellab.zapp.core.daemon.DaemonSpec
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.daemon.createDaemonEngine
 import xyz.azraellab.zapp.core.log.errorEvent
+import xyz.azraellab.zapp.core.log.stripAnsi
 import xyz.azraellab.zapp.core.net.DnsFailover
 import xyz.azraellab.zapp.core.net.ProxyUri
 import xyz.azraellab.zapp.core.net.SingboxConfig
@@ -845,11 +846,15 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     private fun daemonReason(daemon: DaemonEngine): String {
         val event = daemon.log.value.errorEvent() ?: return "no output"
         val text = event.text
-        return when {
+        val reason = when {
             event.raw.isNotBlank() -> event.raw
             text != null -> (text.of(AppLang.EN) + " " + event.arg).trim()
             else -> "no output"
         }
+        // sing-box/lyrebird пишут в stderr с ANSI-цветами; в журнале это
+        // пригодится, но в сообщении под кнопкой пользователь читает мусор
+        // вида `[31mFATAL[0m[0000]` вместо чистого текста.
+        return stripAnsi(reason)
     }
 
     // --- Kill switch ---

@@ -15,7 +15,7 @@
 </div>
 
 > [!IMPORTANT]
-> **Status: released v2.7.0, signed.** The project builds for Android and desktop, the
+> **Status: released v2.7.3, signed.** The project builds for Android and desktop, the
 > release carries five APKs per variant (four CPU architectures plus a universal one),
 > an MSI and an AppImage. 1303 tests are green. See the Roadmap for what comes next.
 
@@ -46,7 +46,7 @@ Build coordinates are spread over three files:
 
 | File | Holds |
 |---|---|
-| `APP/gradle.properties` | `zappVersion=2.7.0` -- the one place the version is written |
+| `APP/gradle.properties` | `zappVersion=2.7.3` -- the one place the version is written |
 | `APP/app/build.gradle.kts` | `compileSdk=37.2`, `minSdk=33`, `targetSdk=36`, `versionCode=9` |
 | `APP/gradle/libs.versions.toml` | Kotlin 2.4.20, AGP 9.2.1, kotlinx-serialization 1.9.0 |
 | `APP/gradle/wrapper/gradle-wrapper.properties` | Gradle 9.4.1 |
@@ -85,7 +85,7 @@ your CPU, and the split you install really is the smaller one.
 | 📈 **Speed sparkline** | rx/tx mini-graph on the status card (download red, upload blue) plus a session traffic counter right under it |
 | 🧭 **DNS autoselect** | with an empty user DNS list the tunnel probes public resolvers (8.8.8.8, 1.1.1.1, 77.88.8.8, ...) with a real A-query before start and rides the first one that answers |
 | 🧱 **Shared UI** | Compose Multiplatform module `:composeApp` compiled for Android and JVM desktop |
-| 🧭 **Navigation** | bottom bar with six tabs on Android -- Tor, VPN, Zapret, GoodbyeDPI, GPS, Settings; GPS mock location exists only on Android, so desktop shows five |
+| 🧭 **Navigation** | six tabs on Android -- Tor, VPN, Zapret, GoodbyeDPI, GPS, Settings -- packed by `tabSlots()` into four bar slots: Tor shares one with VPN, Zapret with GoodbyeDPI, because full names do not fit; GPS mock exists only on Android, so desktop has five tabs in three slots |
 | 🎨 **Design system** | one dark colour scheme, typography, shapes, spacing scale, ripples, starfield/glass background |
 | 🌗 **Theme** | dark only -- there is no light scheme and nothing to switch to |
 | ⚙️ **Settings** | grouped cards: language, welcome tour replay, performance, permissions, device, updates, traffic, presets, VPN profiles, routing, URL test, Zapret strategy and filters, GoodbyeDPI mode, logs, docs, about |
@@ -292,7 +292,7 @@ compliance with the laws that apply to you.
 
 | Файл | Что в нём |
 |---|---|
-| `APP/gradle.properties` | `zappVersion=2.7.0` -- единственное место, где записана версия |
+| `APP/gradle.properties` | `zappVersion=2.7.3` -- единственное место, где записана версия |
 | `APP/app/build.gradle.kts` | `compileSdk=37.2`, `minSdk=33`, `targetSdk=36`, `versionCode=9` |
 | `APP/gradle/libs.versions.toml` | Kotlin 2.4.20, AGP 9.2.1, kotlinx-serialization 1.9.0 |
 | `APP/gradle/wrapper/gradle-wrapper.properties` | Gradle 9.4.1 |
@@ -331,7 +331,7 @@ compliance with the laws that apply to you.
 | 📈 **Спарклайн скорости** | мини-график rx/tx на карточке статуса (загрузка красная, выгрузка синяя) плюс счётчик трафика сессии прямо под ним |
 | 🧭 **Автоподбор DNS** | при пустом пользовательском списке DNS туннель пробует публичные резолверы (8.8.8.8, 1.1.1.1, 77.88.8.8, ...) настоящим A-запросом до старта и едет на первом отвечающем |
 | 🧱 **Общий UI** | модуль Compose Multiplatform `:composeApp`, собранный под Android и JVM-десктоп |
-| 🧭 **Навигация** | нижняя панель из шести вкладок на Android -- Tor, VPN, Zapret, GoodbyeDPI, GPS, Настройки; подмена координат есть только на Android, поэтому на десктопе пять |
+| 🧭 **Навигация** | шесть вкладок на Android -- Tor, VPN, Zapret, GoodbyeDPI, GPS, Настройки -- `tabSlots()` собирает их в четыре слота панели: Tor делит слот с VPN, Zapret с GoodbyeDPI, полные названия не помещаются; подмена координат есть только на Android, поэтому на десктопе пять вкладок в трёх слотах |
 | 🎨 **Дизайн-система** | одна тёмная палитра, типографика, формы, шкала отступов, риплы, фон со звёздами и стеклом |
 | 🌗 **Тема** | только тёмная -- светлой схемы нет и переключаться не на что |
 | ⚙️ **Настройки** | сгруппированные карточки: язык, повтор приветствия, производительность, разрешения, устройство, обновления, трафик, пресеты, VPN-профили, маршрутизация, urltest, стратегия и фильтры Zapret, режим GoodbyeDPI, логи, документация, о программе |
@@ -542,7 +542,7 @@ ZAPP предоставляется «КАК ЕСТЬ», без каких-ли�
 
 | 文件 | 内容 |
 |---|---|
-| `APP/gradle.properties` | `zappVersion=2.7.0` -- 版本号唯一写入处 |
+| `APP/gradle.properties` | `zappVersion=2.7.3` -- 版本号唯一写入处 |
 | `APP/app/build.gradle.kts` | `compileSdk=37.2`、`minSdk=33`、`targetSdk=36`、`versionCode=9` |
 | `APP/gradle/libs.versions.toml` | Kotlin 2.4.20、AGP 9.2.1、kotlinx-serialization 1.9.0 |
 | `APP/gradle/wrapper/gradle-wrapper.properties` | Gradle 9.4.1 |
@@ -578,7 +578,7 @@ Android 会自动选中与你 CPU 匹配的包，装上的拆分包确实更小�
 | 📈 **速度迷你图** | 状态卡上的 rx/tx 迷你曲线（下载红、上传蓝），下方是会话流量计数 |
 | 🧭 **DNS 自动选择** | 用户 DNS 列表为空时，隧道在启动前用真实 A 查询探测公共解析器（8.8.8.8、1.1.1.1、77.88.8.8……），并使用第一个响应者 |
 | 🧱 **共享 UI** | Compose Multiplatform 模块 `:composeApp`，编译到 Android 与 JVM 桌面 |
-| 🧭 **导航** | Android 上底部六个标签 -- Tor、VPN、Zapret、GoodbyeDPI、GPS、设置；GPS 模拟定位仅 Android 有，桌面显示五个 |
+| 🧭 **导航** | Android 上六个标签 -- Tor、VPN、Zapret、GoodbyeDPI、GPS、设置 -- `tabSlots()` 把它们收进底部栏的四个槽位：Tor 与 VPN 同槽，Zapret 与 GoodbyeDPI 同槽，完整名字放不下；GPS 模拟定位只有 Android 有，桌面是三个槽位五个标签 |
 | 🎨 **设计系统** | 一套暗色配色、字体、形状、间距刻度、涟漪、星空与玻璃背景 |
 | 🌗 **主题** | 仅暗色 -- 没有浅色方案，也没有可切换的目标 |
 | ⚙️ **设置** | 分组卡片：语言、欢迎页重播、性能、权限、设备、更新、流量、预设、VPN 配置、路由、URL 测试、Zapret 策略与过滤、GoodbyeDPI 模式、日志、文档、关于 |

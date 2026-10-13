@@ -41,3 +41,4 @@ ZAPP
 
 # Журнал тестирования (append-only, локальный)
 TESTLOG.md
+TESTREPORT.md

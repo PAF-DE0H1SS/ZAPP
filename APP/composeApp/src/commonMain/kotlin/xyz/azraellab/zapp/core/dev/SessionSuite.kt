@@ -27,8 +27,9 @@ internal fun sessionTests(out: MutableList<DevTest>) {
 
     out += DevTest("session/foreign-hidden", cat, "Чужая сессия не показывается") {
         // Каждая вкладка видит сессию только своей природы: остальные
-        // четыре состояния -- чужие и обязаны гаснуть, иначе поднятый
-        // VPN светится и на вкладке Tor, и наоборот.
+        // состояния -- чужие и обязаны гаснуть, иначе поднятый
+        // VPN светится и на вкладке Tor, и наоборот. Сбой -- отдельная
+        // история: он виден на любой вкладке, см. error-shown-anywhere.
         val pairs = listOf(
             SessionKind.VPN to SessionKind.TOR,
             SessionKind.TOR to SessionKind.VPN,
@@ -37,29 +38,30 @@ internal fun sessionTests(out: MutableList<DevTest>) {
         )
         for ((tab, owner) in pairs) {
             for (state in TunnelState.entries) {
-                val expected = if (state == TunnelState.DISCONNECTED) {
-                    state
-                } else {
-                    TunnelState.DISCONNECTED
+                val expected = when {
+                    state == TunnelState.DISCONNECTED -> state
+                    state == TunnelState.ERROR && owner != SessionKind.DPI -> state
+                    else -> TunnelState.DISCONNECTED
                 }
                 checkEq(expected, state.shownFor(tab, owner), "$owner на вкладке $tab/$state")
             }
         }
     }
 
-    out += DevTest("session/error-stays-its-own", cat, "Сбой остаётся своей вкладке") {
-        // Сбой чужого подключения не должен выпадать на чужую вкладку --
-        // там висела бы ошибка сессии, которую пользователь не запускал.
-        checkEq(
-            TunnelState.ERROR,
-            TunnelState.ERROR.shownFor(SessionKind.VPN, SessionKind.VPN),
-            "свой сбой виден"
-        )
-        checkEq(
-            TunnelState.DISCONNECTED,
-            TunnelState.ERROR.shownFor(SessionKind.TOR, SessionKind.VPN),
-            "чужой сбой не виден"
-        )
+    out += DevTest("session/error-shown-anywhere", cat, "Сбой виден на любой вкладке") {
+        // Пользователь мог уйти на другую вкладку после сбоя, и оставшееся
+        // «Выключено» без причины ничего не объясняло: строка с причиной
+        // рисуется только при TunnelState.ERROR, поэтому она обязана
+        // доиграть до любой активной вкладки.
+        for (tab in listOf(SessionKind.VPN, SessionKind.TOR)) {
+            for (owner in listOf(SessionKind.VPN, SessionKind.TOR)) {
+                checkEq(
+                    TunnelState.ERROR,
+                    TunnelState.ERROR.shownFor(tab, owner),
+                    "сбой $owner виден на вкладке $tab"
+                )
+            }
+        }
     }
 
     out += DevTest("session/relay-not-a-connection", cat, "Релей обхода не выдаётся за чью-то сессию") {

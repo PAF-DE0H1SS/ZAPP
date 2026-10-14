@@ -39,8 +39,14 @@ enum class SessionKind {
  * отключённой.
  *
  * [tab] -- владелец, которого ждёт вкладка; [owner] -- фактический
- * владелец сессии. Состояние ERROR не исключение: сбой остаётся
- * «своей» для вкладки, которая его вызвала, и чужой не показывается.
+ * владелец сессии. Чужая сессия гаснет, но **сбой не прячется**: причина
+ * падения видна на любой вкладке, иначе пользователь, переключившийся
+ * на другую, видит одно «Выключено» без объяснений. Исключение --
+ * [SessionKind.DPI]: пассивный релей поднимает автоматика, и его ошибка
+ * не должна выдаваться за чью-то.
  */
-fun TunnelState.shownFor(tab: SessionKind, owner: SessionKind): TunnelState =
-    if (tab == owner) this else TunnelState.DISCONNECTED
+fun TunnelState.shownFor(tab: SessionKind, owner: SessionKind): TunnelState = when {
+    tab == owner -> this
+    this == TunnelState.ERROR && owner != SessionKind.DPI -> TunnelState.ERROR
+    else -> TunnelState.DISCONNECTED
+}

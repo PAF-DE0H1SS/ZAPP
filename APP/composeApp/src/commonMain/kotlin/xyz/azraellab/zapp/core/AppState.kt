@@ -48,6 +48,7 @@ import xyz.azraellab.zapp.core.net.ConfigImport
 import xyz.azraellab.zapp.core.net.ClashTraffic
 import xyz.azraellab.zapp.core.net.LinkProbe
 import xyz.azraellab.zapp.core.net.LinkTarget
+import xyz.azraellab.zapp.core.net.fetchClashProbe
 import xyz.azraellab.zapp.core.net.fetchClashTraffic
 import xyz.azraellab.zapp.core.net.httpGetText
 import xyz.azraellab.zapp.core.net.probeLink
@@ -130,6 +131,32 @@ class AppState(
 
         /** Как часто пингуем активное подключение для плашки. */
         const val PING_TICK_MS: Long = 5_000L
+
+        /**
+         * Пауза сторожа «Подключено, но туннель мёртв» после подключения.
+         *
+         * Не «сколько ждём трафик» -- трафик при простое может не идти
+         * вовсе, и раньше сторож на этом врал. Просто даём боксу время
+         * разогреться перед единственной активной пробой.
+         */
+        const val TUNNEL_WATCHDOG_MS: Long = 15_000L
+
+        /** Таймаут самой пробы: узел за границей на симке отвечает и за 4 с. */
+        const val TUNNEL_PROBE_TIMEOUT_MS: Int = 8_000
+
+        /** Сколько раз пробуем, прежде чем признать туннель мёртвым. */
+        const val PROBE_ATTEMPTS: Int = 2
+
+        /** Пауза между пробами: группа узлов могла ещё выбирать рабочий. */
+        const val PROBE_RETRY_MS: Long = 5_000L
+
+        /**
+         * Куда шлётся проба: лёгкий ответ 204, без тела и без чужих доменов.
+         *
+         * Годится только адрес, до которого доходит большинство узлов:
+         * недоступная цель дала бы «туннель мёртв» на исправной сети.
+         */
+        const val WATCHDOG_PROBE_URL: String = "https://www.gstatic.com/generate_204"
 
         /** Таймаут одного замера пинга: дольше -- это уже мёртвый узел. */
         const val PING_TIMEOUT_MS: Int = 2_000
@@ -260,6 +287,7 @@ class AppState(
     // подписка не обнулила только что созданные job'ы.
     private var pingJob: Job? = null
     private var torSwitchJob: Job? = null
+    private var watchdogJob: Job? = null
 
     init {
         // Уведомления о подмене: движок сообщает только состояния, а что
@@ -318,6 +346,7 @@ class AppState(
                         startLinkSpeed()
                         startPing()
                         startTorAutoSwitch()
+                        startTunnelWatchdog()
                         // Опрос счётчиков нужен спарклайну: пока туннель
                         // поднят, держим его живым, чтобы история копилась
                         // без открытого окна мониторинга. Здесь, а не в
@@ -328,6 +357,7 @@ class AppState(
                         stopLinkSpeed()
                         stopPing()
                         stopTorAutoSwitch()
+                        stopTunnelWatchdog()
                     }
                     LauncherIcon.setConnected(current == TunnelState.CONNECTED)
                 }.onFailure { e ->
@@ -376,7 +406,10 @@ class AppState(
                 val speed = when {
                     // Интерфейсные счётчики -- по ним дельты точнее и видны сразу
                     // (native/proc/sysfs/TrafficStats). Приоритет выше clash_api:
-                    // в нынешней сборке sing-box /traffic отдаёт всегда нули.
+                    // итоги box'а обновляются рывками, и на секундном тике дают
+                    // рваную скорость. Зато clash_api -- единственный источник,
+                    // не требующий ни root, ни прав на /proc, и по нему же
+                    // считает сторож «Подключено, но туннель мёртв».
                     sample != null && sample.interfaces.isNotEmpty() ->
                         previous?.let { linkSpeedBetween(it, sample) }
                     previousClash != null && clash != null -> {
@@ -455,6 +488,67 @@ class AppState(
         pingJob?.cancel()
         pingJob = null
         PingBus.publish(null)
+    }
+
+    /**
+     * Сторож «Подключено, но туннель мёртв».
+     *
+     * «Подключено» -- это ещё не работа: пока туннель был чёрной дырой,
+     * плашка продолжала красоваться. Пинг тут не помощник -- он меряет
+     * путь **в обход** туннеля (см. PingBus) и о туннеле ничего не знает.
+     *
+     * Проверка **позитивная**. Первый вариант ждал, пока через узел пойдут
+     * байты, и врал на простаивающем телефоне: health-check'ы urltest сами
+     * по себе ничего не прощупывают (у группы `auto` история остаётся
+     * пустой), и при живом туннеле можно просидеть час без единого байта.
+     * Теперь box сам гоняет запрос через узел и отвечает задержкой --
+     * молчание значит, что туннель не пропускает.
+     *
+     * Способность api отвечать входит в проверку: без неё мёртвый туннель
+     * не отличить от выключенного api, поэтому пробник не стартует, пока
+     * clash_api выключен в настройках.
+     */
+    private fun startTunnelWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = null
+        if (!config.vpn.clashApiEnabled) return
+        val port = config.vpn.clashApiPort
+        val secret = config.vpn.clashApiSecret
+        watchdogJob = scope.launch {
+            delay(TUNNEL_WATCHDOG_MS)
+            // Повтор обязателен: в первые секунды группа узлов могла не
+            // успеть выбрать рабочий узел, и единственная проба читала бы
+            // «туннель мёртв» на сети, которая через пять секунд ожила бы.
+            var result: Int? = null
+            var attempt = 0
+            while (result == null && attempt < PROBE_ATTEMPTS) {
+                if (tunnel.state.value != TunnelState.CONNECTED) return@launch
+                attempt++
+                result = runCatching {
+                    fetchClashProbe(port, secret, WATCHDOG_PROBE_URL, TUNNEL_PROBE_TIMEOUT_MS)
+                }.getOrNull()
+                if (result == null && attempt < PROBE_ATTEMPTS) {
+                    AppLog.log("vpn", "watchdog: probe missed (attempt $attempt), retrying")
+                    delay(PROBE_RETRY_MS)
+                }
+            }
+            val delayMs = result
+            if (delayMs == null) {
+                AppLog.log("vpn", "watchdog: the probe through the node did not pass")
+                // Стоп раньше причины: `fail` -- это только строка и
+                // состояние, бокс он не гасит, и без остановки следующий
+                // старт падал бы на занятом порту clash_api.
+                runCatching { tunnel.disconnect() }
+                tunnel.fail("the tunnel is up, but the probe through the node did not pass")
+            } else {
+                AppLog.log("spd", "watchdog probe ok: ${delayMs}ms")
+            }
+        }
+    }
+
+    private fun stopTunnelWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = null
     }
 
     /**

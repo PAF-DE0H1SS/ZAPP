@@ -205,6 +205,11 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
     var importText by remember { mutableStateOf("") }
 
     val visible = remember(config.profiles) { state.visibleVpnProfiles() }
+    // Достижимость, а не живость: проба -- это TCP/UDP-доступ до сервера
+    // (см. probeLink), она не гоняет через узел ни байта. Замерено на
+    // устройстве: профиль висел `alive: true, latencyMs: 55` от вчерашнего
+    // дня, пока туннель через него не пропускал вообще ничего. Поэтому
+    // в подписи «доступных», а не «живых» -- честнее ровно то, что измеряется.
     val alive = visible.count { it.health.alive == true }
     val sorted = remember(visible, byPing) { VpnConnects.sort(visible, byPing) }
     val filtered = remember(sorted, query, onlyAlive) { VpnConnects.filter(sorted, onlyAlive, query) }

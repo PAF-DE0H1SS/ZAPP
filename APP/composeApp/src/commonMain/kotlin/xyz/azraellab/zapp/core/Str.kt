@@ -1161,7 +1161,7 @@ enum class Str {
         VPN_CHECK_ALL -> pick(lang, "Check all", "Проверить все", "全部检查")
         VPN_CHECKING -> pick(lang, "Checking", "Проверка", "检查中")
         VPN_PING_LABEL -> pick(lang, "Ping", "Пинг", "延迟")
-        VPN_STATUS_ALIVE -> pick(lang, "Alive", "Жив", "存活")
+        VPN_STATUS_ALIVE -> pick(lang, "Reachable", "Доступен", "可达")
         VPN_STATUS_DEAD -> pick(lang, "Dead", "Мёртв", "失效")
         VPN_STATUS_UNKNOWN -> pick(lang, "Not checked", "Не проверялся", "未检查")
         VPN_GROUP_MODE -> pick(lang, "Auto-pick best", "Автовыбор лучшего", "自动选择最优")
@@ -1183,7 +1183,7 @@ enum class Str {
         VPN_SORT_PING -> pick(lang, "By ping", "По пингу", "按延迟")
         VPN_SORT_NAME -> pick(lang, "By name", "По имени", "按名称")
         VPN_MANUAL -> pick(lang, "Manual", "Вручную", "手动")
-        VPN_ALIVE_COUNT -> pick(lang, "Alive", "Живых", "存活")
+        VPN_ALIVE_COUNT -> pick(lang, "Reachable", "Доступных", "可达")
         VPN_IMPORTED -> pick(lang, "Imported", "Импортировано", "已导入")
         VPN_SOURCE_ADDED -> pick(lang, "Source added", "Источник добавлен", "来源已添加")
 
@@ -1201,7 +1201,7 @@ enum class Str {
         )
         VPN_ROUTING -> pick(lang, "Routing and DNS", "Маршруты и DNS", "路由与 DNS")
         VPN_SHOW_MORE -> pick(lang, "Show more", "Показать ещё", "显示更多")
-        VPN_ONLY_ALIVE -> pick(lang, "Alive only", "Только живые", "仅存活")
+        VPN_ONLY_ALIVE -> pick(lang, "Reachable only", "Только доступные", "仅可达")
         VPN_SEARCH -> pick(lang, "Search", "Поиск", "搜索")
 
         ROUTING_SECTIONS -> pick(lang, "Routing sections", "Секции маршрутизации", "路由分段")

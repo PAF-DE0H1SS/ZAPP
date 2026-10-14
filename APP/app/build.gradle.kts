@@ -19,7 +19,7 @@ android {
         applicationId = "xyz.azraellab.zapp"
         minSdk = 33
         targetSdk = 36
-        versionCode = 14
+        versionCode = 15
         versionName = zappVersion
 
         // STL не отключаем. `ANDROID_STL=none` убирает libc++ из sysroot, и

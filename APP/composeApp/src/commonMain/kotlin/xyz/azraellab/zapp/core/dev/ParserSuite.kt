@@ -13,6 +13,10 @@ import xyz.azraellab.zapp.core.net.ProxyScheme
 import xyz.azraellab.zapp.core.net.ProxyUri
 import xyz.azraellab.zapp.core.net.SingboxConfig
 import xyz.azraellab.zapp.core.net.WireGuardIni
+import xyz.azraellab.zapp.core.net.encodePath
+import xyz.azraellab.zapp.core.net.encodeQuery
+import xyz.azraellab.zapp.core.net.clashStatus
+import xyz.azraellab.zapp.core.net.decodeClashBody
 import xyz.azraellab.zapp.core.VpnConfig
 import kotlinx.serialization.json.Json
 
@@ -577,7 +581,7 @@ out += DevTest("parsers/singbox-group-all-bad-fails-fast", DevCategory.PARSERS, 
         checkTrue(built.isFailure, "ожидаем отказ: ни одной рабочей ссылки")
     }
 
-    out += DevTest("parsers/clash-traffic-parse", DevCategory.PARSERS, "clash_api /traffic разбирается в байты") {
+    out += DevTest("parsers/clash-traffic-parse", DevCategory.PARSERS, "clash_api разбирается в байты") {
         val t = ClashStats.parse("""{"up": 12345, "down": 67890}""")
         checkNotNull(t) { "не распарсилось" }
         checkEq(12345L, t!!.up, "up")
@@ -585,6 +589,143 @@ out += DevTest("parsers/singbox-group-all-bad-fails-fast", DevCategory.PARSERS, 
         checkNotNull(ClashStats.parse("""{"up":0,"down":0}""")) { "нули валидны" }
         checkEq(null, ClashStats.parse("not json"), "мусор")
         checkEq(null, ClashStats.parse("""{"up": -1, "down": 1}"""), "минус -- не счётчик")
+        // `/traffic` в нынешней сборке sing-box всегда отдаёт нули, поэтому
+        // реально читается `/connections` -- у него свои имена полей, и
+        // список сессий стоит перед итогами.
+        val c = ClashStats.parse("""{"connections":[],"downloadTotal":7886987,"uploadTotal":2574347}""")
+        checkNotNull(c) { "итоги /connections не распарсились" }
+        checkEq(7886987L, c!!.down, "downloadTotal")
+        checkEq(2574347L, c.up, "uploadTotal")
+    }
+
+    out += DevTest("parsers/clash-delay-probe", DevCategory.PARSERS, "Проба туннеля: ответ -- туннель жив") {
+        checkEq(3936, ClashStats.delay("""{"delay":3936}"""), "задержка снята")
+        checkEq(0, ClashStats.delay("""{"delay":0}"""), "мгновенно -- тоже ответ")
+        // Провал замера приходит как {"message":…} без поля delay.
+        checkEq(null, ClashStats.delay("""{"message":"An error occurred in the delay test"}"""), "провал пробы")
+        checkEq(null, ClashStats.delay("not json"), "мусор")
+        checkEq(null, ClashStats.delay("""{"delay":-5}"""), "отрицательного времени не бывает")
+        checkEq(null, ClashStats.delay("""{"delay":999999999}"""), "перебор -- это уже зависший запрос")
+    }
+
+    out += DevTest("parsers/clash-probe-target", DevCategory.PARSERS, "Проба сама находит путь до узла") {
+        // Замерено на устройстве с одним активным профилем: `/proxies`
+        // отдаёт три записи -- `GLOBAL` (Fallback), сам узел и `Direct` --
+        // группы auto нет вовсе, и подставить её имя наугад -- получить
+        // 404 вместо пробы. Здесь у GLOBAL выбор указан; пустой вариант
+        // проверен ниже.
+        val single = """
+            {"proxies":{
+              "GLOBAL":{"type":"Fallback","now":"LV node","all":["LV node"]},
+              "LV node":{"type":"VLESS"},
+              "direct":{"type":"Direct"}
+            }}
+        """.trimIndent()
+        checkEq("LV node", ClashStats.probeTarget(single), "одиночный узел")
+
+        // Указатели ведут по цепочке: группа -> группа -> конкретный узел.
+        val grouped = """
+            {"proxies":{
+              "GLOBAL":{"type":"Fallback","now":"auto","all":["auto"]},
+              "auto":{"type":"URLTest","now":"node-1","all":["node-1","node-2"]},
+              "node-1":{"type":"Trojan"},
+              "node-2":{"type":"VMess"},
+              "direct":{"type":"Direct"}
+            }}
+        """.trimIndent()
+        checkEq("node-1", ClashStats.probeTarget(grouped), "автовыбор -> узел")
+
+        // Настоящий ответ устройства: группа есть, но она ещё ничего не
+        // выбирала (`now` пуст). Цель -- сама группа: трафик пойдёт именно
+        // через неё, а падать на первый попавшийся узел нельзя -- тот может
+        // быть мёртв при полностью рабочем туннеле, и наоборот.
+        val unselected = """
+            {"proxies":{
+              "GLOBAL":{"type":"Fallback","now":"auto","all":["auto"]},
+              "auto":{"type":"URLTest","now":"","all":["node-1","node-2"]},
+              "node-1":{"type":"VLESS"},
+              "direct":{"type":"Direct"}
+            }}
+        """.trimIndent()
+        checkEq("auto", ClashStats.probeTarget(unselected), "группа без выбора -- цель сама группа")
+
+        // Замерено на устройстве: у `GLOBAL` в одиночном конфиге тип
+        // `Fallback`, и `/delay` по нему отвечает `404` за 7 мс, тогда как
+        // реальный узел меряет полные 8 с. Если у `GLOBAL` нет выбора,
+        // цель -- узел, иначе сторож убивал бы живой туннель через 15 с.
+        val unselectedGlobal = """
+            {"proxies":{
+              "GLOBAL":{"type":"Fallback","now":"","all":["LV node"]},
+              "LV node":{"type":"VLESS"},
+              "direct":{"type":"Direct"}
+            }}
+        """.trimIndent()
+        checkEq("LV node", ClashStats.probeTarget(unselectedGlobal), "GLOBAL без выбора -- берём узел")
+
+        // Единственный выбор -- прямой выход: мимо прокси, замер по нему
+        // ничего не доказал бы, поэтому цели нет вовсе.
+        val onlyDirect =
+            """{"proxies":{"GLOBAL":{"type":"Fallback","now":"direct"},"direct":{"type":"Direct"}}}"""
+        checkEq(null, ClashStats.probeTarget(onlyDirect), "прямой выход -- не цель")
+        checkEq(null, ClashStats.probeTarget("not json"), "мусор")
+        checkEq(null, ClashStats.probeTarget("""{"proxies":{}}"""), "пусто")
+    }
+
+    out += DevTest("parsers/clash-probe-encoding", DevCategory.PARSERS, "Путь пробы кодируется побайтово") {
+        // Регрессия: посимвольный обход рассыпал суррогатные пары эмодзи на
+        // половинки, и цель `🇳🇱 …` не находилась -- 404 вместо замера.
+        val enc = encodePath("🇳🇱 Netherlands")
+        checkTrue(
+            enc.startsWith("%F0%9F%87%B3%F0%9F%87%B1%20"),
+            "эмодзи ушло в %XX побайтово: $enc"
+        )
+        checkEq("LV%20node%20%7C%20%5B%2ACIDR%5D", encodePath("LV node | [*CIDR]"), "ASCII-спецсимволы")
+        checkEq("auto", encodePath("auto"), "обычный тег не трогаем")
+        // Значение query уезжает целиком: `&` и `?` внутри адреса иначе
+        // разорвут строку запроса, и сервер увидит обрезанную цель.
+        checkEq(
+            "https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204",
+            encodeQuery("https://www.gstatic.com/generate_204"),
+            "адрес целиком"
+        )
+        checkEq("a%20b", encodeQuery("a b"), "пробел")
+        checkEq("a%2Bb", encodeQuery("a+b"), "плюс не остаётся плюсом")
+    }
+
+    out += DevTest("parsers/clash-body-utf8", DevCategory.PARSERS, "Ответ api читается как UTF-8") {
+        // Регрессия: тело ответа читалось как ISO-8859-1, эмодзи в теге узла
+        // превращалось в латиницу, повторное кодирование давало мусорный
+        // путь -- и сервер отвечал 404 на полностью живом узле. В group-режиме
+        // баг прятался: там цель `auto`, чистый ASCII.
+        val json = """{"proxies":{"🇳🇱 Netherlands | [*CIDR]":{"type":"VLESS"}}}"""
+        val raw = ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + json)
+            .toByteArray(Charsets.UTF_8)
+        checkEq(200, clashStatus(raw), "код статуса из строки протокола")
+        val body = decodeClashBody(raw) ?: error("тело не разобранось")
+        checkEq(json, body, "юникод доживает до парсера")
+        val target = ClashStats.probeTarget(body) ?: error("цель не найдена")
+        checkEq("🇳🇱 Netherlands | [*CIDR]", target, "цель -- имя узла как на сервере")
+        checkEq(
+            "%F0%9F%87%B3%F0%9F%87%B1%20Netherlands%20%7C%20%5B%2ACIDR%5D",
+            encodePath(target),
+            "и кодируется обратно в те же байты"
+        )
+
+        // chunked: размер шестнадцатеричный, payload тоже UTF-8
+        val size = json.toByteArray(Charsets.UTF_8).size
+        val chunked = ("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" +
+            "${size.toString(16)}\r\n$json\r\n0\r\n\r\n").toByteArray(Charsets.UTF_8)
+        checkEq(json, decodeClashBody(chunked), "chunked с юникодом")
+
+        checkEq(
+            404,
+            clashStatus(
+                "HTTP/1.1 404 Not Found\r\n\r\n{\"message\":\"Resource not found\"}"
+                    .toByteArray(Charsets.UTF_8)
+            ),
+            "отказ сервера различим по коду"
+        )
+        checkEq(null, decodeClashBody(ByteArray(0)), "пустой ответ")
     }
 
     out += DevTest("parsers/singbox-tor-socks", DevCategory.PARSERS, "Tor-конфиг смотрит в локальный SOCKS") {

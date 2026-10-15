@@ -379,8 +379,25 @@ class AppState(
         // все остальные подписки -- скорость, иконка, GPS. Ошибка пишется
         // в журнал, а подписка продолжает жить.
         scope.launch {
+            // Предыдущее состояние -- только для хаптика: подписка получает
+            // и начальное значение, а на нём вибрировать не о чем.
+            var previous: TunnelState? = null
             tunnel.state.collect { current ->
                 AppLog.log("state", "tunnel -> $current")
+                // Такт на смене состояния (UX3): подключение, разрыв, ошибка.
+                // runCatching внутри actual -- здесь пусть тоже не валит
+                // подписку из-за отсутствия мотора или запрета вибрации.
+                previous?.let { from ->
+                    val event = when {
+                        current == TunnelState.CONNECTED -> HapticEvent.CONNECTED
+                        current == TunnelState.ERROR -> HapticEvent.ERROR
+                        from == TunnelState.CONNECTED &&
+                            current == TunnelState.DISCONNECTED -> HapticEvent.DISCONNECTED
+                        else -> null
+                    }
+                    if (event != null) runCatching { Haptics.pulse(event) }
+                }
+                previous = current
                 runCatching {
                     if (current == TunnelState.CONNECTED) {
                         startLinkSpeed()

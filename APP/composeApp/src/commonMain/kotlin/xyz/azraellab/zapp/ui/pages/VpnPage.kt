@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
+import xyz.azraellab.zapp.core.LinkSpeed
 import xyz.azraellab.zapp.core.LinkSpeedBus
 import xyz.azraellab.zapp.core.PingBus
 import xyz.azraellab.zapp.core.RouteHealth
@@ -61,6 +64,7 @@ import xyz.azraellab.zapp.ui.components.ZappListRow
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.components.ZappTextField
 import xyz.azraellab.zapp.ui.theme.AzraelInfo
+import xyz.azraellab.zapp.ui.theme.AzraelMotion
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.theme.monoData
 import xyz.azraellab.zapp.ui.tr
@@ -311,6 +315,9 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
                 path = "vpn.add_links"
             )
         }
+        // Прогресс проверки виден полосой, а не только цифрой в подписи
+        // кнопки: N/M у строки есть, у заполнения -- не было (UX3).
+        CheckProgressLine(progress = checkProgress)
         ZappButton(
             text = tr(Str.VPN_ADD_PROFILE),
             role = ButtonRole.GHOST,
@@ -579,6 +586,28 @@ internal fun SourcesExpandable(
     }
 }
 
+/**
+ * Полоса прогресса проверки коннектов (UX3).
+ *
+ * Цифры `done/total` были только в подписи кнопки -- маленький текст,
+ * который легко не заметить. Полоса под строкой кнопок показывает заполнение
+ * плавно (animateFloatAsState внутри LinearProgressIndicator) и гаснет,
+ * когда проверка кончилась: компонент не рисует ничего при останове.
+ */
+@Composable
+internal fun CheckProgressLine(progress: AppState.CheckProgress) {
+    if (!progress.running) return
+    val fraction by animateFloatAsState(
+        targetValue = if (progress.total > 0) progress.done.toFloat() / progress.total else 0f,
+        animationSpec = AzraelMotion.spec(AzraelMotion.base),
+        label = "check-progress"
+    )
+    LinearProgressIndicator(
+        progress = { fraction },
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
 /** Подпись состояния источника: загрузка, число коннектов или ошибка. */
 @Composable
 private fun sourceSubtitle(status: AppState.SourceStatus?): String {
@@ -727,9 +756,29 @@ internal fun SpeedLine(state: AppState, tunnelState: TunnelState) {
     val history by state.trafficHistory.collectAsState()
     val summary by state.trafficSummaryFlow.collectAsState()
     val connected = tunnelState == TunnelState.CONNECTED
+    // Плавный счётчик (UX3): опрос даёт новое значение раз в секунду, и
+    // без сглаживания цифры прыгали скачком. Значение доезжает до цели
+    // за base (220 мс) -- глаз видит изменение, а не подмену. Считаем
+    // в байтах/с (Float достаточно: речь о сотнях килобайт), форматирование
+    // и так чистая функция statusLine.
+    val downTarget = (linkSpeed?.downBps ?: 0L).toFloat()
+    val upTarget = (linkSpeed?.upBps ?: 0L).toFloat()
+    val down by animateFloatAsState(
+        targetValue = downTarget,
+        animationSpec = AzraelMotion.spec(AzraelMotion.base),
+        label = "speed-down"
+    )
+    val up by animateFloatAsState(
+        targetValue = upTarget,
+        animationSpec = AzraelMotion.spec(AzraelMotion.base),
+        label = "speed-up"
+    )
+    // Скорость есть только пока туннель поднят и опрос крутится: null --
+    // это «нет данных», и прятать его сглаживанием в ноль нельзя.
+    val smoothed = linkSpeed?.let { LinkSpeed(down.toLong(), up.toLong()) }
     val line = statusLine(
         connected = connected,
-        speed = linkSpeed,
+        speed = smoothed,
         pingMs = ping,
         modes = activeModes(state, tunnelState)
     )

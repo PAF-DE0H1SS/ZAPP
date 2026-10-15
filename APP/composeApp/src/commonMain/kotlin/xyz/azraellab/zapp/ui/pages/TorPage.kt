@@ -253,6 +253,9 @@ private fun BridgesExpandable(state: AppState, checkProgress: AppState.CheckProg
                 modifier = Modifier.fillMaxWidth(),
                 path = "tor.check_all"
             )
+            // Прогресс той же полосой, что и на VPN: одна проверка --
+            // одно поведение, а не два разных вида (UX3).
+            CheckProgressLine(progress = checkProgress)
         }
 
         if (shown.isEmpty()) {

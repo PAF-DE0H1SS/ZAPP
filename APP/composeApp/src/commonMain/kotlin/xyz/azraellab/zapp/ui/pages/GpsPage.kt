@@ -26,6 +26,7 @@ import xyz.azraellab.zapp.ui.components.ZappChoiceRow
 import xyz.azraellab.zapp.ui.components.ZappEmptyState
 import xyz.azraellab.zapp.ui.components.ZappDecimalField
 import xyz.azraellab.zapp.ui.components.ZappExpandableCard
+import xyz.azraellab.zapp.ui.components.ZappEmptyCard
 import xyz.azraellab.zapp.ui.components.ZappNumberField
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.components.ZappTextField
@@ -239,11 +240,9 @@ fun GpsPage(state: AppState) {
             path = "gps.log.expand"
         ) {
             if (gpsLog.isEmpty()) {
-                Text(
-                    text = tr(Str.ENGINE_LOG_EMPTY),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // Пусто -- не голая строка: иллюстрация объясняет, что
+                // журнал ещё не заполнен (UX2).
+                ZappEmptyCard(title = tr(Str.ENGINE_LOG_EMPTY))
             } else {
                 // Последние строки ближе к низу карточки: свежее событие
                 // важнее старого, и глазу не нужно скроллить назад.

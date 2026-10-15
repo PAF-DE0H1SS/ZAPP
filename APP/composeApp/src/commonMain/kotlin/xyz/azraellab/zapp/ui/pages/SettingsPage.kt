@@ -63,6 +63,7 @@ import xyz.azraellab.zapp.ui.components.ZappButtonRow
 import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
 import xyz.azraellab.zapp.ui.components.ZappDialog
+import xyz.azraellab.zapp.ui.components.ZappEmptyCard
 import xyz.azraellab.zapp.ui.components.ZappListRow
 import xyz.azraellab.zapp.ui.components.ZappNumberField
 import xyz.azraellab.zapp.ui.components.ZappSectionTitle
@@ -393,11 +394,7 @@ private fun PermissionsSection(state: AppState) {
     PageGroup(tr(Str.SETTINGS_PERMISSIONS)) {
         ZappCard {
             if (statuses.isEmpty()) {
-                Text(
-                    text = tr(Str.PROBE_UNKNOWN),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                ZappEmptyCard(title = tr(Str.PROBE_UNKNOWN))
             } else {
                 statuses.forEach { status ->
                     PermissionRow(
@@ -612,11 +609,7 @@ private fun PresetsSection(state: AppState) {
         }
         ZappCard {
             if (state.presets.isEmpty()) {
-                Text(
-                    text = tr(Str.LIST_EMPTY_PRESETS),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                ZappEmptyCard(title = tr(Str.LIST_EMPTY_PRESETS))
             } else {
                 state.presets.forEach { preset ->
                     PresetRow(
@@ -1258,11 +1251,7 @@ private fun LogSection(state: AppState) {
         ErrorLogCard()
         ZappCard {
             if (lines.isEmpty()) {
-                Text(
-                    text = tr(Str.LOG_EMPTY),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                ZappEmptyCard(title = tr(Str.LOG_EMPTY))
             } else {
                 // Хвост ленты: новые записи внизу, экран показывает последние.
                 lines.takeLast(100).forEach { line ->
@@ -1313,11 +1302,7 @@ private fun ErrorLogCard() {
             }
         )
         if (errors.isEmpty()) {
-            Text(
-                text = tr(Str.LOG_ERRORS_EMPTY),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            ZappEmptyCard(title = tr(Str.LOG_ERRORS_EMPTY))
         } else {
             // Только хвост: журнал и так ограничен, а экран -- про последние.
             errors.takeLast(50).forEach { line ->

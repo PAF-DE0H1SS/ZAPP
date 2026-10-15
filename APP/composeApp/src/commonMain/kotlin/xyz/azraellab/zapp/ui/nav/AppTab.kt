@@ -1,14 +1,8 @@
 package xyz.azraellab.zapp.ui.nav
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.ui.theme.AppIcons
 
 /**
  * Разделы приложения.
@@ -25,13 +19,13 @@ import xyz.azraellab.zapp.core.Str
  * [short] -- метка для нижней панели: полные названия в парных кнопках
  * («T | V», «Z | GDPI») не помещаются, поэтому там идут сокращения.
  */
-enum class AppTab(val title: Str, val short: Str, val icon: ImageVector) {
-    TOR(Str.TAB_TOR, Str.TAB_TOR_SHORT, Icons.Filled.Hub),
-    VPN(Str.TAB_VPN, Str.TAB_VPN_SHORT, Icons.Filled.Shield),
-    ZAPRET(Str.TAB_ZAPRET, Str.TAB_ZAPRET_SHORT, Icons.Filled.Block),
-    GOODBYE_DPI(Str.TAB_GOODBYE_DPI, Str.TAB_GOODBYE_DPI_SHORT, Icons.Filled.Public),
-    GPS(Str.TAB_GPS, Str.TAB_GPS, Icons.Filled.Place),
-    SETTINGS(Str.SETTINGS, Str.SETTINGS, Icons.Filled.Tune);
+enum class AppTab(val title: Str, val short: Str, val icon: ImageVector, val activeIcon: ImageVector = icon) {
+    TOR(Str.TAB_TOR, Str.TAB_TOR_SHORT, AppIcons.Tor, AppIcons.TorActive),
+    VPN(Str.TAB_VPN, Str.TAB_VPN_SHORT, AppIcons.Vpn, AppIcons.VpnActive),
+    ZAPRET(Str.TAB_ZAPRET, Str.TAB_ZAPRET_SHORT, AppIcons.Dpi, AppIcons.DpiActive),
+    GOODBYE_DPI(Str.TAB_GOODBYE_DPI, Str.TAB_GOODBYE_DPI_SHORT, AppIcons.Globe, AppIcons.GlobeActive),
+    GPS(Str.TAB_GPS, Str.TAB_GPS, AppIcons.Location, AppIcons.LocationActive),
+    SETTINGS(Str.SETTINGS, Str.SETTINGS, AppIcons.Settings, AppIcons.SettingsActive);
 
     companion object {
         val first: AppTab = TOR

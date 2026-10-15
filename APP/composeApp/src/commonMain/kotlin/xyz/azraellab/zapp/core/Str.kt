@@ -72,6 +72,7 @@ enum class Str {
     COMMON_CANCEL,
     COMMON_SEARCH,
     COMMON_NOTHING_FOUND,
+    PICKER_SEARCH_HINT,
 
     /** Списки доменов и приложений. */
     LIST_DOMAINS,
@@ -455,6 +456,8 @@ enum class Str {
     VPN_SOURCE_REFRESH,
     VPN_SOURCE_REFRESHED,
     VPN_SOURCE_FAILED,
+    SOURCES_EMPTY_TITLE,
+    SOURCES_EMPTY_BODY,
     VPN_SOURCE_REMOVED,
     VPN_SOURCE_EMPTY,
     VPN_ARCHIVE,
@@ -665,6 +668,12 @@ enum class Str {
         COMMON_CANCEL -> pick(lang, "Cancel", "Отмена", "取消")
         COMMON_SEARCH -> pick(lang, "Search", "Поиск", "搜索")
         COMMON_NOTHING_FOUND -> pick(lang, "Nothing found", "Ничего не нашлось", "未找到")
+        PICKER_SEARCH_HINT -> pick(
+            lang,
+            "Try a shorter query or clear the search field.",
+            "Попробуйте более короткий запрос или очистите строку поиска.",
+            "请尝试更短的查询或清空搜索框。"
+        )
 
         LIST_DOMAINS -> pick(lang, "Domains", "Домены", "域名")
         LIST_APPS -> pick(lang, "Applications", "Приложения", "应用")
@@ -1273,6 +1282,13 @@ enum class Str {
 
         VPN_SOURCES -> pick(lang, "Sources", "Источники", "来源")
         VPN_SOURCE_ADD -> pick(lang, "Add source", "Добавить источник", "添加来源")
+        SOURCES_EMPTY_TITLE -> pick(lang, "No sources yet", "Источников пока нет", "还没有来源")
+        SOURCES_EMPTY_BODY -> pick(
+            lang,
+            "Add a source with links or refresh the default one to load connections.",
+            "Добавьте источник со ссылками или обновите исходный, чтобы загрузить коннекты.",
+            "添加带链接的来源或刷新默认来源以加载连接。"
+        )
         VPN_SOURCE_NAME -> pick(lang, "Source name", "Название источника", "来源名称")
         VPN_SOURCE_URL -> pick(lang, "Subscription URL", "URL подписки", "订阅链接")
         VPN_SOURCE_REFRESH -> pick(lang, "Update", "Обновить", "更新")

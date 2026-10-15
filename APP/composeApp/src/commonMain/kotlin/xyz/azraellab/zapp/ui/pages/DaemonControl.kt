@@ -28,6 +28,7 @@ import xyz.azraellab.zapp.core.probe.StrategyProbeCoordinator
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappCard
+import xyz.azraellab.zapp.ui.components.ZappEmptyCard
 import xyz.azraellab.zapp.ui.components.ZappExpandableCard
 import xyz.azraellab.zapp.ui.rememberLang
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
@@ -130,11 +131,9 @@ fun DaemonLogCard(engine: DaemonEngine, path: String = "daemon.log.expand") {
         path = path
     ) {
         if (lines.isEmpty()) {
-            Text(
-                text = tr(Str.ENGINE_LOG_EMPTY),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // Пусто -- не голая строка: иллюстрация объясняет, что
+            // журнал ещё не заполнен (UX2).
+            ZappEmptyCard(title = tr(Str.ENGINE_LOG_EMPTY))
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(AzraelSpace.xs)) {
                 lines.takeLast(JOURNAL_VISIBLE).forEach { (line, isError) ->

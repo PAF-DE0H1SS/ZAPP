@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
+import xyz.azraellab.zapp.ui.theme.AppIcons
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.tr
 
@@ -82,7 +81,7 @@ fun <T> ZappPickerRow(
             overflow = TextOverflow.Ellipsis
         )
         Icon(
-            imageVector = Icons.Filled.KeyboardArrowDown,
+            imageVector = AppIcons.Chevron,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -113,10 +112,11 @@ fun <T> ZappPickerRow(
                         path = path?.let { "$it.search" }
                     )
                     if (filtered.isEmpty()) {
-                        Text(
-                            text = tr(Str.COMMON_NOTHING_FOUND),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        // Пустой результат -- с картинкой и подсказкой,
+                        // а не одна строка (UX2).
+                        ZappEmptyCard(
+                            title = tr(Str.COMMON_NOTHING_FOUND),
+                            body = tr(Str.PICKER_SEARCH_HINT)
                         )
                     } else {
                         LazyColumn(

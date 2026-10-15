@@ -38,6 +38,7 @@ import xyz.azraellab.zapp.ui.components.ZappChoiceRow
 import xyz.azraellab.zapp.ui.components.ZappEmptyState
 import xyz.azraellab.zapp.ui.components.ZappListRow
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
+import xyz.azraellab.zapp.ui.components.ZappSkeletonList
 import xyz.azraellab.zapp.ui.components.ZappTextField
 import xyz.azraellab.zapp.ui.components.debugPath
 import xyz.azraellab.zapp.ui.tr
@@ -244,6 +245,13 @@ fun PerAppPicker(state: AppState, scope: PerAppScope) {
             },
             path = "perapp.showSystem"
         )
+        if (catalog == null) {
+            // Каталог в сотни пакетов грузится заметно: раньше список
+            // молча пустел, и непонятно -- нет приложений или ещё не
+            // успели. Скелетон даёт видимость работы (UX2).
+            Spacer(modifier = Modifier.height(4.dp))
+            ZappSkeletonList(rows = 4)
+        }
         if (catalog != null && visible.isEmpty()) {
             Spacer(modifier = Modifier.height(4.dp))
             ZappEmptyState(title = tr(Str.PERAPP_NO_MATCH))

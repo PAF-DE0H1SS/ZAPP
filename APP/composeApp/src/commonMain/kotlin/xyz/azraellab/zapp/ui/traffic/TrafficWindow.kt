@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +36,7 @@ import xyz.azraellab.zapp.core.TrafficConfig
 import xyz.azraellab.zapp.core.TrafficFormat
 import xyz.azraellab.zapp.core.TrafficPoint
 import xyz.azraellab.zapp.core.TrafficSummary
+import xyz.azraellab.zapp.ui.theme.AppIcons
 import xyz.azraellab.zapp.ui.theme.AzraelInfo
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.theme.monoData
@@ -71,7 +70,7 @@ fun TrafficWindow(state: AppState, onBack: () -> Unit) {
                 title = { Text(tr(Str.TAB_TRAFFIC)) },
                 navigationIcon = {
                     IconButton(modifier = Modifier.debugPath("traffic.back"), onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        Icon(AppIcons.Back, contentDescription = null)
                     }
                 }
             )

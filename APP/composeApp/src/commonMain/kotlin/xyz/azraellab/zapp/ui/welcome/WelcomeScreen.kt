@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -53,6 +54,7 @@ import xyz.azraellab.zapp.core.update.UpdateState
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.ComponentColors
+import xyz.azraellab.zapp.ui.components.EmptyIllustration
 import xyz.azraellab.zapp.ui.components.RegionDropdown
 import xyz.azraellab.zapp.ui.components.ZappBanner
 import xyz.azraellab.zapp.ui.components.ZappButton
@@ -120,6 +122,14 @@ fun WelcomeScreen(state: AppState) {
 
 @Composable
 private fun WelcomeStep(onNext: () -> Unit) {
+    // Иллюстрация сверху: первый шаг -- единственное место, где приложение
+    // представляет себя; без картинки это два текста в пустоте (UX2).
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        EmptyIllustration(size = 96.dp)
+    }
     Text(
         text = tr(Str.WELCOME_TITLE),
         style = MaterialTheme.typography.headlineMedium,

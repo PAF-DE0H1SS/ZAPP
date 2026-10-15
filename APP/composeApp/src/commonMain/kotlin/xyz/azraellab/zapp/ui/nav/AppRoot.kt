@@ -173,7 +173,7 @@ fun AppRoot(state: AppState) {
                         icon = {
                             if (slot.size == 1) {
                                 Icon(
-                                    imageVector = slot.first().icon,
+                                    imageVector = if (isSelected) slot.first().activeIcon else slot.first().icon,
                                     contentDescription = null,
                                     tint = if (isSelected) {
                                         MaterialTheme.colorScheme.primary
@@ -189,7 +189,7 @@ fun AppRoot(state: AppState) {
                                     slot.forEachIndexed { index, member ->
                                         if (index > 0) Spacer(Modifier.width(4.dp))
                                         Icon(
-                                            imageVector = member.icon,
+                                            imageVector = if (member == activeTab) member.activeIcon else member.icon,
                                             contentDescription = null,
                                             modifier = Modifier.size(if (member == shown) 22.dp else 16.dp),
                                             tint = if (isSelected && member == activeTab) {

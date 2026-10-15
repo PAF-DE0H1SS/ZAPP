@@ -54,6 +54,7 @@ import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappButtonRow
 import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
+import xyz.azraellab.zapp.ui.components.ZappEmptyCard
 import xyz.azraellab.zapp.ui.components.ZappEmptyState
 import xyz.azraellab.zapp.ui.components.ZappExpandableCard
 import xyz.azraellab.zapp.ui.components.ZappListRow
@@ -537,6 +538,16 @@ internal fun SourcesExpandable(
             }
         }
 
+        if (sources.isEmpty()) {
+            // Пусто -- не молчим: раньше здесь вообще не рисовалось ничего,
+            // кроме бейджа «0» и кнопок. Иллюстрация + подпись объясняют,
+            // что делать (UX2).
+            ZappEmptyCard(
+                title = tr(Str.SOURCES_EMPTY_TITLE),
+                body = tr(Str.SOURCES_EMPTY_BODY)
+            )
+        }
+
         sources.forEach { source ->
             val status = sourceStatus[source.id]
             ZappCard {
@@ -635,11 +646,9 @@ internal fun JournalExpandable(tunnelLog: List<String>, path: String = "log.expa
         path = path
     ) {
         if (tunnelLog.isEmpty()) {
-            Text(
-                text = tr(Str.ENGINE_LOG_EMPTY),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // Пусто -- не голая строка: иллюстрация объясняет, что
+            // журнал ещё не заполнен (UX2).
+            ZappEmptyCard(title = tr(Str.ENGINE_LOG_EMPTY))
         } else {
             tunnelLog.takeLast(12).forEach { line ->
                 val isError = looksLikeErrorLine(line)

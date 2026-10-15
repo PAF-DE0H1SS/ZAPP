@@ -18,8 +18,10 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
+import kotlin.math.abs
 import xyz.azraellab.zapp.core.daemon.DaemonEvent
 import xyz.azraellab.zapp.core.daemon.DaemonId
+import xyz.azraellab.zapp.core.geo.photonReverse
 import xyz.azraellab.zapp.core.daemon.DaemonSpec
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.daemon.DpiAppFilter
@@ -38,6 +40,7 @@ import xyz.azraellab.zapp.core.engine.createTunnelEngine
 import xyz.azraellab.zapp.core.engine.isLive
 import xyz.azraellab.zapp.core.gps.GpsEngine
 import xyz.azraellab.zapp.core.gps.GpsEvent
+import xyz.azraellab.zapp.core.gps.GpsFix
 import xyz.azraellab.zapp.core.gps.GpsState
 import xyz.azraellab.zapp.core.gps.createGpsEngine
 import xyz.azraellab.zapp.core.log.AppLog
@@ -333,6 +336,7 @@ class AppState(
         // Уведомления о подмене: движок сообщает только состояния, а что
         // именно сказать пользователю -- решает здесь общая подписка,
         // потому что события возникают из кода, где нет доступа к UI.
+        recordGpsHistory()
         scope.launch {
             var previous = gpsEngine.state.value
             gpsEngine.state.collect { current ->
@@ -1254,6 +1258,91 @@ class AppState(
     /** Адрес шлюза активного профиля -- нужен режиму «координаты VPN». */
     fun vpnAddress(): String =
         config.vpn.activeProfile()?.gateway?.trim().orEmpty()
+
+    // --- Избранное и история подмены (§169) ---
+
+    /**
+     * Кладёт точку в избранное.
+     *
+     * Дубли по координатам не заводятся: сохранённое место -- это точка,
+     * а не запись, и три одинаковых «Кремля» в списке не помогают выбору.
+     * Список ограничен: он лежит в настройках, а не в базе.
+     */
+    fun addGpsFavorite(point: SavedPoint) {
+        mutate { cfg ->
+            val rest = cfg.gps.favorites.filter {
+                !(abs(it.latitude - point.latitude) < COORD_EPS &&
+                    abs(it.longitude - point.longitude) < COORD_EPS)
+            }
+            cfg.copy(gps = cfg.gps.copy(favorites = (listOf(point) + rest).take(LIST_LIMIT)))
+        }
+    }
+
+    fun removeGpsFavorite(point: SavedPoint) {
+        mutate { cfg ->
+            cfg.copy(gps = cfg.gps.copy(favorites = cfg.gps.favorites - point))
+        }
+    }
+
+    fun removeGpsHistory(point: SavedPoint) {
+        mutate { cfg ->
+            cfg.copy(gps = cfg.gps.copy(history = cfg.gps.history - point))
+        }
+    }
+
+    /**
+     * Запись точки в историю при появлении фикса.
+     *
+     * Подписка на fix, а не на статус: подмена публикует первую точку
+     * через секунду после старта, и именно она есть что записать. Запись
+     * одна на эпизод (null -> точка), иначе секундный тик превратил бы
+     * историю в копию маршрута.
+     */
+    private fun recordGpsHistory() {
+        scope.launch {
+            var previous: GpsFix? = null
+            gpsEngine.fix.collect { fix ->
+                val was = previous
+                previous = fix
+                if (fix == null || was != null) return@collect
+                if (gpsEngine.state.value != GpsState.ACTIVE) return@collect
+                val point = SavedPoint(fix.place, fix.latitude, fix.longitude)
+                mutate { cfg ->
+                    val rest = cfg.gps.history.filter {
+                        !(abs(it.latitude - point.latitude) < COORD_EPS &&
+                            abs(it.longitude - point.longitude) < COORD_EPS)
+                    }
+                    cfg.copy(gps = cfg.gps.copy(history = (listOf(point) + rest).take(LIST_LIMIT)))
+                }
+                // Подпись места: своя точка приходит без имени, а список
+                // из координат читается плохо. Сбой сети -- не беда:
+                // остаются координаты.
+                if (point.name.isEmpty()) {
+                    val named = runCatching { photonReverse(point.latitude, point.longitude) }
+                        .getOrNull()?.label
+                    if (!named.isNullOrBlank()) {
+                        mutate { cfg ->
+                            cfg.copy(
+                                gps = cfg.gps.copy(
+                                    history = cfg.gps.history.map {
+                                        if (abs(it.latitude - point.latitude) < COORD_EPS &&
+                                            abs(it.longitude - point.longitude) < COORD_EPS
+                                        ) it.copy(name = named) else it
+                                    }
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Одинаковые координаты в двух записях истории -- одна запись. */
+    private val COORD_EPS = 0.00005
+
+    /** Сколько точек живёт в избранном и истории: списки в настройках. */
+    private val LIST_LIMIT = 50
 
     // --- Демоны обхода ---
 

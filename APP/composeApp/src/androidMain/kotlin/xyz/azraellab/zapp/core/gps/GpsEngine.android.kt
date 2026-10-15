@@ -20,6 +20,7 @@ import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.geo.GeoPoint
 import xyz.azraellab.zapp.core.geo.geolocate
 import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.random.Random
 
 actual fun createGpsEngine(): GpsEngine = AndroidGpsEngine()
@@ -79,6 +80,9 @@ private class AndroidGpsEngine : BaseGpsEngine() {
                 }
                 log(GpsEvent(Str.GPS_LOG_PROVIDER))
                 setState(GpsState.ACTIVE)
+                // Служба поднимается вместе с подменой: без неё система
+                // убьёт процесс в фоне, и подмена молча закончится.
+                serviceStart(targetText(target, config))
                 runLoop(target)
                 // runLoop вернулся: кончился маршрут, упала система или нас остановили.
                 if (isActive) {
@@ -119,6 +123,8 @@ private class AndroidGpsEngine : BaseGpsEngine() {
                     ResolvedTarget.Route(points)
                 }
             }
+
+            is GpsTarget.Joystick -> ResolvedTarget.Joystick(target.latitude, target.longitude)
 
             is GpsTarget.VpnLocation -> {
                 val address = vpnGateway.trim()
@@ -220,6 +226,9 @@ private class AndroidGpsEngine : BaseGpsEngine() {
         }
         var baseLatitude = (target as? ResolvedTarget.Fixed)?.latitude
         var baseLongitude = (target as? ResolvedTarget.Fixed)?.longitude
+        // Джойстик: своя стартовая точка, которая едет по курсу (§168).
+        var joyLatitude = (target as? ResolvedTarget.Joystick)?.latitude
+        var joyLongitude = (target as? ResolvedTarget.Joystick)?.longitude
 
         while (isActive) {
             val cfg = config ?: return
@@ -232,6 +241,18 @@ private class AndroidGpsEngine : BaseGpsEngine() {
                         return
                     }
                     RoutePointCoords(p.latitude, p.longitude, null)
+                }
+                joyLatitude != null && joyLongitude != null -> {
+                    // Курс и скорость читаются на каждом такте: ручной
+                    // оверлей меняет их на лету, цикл пересобирать не нужно.
+                    val moved = advance(
+                        joyLatitude!!, joyLongitude!!,
+                        cfg.headingDegrees, cfg.speedMps * TICK_SECONDS
+                    )
+                    joyLatitude = moved.first
+                    joyLongitude = moved.second
+                    val jitter = jitterMeters(cfg.positionJitterMeters)
+                    RoutePointCoords(joyLatitude!!, joyLongitude!!, jitter)
                 }
                 baseLatitude != null && baseLongitude != null -> {
                     val jitter = jitterMeters(cfg.positionJitterMeters)
@@ -256,8 +277,57 @@ private class AndroidGpsEngine : BaseGpsEngine() {
                 return
             }
             setFix(fix)
+            // Строка в шторке: координаты и скорость -- §173. Обновление
+            // раз в секунду, тот же id, без дублей в шторке.
+            serviceUpdate(fixLine(fix, cfg))
             delay(TICK_MS)
         }
+    }
+
+    /**
+     * Строка для уведомления: «координаты (место) · 16.7 m/s».
+     *
+     * Скорость добавляется только когда она есть: точка без движения
+     * подписана координатами, и приписка «0 m/s» ничего не сообщает.
+     */
+    private fun fixLine(fix: GpsFix, cfg: GpsConfig): String {
+        val base = formatPoint(fix.latitude, fix.longitude, fix.place)
+        val speed = cfg.speedMps
+        return if (speed > 0.0) {
+            "$base · " + (Math.round(speed * 10.0) / 10.0) + " m/s"
+        } else {
+            base
+        }
+    }
+
+    /** Первая точка цели -- строка для уведомления в момент старта. */
+    private fun targetText(target: ResolvedTarget, cfg: GpsConfig): String = when (target) {
+        is ResolvedTarget.Fixed -> fixLine(
+            GpsFix(target.latitude, target.longitude, cfg.accuracyMeters.toFloat(), target.place),
+            cfg
+        )
+        is ResolvedTarget.Joystick -> fixLine(
+            GpsFix(target.latitude, target.longitude, cfg.accuracyMeters.toFloat()),
+            cfg
+        )
+        is ResolvedTarget.Route -> target.points.firstOrNull()?.let {
+            fixLine(GpsFix(it.latitude, it.longitude, cfg.accuracyMeters.toFloat()), cfg)
+        }.orEmpty()
+    }
+
+    private fun serviceStart(text: String) {
+        val context = AndroidCtx.current ?: return
+        ZappGpsService.start(context, text)
+    }
+
+    private fun serviceUpdate(text: String) {
+        val context = AndroidCtx.current ?: return
+        ZappGpsService.update(context, text)
+    }
+
+    private fun serviceStop() {
+        val context = AndroidCtx.current ?: return
+        ZappGpsService.stop(context)
     }
 
     // --- Остановка ---
@@ -269,6 +339,7 @@ private class AndroidGpsEngine : BaseGpsEngine() {
 
     private fun stopInternal(notifyStopped: Boolean) {
         stopLoop()
+        serviceStop()
         val manager = locationManager
         if (manager != null) {
             // Снимаем тест-провайдер, чтобы система вернулась к настоящим
@@ -305,11 +376,27 @@ private class AndroidGpsEngine : BaseGpsEngine() {
         return lat to lon
     }
 
+    /**
+     * Сдвиг точки на [meters] по курсу [headingDegrees] (0° -- север).
+     *
+     * Та же поправка на косинус широты, что и в джиттере: без неё шаг
+     * по долготе растягивался бы к полюсам.
+     */
+    private fun advance(latitude: Double, longitude: Double, headingDegrees: Double, meters: Double): Pair<Double, Double> {
+        if (meters == 0.0) return latitude to longitude
+        val rad = Math.toRadians(headingDegrees)
+        val lat = latitude + (meters * cos(rad)) / METERS_PER_DEGREE
+        val cosLat = cos(Math.toRadians(latitude)).coerceAtLeast(0.01)
+        val lon = longitude + (meters * sin(rad)) / (METERS_PER_DEGREE * cosLat)
+        return lat to lon
+    }
+
     private data class RoutePointCoords(val latitude: Double, val longitude: Double, val jitterMeters: Double?)
 
     private sealed interface ResolvedTarget {
         data class Fixed(val latitude: Double, val longitude: Double, val place: String) : ResolvedTarget
         data class Route(val points: List<xyz.azraellab.zapp.core.RoutePoint>) : ResolvedTarget
+        data class Joystick(val latitude: Double, val longitude: Double) : ResolvedTarget
     }
 
     private companion object {

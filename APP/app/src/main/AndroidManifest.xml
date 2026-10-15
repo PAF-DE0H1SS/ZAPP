@@ -126,6 +126,20 @@
         </service>
 
         <!--
+            Служба подмены координат: цикл живёт вне Activity, а шторка
+            показывает текущую точку и кнопку СТОП. Старт -- только из
+            приложения, от посторонних вызовов закрыт exported=false.
+        -->
+        <service
+            android:name="xyz.azraellab.zapp.core.gps.ZappGpsService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="mock_location_spoofing" />
+        </service>
+
+        <!--
             Плитки быстрого доступа (шторка уведомлений). Три отдельных
             сервиса одного класса: подпись берётся из android:label, а
             поведение берётся из подкласса. ACTIVE_TILE обязывает систему

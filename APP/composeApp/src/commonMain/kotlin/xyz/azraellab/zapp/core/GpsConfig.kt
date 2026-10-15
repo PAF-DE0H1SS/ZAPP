@@ -21,6 +21,18 @@ data class GpsConfig(
     val longitude: Double = 0.0,
     val altitudeMeters: Double = 0.0,
 
+    /**
+     * Курс движения, градусы от севера (§167, §168).
+     *
+     * Общий для джойстика и дрейфа: ручной оверлей задаёт направление
+     * вектором, а дрейф координат идёт по тому же курсу.
+     */
+    val headingDegrees: Double = 0.0,
+
+    // --- Избранное и история (§169) ---
+    val favorites: List<SavedPoint> = emptyList(),
+    val history: List<SavedPoint> = emptyList(),
+
     // --- Скорость и движение ---
     /** Скорость в метрах в секунду. Ноль -- стоять на месте. */
     val speedMps: Double = 0.0,
@@ -33,6 +45,8 @@ data class GpsConfig(
 
     // --- Маршрут ---
     val route: String = "",
+    /** Профиль движения, которым строится маршрут по дорогам (F1). */
+    val routeProfile: String = "DRIVING",
     /** Проигрывать маршрут по кругу. */
     val routeLoop: Boolean = false,
     /** Пауза на концах маршрута, секунды. */
@@ -59,6 +73,10 @@ data class GpsConfig(
         get() = when (GpsMode.of(mode)) {
             GpsMode.FIXED -> GpsTarget.Fixed(latitude, longitude)
             GpsMode.ROUTE -> GpsTarget.Route(routePoints())
+            // Джойстик стартует с той же точки, что и фикс: дальше её
+            // двигает вектор из UI, поэтому координаты здесь -- только
+            // стартовая позиция.
+            GpsMode.JOYSTICK -> GpsTarget.Joystick(latitude, longitude)
             // Координаты VPN -- единственная точка, которой ещё нет: её
             // даёт не конфиг, а геолокация адреса шлюза, поэтому движок
             // разрешает её сам при старте.
@@ -84,6 +102,14 @@ enum class GpsMode(val code: String, val ru: String, val en: String) {
     DISABLED("disabled", "Выключено", "Disabled"),
     FIXED("fixed", "Точка", "Fixed point"),
     ROUTE("route", "Маршрут", "Route"),
+
+    /**
+     * Ручное движение: круглый оверлей с вектором (§168).
+     *
+     * Точка стартует с текущих координат конфига и едет туда, куда
+     * показывает вектор; скорость -- по длине вектора, курс -- по углу.
+     */
+    JOYSTICK("joystick", "Джойстик", "Joystick"),
 
     /**
      * Координаты там, где находится шлюз VPN.
@@ -128,8 +154,30 @@ sealed interface GpsTarget {
     data class Fixed(val latitude: Double, val longitude: Double) : GpsTarget
     data class Route(val points: List<RoutePoint>) : GpsTarget
 
+    /** Ручное движение: стартовая точка, курс и скорость -- из конфига. */
+    data class Joystick(val latitude: Double, val longitude: Double) : GpsTarget
+
     /** Точка ещё не разрешена: движок найдёт её по адресу шлюза. */
     data object VpnLocation : GpsTarget
+}
+
+/**
+ * Сохранённая точка (§169): избранное и история подмены.
+ *
+ * Без Room: списки лежат в настройках как JSON -- их объём ограничен
+ * (история обрезается), а база данных для двух колонок оправдана не была
+ * бы даже на Android.
+ */
+@Serializable
+data class SavedPoint(
+    val name: String,
+    val latitude: Double,
+    val longitude: Double
+) {
+    /** Строка для списка: имя есть не всегда (история без геокода). */
+    fun label(): String =
+        if (name.isNotBlank()) name
+        else "$latitude, $longitude"
 }
 
 /** Разбор и запись строки маршрута. */

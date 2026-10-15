@@ -1,32 +1,58 @@
 package xyz.azraellab.zapp.ui.pages
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import kotlin.math.atan2
+import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.GpsMode
+import xyz.azraellab.zapp.core.GpsRouteCodec
+import xyz.azraellab.zapp.core.SavedPoint
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.geo.Place
+import xyz.azraellab.zapp.core.geo.TransportProfile
+import xyz.azraellab.zapp.core.geo.osrmRoute
+import xyz.azraellab.zapp.core.geo.photonSearch
 import xyz.azraellab.zapp.core.gps.GpsState
+import xyz.azraellab.zapp.core.gps.RouteEta
 import xyz.azraellab.zapp.core.log.isError
 import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ZappButton
+import xyz.azraellab.zapp.ui.components.ZappButtonRow
 import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
 import xyz.azraellab.zapp.ui.components.ZappEmptyState
 import xyz.azraellab.zapp.ui.components.ZappDecimalField
 import xyz.azraellab.zapp.ui.components.ZappExpandableCard
 import xyz.azraellab.zapp.ui.components.ZappEmptyCard
+import xyz.azraellab.zapp.ui.components.ZappListRow
 import xyz.azraellab.zapp.ui.components.ZappNumberField
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.components.ZappTextField
@@ -147,6 +173,7 @@ fun GpsPage(state: AppState) {
         if (GpsMode.of(config.mode) == GpsMode.FIXED) {
             PageGroup(tr(Str.GPS_LOCATION)) {
                 ZappCard {
+                    PlaceSearch(state)
                     ZappDecimalField(
                         label = tr(Str.GPS_LATITUDE),
                         value = config.latitude,
@@ -185,6 +212,50 @@ fun GpsPage(state: AppState) {
                         placeholder = "0",
                         path = "gps.altitude"
                     )
+                    ZappButtonRow {
+                        ZappButton(
+                            text = tr(Str.GPS_ADD_FAVORITE),
+                            role = ButtonRole.SECONDARY,
+                            onClick = {
+                                state.addGpsFavorite(
+                                    SavedPoint(
+                                        name = gpsFix?.place.orEmpty(),
+                                        latitude = config.latitude,
+                                        longitude = config.longitude
+                                    )
+                                )
+                            },
+                            path = "gps.favorite.add"
+                        )
+                    }
+                }
+            }
+            FavoritesCard(state)
+        }
+
+        // --- Джойстик: ручное движение ---
+        if (GpsMode.of(config.mode) == GpsMode.JOYSTICK) {
+            PageGroup(tr(Str.GPS_MODE)) {
+                ZappCard {
+                    Text(
+                        text = tr(Str.GPS_JOYSTICK_HINT),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    JoystickPad(
+                        headingDegrees = config.headingDegrees,
+                        speedMps = config.speedMps,
+                        onVector = { heading, speed ->
+                            state.mutate {
+                                it.copy(
+                                    gps = it.gps.copy(
+                                        headingDegrees = heading,
+                                        speedMps = speed
+                                    )
+                                )
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -193,6 +264,31 @@ fun GpsPage(state: AppState) {
         if (GpsMode.of(config.mode) == GpsMode.ROUTE) {
             PageGroup(tr(Str.GPS_ROUTE)) {
                 ZappCard {
+                    // Профиль движения решает, по каким дорогам строить и
+                    // с какой скоростью: пеший маршрут по тротуарам,
+                    // машинный -- по развязкам.
+                    ZappChoiceRow(
+                        label = tr(Str.GPS_TRANSPORT),
+                        options = TransportProfile.entries.map {
+                            Choice(it.name, if (AppLangState.current == AppLang.RU) it.ru else it.en)
+                        },
+                        selected = config.routeProfile,
+                        onSelect = { code ->
+                            // Профиль не только определяет дороги: он же
+                            // задаёт скорость (§165). Ручную скорость
+                            // перекрываем осознанно -- иначе «пешком» ехал
+                            // бы на машинной.
+                            state.mutate {
+                                it.copy(
+                                    gps = it.gps.copy(
+                                        routeProfile = code,
+                                        speedMps = TransportProfile.of(code).defaultSpeedMps
+                                    )
+                                )
+                            }
+                        },
+                        path = "gps.route_profile"
+                    )
                     ZappTextField(
                         label = tr(Str.GPS_ROUTE_POINTS),
                         value = config.route,
@@ -229,6 +325,7 @@ fun GpsPage(state: AppState) {
                         },
                         path = "gps.route_loop"
                     )
+                    RouteBuilder(state)
                 }
             }
         }
@@ -263,6 +360,364 @@ fun GpsPage(state: AppState) {
         }
     }
 }
+
+/**
+ * Избранное и история подмены (§169).
+ *
+ * Два списка в одном месте: избранное заполняется рукой, история --
+ * сама, когда подмена показала первую точку. Тап по строке кладёт
+ * координаты в поля режима «точка»: список нужен, чтобы не вводить
+ * координаты заново, а не только чтобы смотреть.
+ */
+@Composable
+private fun FavoritesCard(state: AppState) {
+    val config = state.config.gps
+
+    PageGroup(tr(Str.GPS_FAVORITES)) {
+        ZappExpandableCard(
+            title = tr(Str.GPS_FAVORITES),
+            badge = if (config.favorites.isEmpty()) null else config.favorites.size.toString(),
+            path = "gps.favorites.expand"
+        ) {
+            if (config.favorites.isEmpty()) {
+                ZappEmptyCard(title = tr(Str.GPS_FAVORITES_EMPTY))
+            } else {
+                config.favorites.forEach { point ->
+                    SavedRow(
+                        point = point,
+                        onPick = { pickGpsPoint(state, point) },
+                        onDelete = { state.removeGpsFavorite(point) },
+                        path = "gps.favorites.row"
+                    )
+                }
+            }
+        }
+        ZappExpandableCard(
+            title = tr(Str.GPS_SPOOF_HISTORY),
+            badge = if (config.history.isEmpty()) null else config.history.size.toString(),
+            path = "gps.history.expand"
+        ) {
+            if (config.history.isEmpty()) {
+                ZappEmptyCard(title = tr(Str.GPS_HISTORY_EMPTY))
+            } else {
+                config.history.forEach { point ->
+                    SavedRow(
+                        point = point,
+                        onPick = { pickGpsPoint(state, point) },
+                        onDelete = { state.removeGpsHistory(point) },
+                        path = "gps.history.row"
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Строка сохранённой точки: тап -- подставить, крестик -- забыть. */
+@Composable
+private fun SavedRow(
+    point: SavedPoint,
+    onPick: () -> Unit,
+    onDelete: () -> Unit,
+    path: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onPick)
+            .padding(vertical = AzraelSpace.xs),
+        horizontalArrangement = Arrangement.spacedBy(AzraelSpace.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = point.label(), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = String.format(Locale.US, "%.5f, %.5f", point.latitude, point.longitude),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        ZappButton(
+            text = tr(Str.COMMON_DELETE),
+            role = ButtonRole.GHOST,
+            onClick = onDelete,
+            path = "$path.del"
+        )
+    }
+}
+
+/** Точка из списка становится координатами режима «точка». */
+private fun pickGpsPoint(state: AppState, point: SavedPoint) {
+    state.mutate { cfg ->
+        cfg.copy(
+            gps = cfg.gps.copy(
+                mode = GpsMode.FIXED.code,
+                latitude = point.latitude,
+                longitude = point.longitude
+            )
+        )
+    }
+}
+
+/**
+ * Джойстик (§168): крутится вектор от центра к точке под пальцем.
+ *
+ * Угол -- курс, длина -- скорость: один жест задаёт и то и другое, а
+ * отпущенная точка возвращается в центр и движение останавливается.
+ * Ничего не хранит сам: текущий вектор живёт в конфиге, здесь только
+ * рисование и жест.
+ */
+@Composable
+private fun JoystickPad(
+    headingDegrees: Double,
+    speedMps: Double,
+    onVector: (heading: Double, speed: Double) -> Unit
+) {
+    // Собственное состояние рисунка: конфиг -- истина, а смещение точки
+    // в течение жеста -- локальное, чтобы не писать настройки 60 раз в
+    // секунду.
+    var drag by remember { mutableStateOf(Offset.Zero) }
+    val maxSpeed = JOYSTICK_MAX_SPEED_MPS
+    val base = MaterialTheme.colorScheme.surfaceContainerHighest
+    val line = MaterialTheme.colorScheme.outline
+    val knobColor = MaterialTheme.colorScheme.primary
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(JOYSTICK_PAD_DP)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragEnd = {
+                        drag = Offset.Zero
+                        onVector(headingDegrees, 0.0)
+                    },
+                    onDragCancel = {
+                        drag = Offset.Zero
+                        onVector(headingDegrees, 0.0)
+                    },
+                    onDrag = { change, amount ->
+                        change.consume()
+                        drag = (drag + amount).limitTo(radius = minOf(size.width, size.height).toFloat() / 2f)
+                        val radius = minOf(size.width, size.height).toFloat() / 2f
+                        val distance = drag.getDistance()
+                        // Курс: 0° -- север (вверх), по часовой.
+                        val angle = Math.toDegrees(
+                            atan2(drag.x.toDouble(), -drag.y.toDouble())
+                        ).let { if (it < 0) it + 360.0 else it }
+                        onVector(angle, (distance / radius) * maxSpeed)
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val radius = minOf(size.width, size.height).toFloat() / 2f
+            drawCircle(
+                color = base,
+                radius = radius
+            )
+            drawCircle(
+                color = line,
+                radius = radius,
+                style = Stroke(width = 2f)
+            )
+            // Вектор от центра к точке: направление видно, даже когда
+            // скорость почти нулевая.
+            val knob = center + drag
+            drawLine(
+                color = line,
+                start = center,
+                end = knob,
+                strokeWidth = 4f
+            )
+            drawCircle(color = knobColor, radius = 18f, center = knob)
+        }
+        // Подпись текущего вектора: цифры нужны, чтобы повторить жест
+        // точно, а не на глаз.
+        Text(
+            text = String.format(
+                Locale.US,
+                "%.0f° · %.1f m/s",
+                headingDegrees,
+                speedMps
+            ),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** Ограничение точки радиусом пада: дальше пальца вектор не растёт. */
+private fun Offset.limitTo(radius: Float): Offset {
+    val distance = getDistance()
+    if (distance <= radius || distance == 0f) return this
+    val scale = radius / distance
+    return Offset(x * scale, y * scale)
+}
+
+/** Скорость на краю пада, м/с: ~72 км/ч, быстрее вручную не нужно. */
+private const val JOYSTICK_MAX_SPEED_MPS = 20.0
+
+/** Размер пада: под палец, но не под всю карточку. */
+private val JOYSTICK_PAD_DP = 220.dp
+
+/**
+ * Поиск места по названию (F1, §161).
+ *
+ * Ввод «Кремль» вместо координат: Photon отдаёт список, и выбор строки
+ * кладёт широту/долготу в поля внизу. Сеть здесь трёхсекундная, поэтому
+ * у запроса есть состояние «ищем» и отдельные строки на «не нашлось» и
+ * «нет сети»: это разные вещи, и путать их в интерфейсе нельзя.
+ */
+@Composable
+private fun PlaceSearch(state: AppState) {
+    val scope = rememberCoroutineScope()
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<Place>?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    ZappTextField(
+        label = tr(Str.GPS_PLACE_SEARCH),
+        value = query,
+        onValueChange = { query = it },
+        placeholder = "Кремль",
+        path = "gps.search.query"
+    )
+    ZappButtonRow {
+        ZappButton(
+            text = tr(Str.COMMON_SEARCH),
+            enabled = query.isNotBlank() && !busy,
+            onClick = {
+                val q = query
+                scope.launch {
+                    busy = true
+                    results = photonSearch(q)
+                    busy = false
+                }
+            },
+            path = "gps.search.go"
+        )
+    }
+    when {
+        busy -> Text(
+            text = tr(Str.COMMON_LOADING),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        results == null -> Text(
+            text = tr(Str.GPS_PLACE_ERROR),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
+        results!!.isEmpty() -> Text(
+            text = tr(Str.COMMON_NOTHING_FOUND),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        else -> results!!.forEach { place ->
+            // Выбор строки -- сразу координаты: поле вручную заполнять
+            // больше незачем, оно остаётся для тех, кто знает их наизусть.
+            ZappListRow(
+                title = place.label,
+                subtitle = place.details.ifEmpty { null },
+                modifier = Modifier.clickable {
+                    state.mutate {
+                        it.copy(
+                            gps = it.gps.copy(
+                                latitude = place.latitude,
+                                longitude = place.longitude
+                            )
+                        )
+                    }
+                    query = place.label
+                    results = emptyList()
+                },
+                path = "gps.search.row"
+            )
+        }
+    }
+}
+
+/**
+ * Построение маршрута по дорогам (F1, §161).
+ *
+ * Точки из текстового поля уходят в OSRM, и обратно приходит ломаная по
+ * дорогам с расстоянием и временем: рисовать маршрут по прямой между
+ * точками -- врать про путь. Сбой сети или отсутствие дороги не трогают
+ * введённое: старые точки остаются, показывается своя строка.
+ */
+@Composable
+private fun RouteBuilder(state: AppState) {
+    val scope = rememberCoroutineScope()
+    val config = state.config.gps
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<Str?>(null) }
+    var summary by remember { mutableStateOf("") }
+    val points = remember(config.route) { GpsRouteCodec.parse(config.route) }
+    // Шаблон берётся здесь, а не в корутине: tr() -- composable и вне
+    // композиции его звать нельзя.
+    val summaryFormat = tr(Str.GPS_ROUTE_SUMMARY)
+
+    ZappButtonRow {
+        ZappButton(
+            text = tr(Str.GPS_ROUTE_BUILD),
+            enabled = !busy,
+            onClick = {
+                scope.launch {
+                    busy = true
+                    message = null
+                    if (points.size < 2) {
+                        message = Str.GPS_ROUTE_TOO_SHORT
+                    } else {
+                        val built = osrmRoute(TransportProfile.of(config.routeProfile), points)
+                        if (built == null) {
+                            message = Str.GPS_ROUTE_FAILED
+                        } else {
+                            // Плотная геометрия OSRM -- сотни точек: для
+                            // подмены хватает сотни, и поле маршрута остаётся
+                            // читаемым.
+                            val sampled = RouteEta.sampleEvenly(built.points, MAX_ROUTE_POINTS)
+                            state.mutate {
+                                it.copy(gps = it.gps.copy(route = GpsRouteCodec.write(sampled)))
+                            }
+                            summary = summaryFormat.format(
+                                RouteEta.formatDistance(built.distanceMeters),
+                                RouteEta.formatDuration(built.durationSeconds)
+                            )
+                        }
+                    }
+                    busy = false
+                }
+            },
+            path = "gps.route.build"
+        )
+    }
+    if (busy) {
+        Text(
+            text = tr(Str.COMMON_LOADING),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+    message?.let { key ->
+        Text(
+            text = tr(key),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
+    }
+    if (summary.isNotEmpty()) {
+        Text(
+            text = summary,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+/** Сколько точек ломаной остаётся после построения маршрута. */
+private const val MAX_ROUTE_POINTS = 120
 
 /** Метка режима на языке интерфейса. */
 @Composable

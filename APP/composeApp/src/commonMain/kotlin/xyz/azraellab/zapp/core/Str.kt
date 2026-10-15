@@ -71,6 +71,7 @@ enum class Str {
     COMMON_CLOSE,
     COMMON_CANCEL,
     COMMON_SEARCH,
+    COMMON_LOADING,
     COMMON_NOTHING_FOUND,
     PICKER_SEARCH_HINT,
 
@@ -163,6 +164,23 @@ enum class Str {
     GPS_UNSUPPORTED_TITLE,
     GPS_UNSUPPORTED_DESC,
     GPS_VPN_HINT,
+
+    /** Поиск места и построение маршрута (F1, §161). */
+    GPS_PLACE_SEARCH,
+    GPS_PLACE_ERROR,
+    GPS_TRANSPORT,
+    GPS_ROUTE_BUILD,
+    GPS_ROUTE_TOO_SHORT,
+    GPS_ROUTE_FAILED,
+    GPS_ROUTE_SUMMARY,
+
+    /** Избранное, история подмены и джойстик (F1, §168–169). */
+    GPS_FAVORITES,
+    GPS_FAVORITES_EMPTY,
+    GPS_ADD_FAVORITE,
+    GPS_SPOOF_HISTORY,
+    GPS_HISTORY_EMPTY,
+    GPS_JOYSTICK_HINT,
 
     /** Состояние подмены: показывается в строке состояния. */
     GPS_STATE_OFF,
@@ -674,6 +692,7 @@ enum class Str {
         COMMON_BACK -> pick(lang, "Back", "Назад", "返回")
         COMMON_CANCEL -> pick(lang, "Cancel", "Отмена", "取消")
         COMMON_SEARCH -> pick(lang, "Search", "Поиск", "搜索")
+        COMMON_LOADING -> pick(lang, "Searching…", "Ищем…", "搜索中…")
         COMMON_NOTHING_FOUND -> pick(lang, "Nothing found", "Ничего не нашлось", "未找到")
         PICKER_SEARCH_HINT -> pick(
             lang,
@@ -1082,6 +1101,19 @@ enum class Str {
         GPS_VPN_HINT -> pick(lang, "Coordinates follow the connected gateway: the point is resolved when spoofing starts",
             "Координаты следуют за подключённым шлюзом: точка определяется при старте подмены",
             "坐标跟随已连接的网关：启动伪造时解析坐标")
+        GPS_PLACE_SEARCH -> pick(lang, "Find a place", "Найти место", "查找地点")
+        GPS_PLACE_ERROR -> pick(lang, "Place search unavailable (no network?)", "Поиск места недоступен (нет сети?)", "地点搜索不可用（无网络？）")
+        GPS_TRANSPORT -> pick(lang, "Transport", "Транспорт", "交通方式")
+        GPS_ROUTE_BUILD -> pick(lang, "Build route along roads", "Построить маршрут по дорогам", "按道路规划路线")
+        GPS_ROUTE_TOO_SHORT -> pick(lang, "Two points minimum", "Нужно минимум две точки", "至少需要两个点")
+        GPS_ROUTE_FAILED -> pick(lang, "Route not built (no network or no road)", "Маршрут не построен (нет сети или дороги)", "路线规划失败（无网络或无道路）")
+        GPS_ROUTE_SUMMARY -> pick(lang, "Route: %s, %s", "Маршрут: %s, %s", "路线：%s，%s")
+        GPS_FAVORITES -> pick(lang, "Favorites", "Избранное", "收藏")
+        GPS_FAVORITES_EMPTY -> pick(lang, "No saved places yet", "Сохранённых мест пока нет", "暂无收藏地点")
+        GPS_ADD_FAVORITE -> pick(lang, "Save this place", "Сохранить это место", "收藏此地点")
+        GPS_SPOOF_HISTORY -> pick(lang, "Spoofing history", "История подмены", "伪造历史")
+        GPS_HISTORY_EMPTY -> pick(lang, "Nothing spoofed yet", "Подмен пока не было", "尚无伪造记录")
+        GPS_JOYSTICK_HINT -> pick(lang, "Drag the dot: direction and speed of movement", "Тяните точку: направление и скорость движения", "拖动圆点：移动方向和速度")
         GPS_STATE_OFF -> pick(lang, "Off", "Выключено", "已关闭")
         GPS_STATE_STARTING -> pick(lang, "Starting", "Запуск", "启动中")
         GPS_STATE_ACTIVE -> pick(lang, "Active", "Активна", "生效中")

@@ -422,4 +422,25 @@ internal fun configTests(out: MutableList<DevTest>) {
         checkEq(15, cfg.perf.backgroundFps, "fps")
         checkTrue(cfg.vpn.killSwitch, "killSwitch")
     }
+
+    // --- Старт из перезагрузки (§137): мастер-тумблер + реальный флаг ---
+
+    out += DevTest("config/boot-autostart-gate", DevCategory.CONFIG, "Старт из загрузки требует и тумблер, и флаг") {
+        checkFalse(AppConfig().autostartOnBoot(), "дефолт: ничего не поднимается")
+        checkFalse(
+            AppConfig(bootAutostart = true).autostartOnBoot(),
+            "тумблер без флагов -- будить нечего"
+        )
+        checkFalse(
+            AppConfig(zapret = ZapretConfig(enabled = true)).autostartOnBoot(),
+            "флаги без тумблера -- поведение прежнее"
+        )
+        val gated = listOf(
+            AppConfig(bootAutostart = true, vpn = VpnConfig(autoStart = true)),
+            AppConfig(bootAutostart = true, zapret = ZapretConfig(enabled = true)),
+            AppConfig(bootAutostart = true, goodbyeDpi = GoodbyeDpiConfig(autoStart = true)),
+            AppConfig(bootAutostart = true, gps = GpsConfig(enabled = true))
+        )
+        gated.forEach { checkTrue(it.autostartOnBoot(), "тумблер + флаг") }
+    }
 }

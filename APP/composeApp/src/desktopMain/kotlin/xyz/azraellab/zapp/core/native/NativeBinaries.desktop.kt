@@ -7,7 +7,8 @@ package xyz.azraellab.zapp.core.native
  */
 actual object NativeBinaries {
 
-    actual val tools: List<String> = listOf("nfqws", "goodbyedpi", "wg", "box", "openvpn", "tor", "lyrebird")
+    actual val tools: List<String> =
+        listOf("nfqws", "goodbyedpi", "wg", "box", "openvpn", "tor", "lyrebird", "byedpi")
 
     actual suspend fun awaitReady() = Unit
 

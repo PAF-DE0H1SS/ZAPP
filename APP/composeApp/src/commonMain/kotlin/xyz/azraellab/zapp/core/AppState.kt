@@ -208,6 +208,13 @@ class AppState(
 
         /** Пауза перед автоперезапуском упавшего демона. */
         const val DAEMON_RESTART_DELAY_MS: Long = 3_000L
+
+        /**
+         * Пауза между остановкой карт при смене механизма обхода и их
+         * повторным стартом: SIGKILL умирает асинхронно, и сокет должен
+         * освободиться до bind нового слушателя на том же порту.
+         */
+        const val BACKEND_SWAP_SETTLE_MS: Long = 300L
     }
 
     /**
@@ -904,6 +911,7 @@ class AppState(
         // редактор показывал «Профилей нет» при сотнях профилей.
         config = config.copy(vpn = config.vpn.repairedActive())
         DpiOverlay.updateRelay(config.relay)
+        DpiOverlay.updateByeDpi(DpiBackend.of(config.dpiBackend), config.byeDpi)
         AppLog.enabled = config.detailLogEnabled
         AppLog.log("app", "start v${APP_VERSION}")
         presets = runCatching { store.readPresets() }.getOrDefault(emptyList())
@@ -947,6 +955,7 @@ class AppState(
         val prevPerApp = config.perApp
         config = next
         DpiOverlay.updateRelay(config.relay)
+        DpiOverlay.updateByeDpi(DpiBackend.of(config.dpiBackend), config.byeDpi)
         AppLog.enabled = config.detailLogEnabled
         gpsEngine.applyConfig(config.gps)
         tunnel.applyConfig(config.vpn)
@@ -962,6 +971,7 @@ class AppState(
         val prevPerApp = config.perApp
         config = withDiscoveredDomains(block(config), prevPerApp)
         DpiOverlay.updateRelay(config.relay)
+        DpiOverlay.updateByeDpi(DpiBackend.of(config.dpiBackend), config.byeDpi)
         AppLog.enabled = config.detailLogEnabled
         // Движок читает конфиг каждый такт, поэтому здесь достаточно
         // передать ссылку -- такт сам подхватит новые значения.
@@ -1444,6 +1454,38 @@ class AppState(
     fun stopDpi() {
         AppLog.log("goodbyedpi", "stop")
         dpiDaemon.stop()
+    }
+
+    /**
+     * Пересаживает механизм обхода без root: релей <-> byedpi (§130).
+     *
+     * Порт у обоих механизмов один ([DpiOverlay.RELAY_PORT]), поэтому это не
+     * переключение тумблера, а пересадка: живые карточки сначала
+     * останавливаются -- старый слушатель обязан освободить сокет, -- и только
+     * потом поднимаются заново, иначе новый процесс спавнится на занятом
+     * порту и умирает сразу. Остановки идут через движки напрямую, а не через
+     * stopZapret/stopDpi: те гасят тумблеры «включено», а смена механизма не
+     * должна отменять намерение пользователя держать демоны запущенными.
+     *
+     * Вызывается из UI-потока, поэтому ожидание освобождения порта уходит в
+     * фон: главный поток свободен с первой миллисекунды.
+     */
+    fun setDpiBackend(code: String) {
+        val backend = DpiBackend.of(code)
+        if (config.dpiBackend == backend.code) return
+        AppLog.log("dpi", "backend: ${config.dpiBackend} -> ${backend.code}")
+        mutate { it.copy(dpiBackend = backend.code) }
+        val up = setOf(DaemonState.STARTING, DaemonState.RUNNING)
+        val zapretUp = zapretDaemon.state.value in up
+        val dpiUp = dpiDaemon.state.value in up
+        if (!zapretUp && !dpiUp) return
+        if (zapretUp) zapretDaemon.stop()
+        if (dpiUp) dpiDaemon.stop()
+        scope.launch {
+            delay(BACKEND_SWAP_SETTLE_MS)
+            if (zapretUp) startZapret()
+            if (dpiUp) startDpi()
+        }
     }
 
     // --- Туннель ---

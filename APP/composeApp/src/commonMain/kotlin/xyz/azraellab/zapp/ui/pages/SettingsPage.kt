@@ -347,6 +347,23 @@ private fun GeneralSection(state: AppState) {
             )
         }
     }
+
+    // Старт после перезагрузки (§137): отдельная группа -- настройка
+    // поведения системы, а не оформления или языка.
+    PageGroup(tr(Str.AUTOSTART_BOOT)) {
+        ZappCard {
+            ZappSettingRow(
+                title = tr(Str.AUTOSTART_BOOT),
+                subtitle = tr(Str.AUTOSTART_BOOT_HINT),
+                checked = state.config.bootAutostart,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(bootAutostart = on) }
+                    AppLog.log("app", "boot autostart -> $on")
+                },
+                path = "settings.bootAutostart"
+            )
+        }
+    }
 }
 
 /**

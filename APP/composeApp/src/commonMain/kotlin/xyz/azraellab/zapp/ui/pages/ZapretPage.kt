@@ -7,7 +7,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
+import xyz.azraellab.zapp.core.ByeDpiStrategy
 import xyz.azraellab.zapp.core.BuildMode
+import xyz.azraellab.zapp.core.DpiBackend
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.ZapretStrategy
 import xyz.azraellab.zapp.core.domains.DpiScope
@@ -21,6 +23,13 @@ import xyz.azraellab.zapp.ui.tr
 
 /** Подпись стратегии на языке интерфейса; в списке -- не код строки. */
 private fun ZapretStrategy.strategyLabel(): String =
+    if (AppLangState.current == AppLang.RU) ru else en
+
+/** Подпись механизма и пресета byedpi -- по тому же образцу, что стратегии. */
+private fun DpiBackend.backendLabel(): String =
+    if (AppLangState.current == AppLang.RU) ru else en
+
+private fun ByeDpiStrategy.byeStrategyLabel(): String =
     if (AppLangState.current == AppLang.RU) ru else en
 
 /**
@@ -68,40 +77,81 @@ fun ZapretPage(state: AppState) {
         // враньём (там пакеты режутся в NFQUEUE).
         StandaloneDpiHint()
 
-        // --- Стратегия: автоподбор или ручной выбор ---
-        ZappCard {
-            ZappSettingRow(
-                title = tr(Str.ZAPRET_AUTO),
-                subtitle = tr(Str.STRATEGY_PROBE),
-                checked = config.autoStrategy,
-                onCheckedChange = { on ->
-                    state.mutate { it.copy(zapret = it.zapret.copy(autoStrategy = on)) }
-                },
-                path = "zapret.auto"
-            )
-            // Список стратегий показывается только при ручном выборе: при
-            // автоподборе он всё равно будет перезаписан.
-            if (!config.autoStrategy) {
+        // В рут-сборке обход идёт через ядро, и выбора механизма там
+        // нет -- поле конфига просто лежит без дела.
+        val byedpi = !BuildMode.rootAllowed &&
+            DpiBackend.of(state.config.dpiBackend) == DpiBackend.BYEDPI
+
+        // --- Механизм обхода: релей или byedpi (§130) ---
+        if (!BuildMode.rootAllowed) {
+            ZappCard {
                 ZappChoiceRow(
-                    label = tr(Str.ZAPRET_STRATEGY),
-                    options = ZapretStrategy.selectable.map { Choice(it.code, it.strategyLabel()) },
-                    selected = config.strategy,
-                    onSelect = { code ->
-                        // Пресет применяется целиком: одна строка strategy
-                        // без её флагов -- «работает», но не меняет команду.
-                        state.mutate {
-                            it.copy(
-                                zapret = xyz.azraellab.zapp.core.AutoStrategy.applyZapret(
-                                    it.zapret,
-                                    xyz.azraellab.zapp.core.AutoStrategy.Decision(code, "manual")
-                                )
-                            )
-                        }
-                    },
-                    path = "zapret.strategy"
+                    label = tr(Str.DPI_BACKEND),
+                    options = DpiBackend.entries.map { Choice(it.code, it.backendLabel()) },
+                    selected = state.config.dpiBackend,
+                    // Пересадка -- со стартом-остановкой живых карт:
+                    // порт у механизмов общий (см. AppState.setDpiBackend).
+                    onSelect = { code -> state.setDpiBackend(code) },
+                    path = "zapret.backend"
+                )
+                Text(
+                    text = tr(Str.DPI_BACKEND_HINT),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            StrategyProbeCard(state = state, target = "zapret")
+        }
+
+        // --- Стратегия: автоподбор или ручной выбор ---
+        ZappCard {
+            if (byedpi) {
+                // Пресеты byedpi -- свой набор аргументов, и автоподбор
+                // тут ни при чём: он подбирает параметры разрыва в релеe,
+                // которые бинарь не читает. Смена применяется со следующим
+                // стартом -- как и у стратегий zapret.
+                ZappChoiceRow(
+                    label = tr(Str.ZAPRET_STRATEGY),
+                    options = ByeDpiStrategy.entries.map { Choice(it.code, it.byeStrategyLabel()) },
+                    selected = state.config.byeDpi.strategy,
+                    onSelect = { code ->
+                        state.mutate { it.copy(byeDpi = it.byeDpi.copy(strategy = code)) }
+                    },
+                    path = "zapret.bye.strategy"
+                )
+            } else {
+                ZappSettingRow(
+                    title = tr(Str.ZAPRET_AUTO),
+                    subtitle = tr(Str.STRATEGY_PROBE),
+                    checked = config.autoStrategy,
+                    onCheckedChange = { on ->
+                        state.mutate { it.copy(zapret = it.zapret.copy(autoStrategy = on)) }
+                    },
+                    path = "zapret.auto"
+                )
+                // Список стратегий показывается только при ручном выборе: при
+                // автоподборе он всё равно будет перезаписан.
+                if (!config.autoStrategy) {
+                    ZappChoiceRow(
+                        label = tr(Str.ZAPRET_STRATEGY),
+                        options = ZapretStrategy.selectable.map { Choice(it.code, it.strategyLabel()) },
+                        selected = config.strategy,
+                        onSelect = { code ->
+                            // Пресет применяется целиком: одна строка strategy
+                            // без её флагов -- «работает», но не меняет команду.
+                            state.mutate {
+                                it.copy(
+                                    zapret = xyz.azraellab.zapp.core.AutoStrategy.applyZapret(
+                                        it.zapret,
+                                        xyz.azraellab.zapp.core.AutoStrategy.Decision(code, "manual")
+                                    )
+                                )
+                            }
+                        },
+                        path = "zapret.strategy"
+                    )
+                }
+                StrategyProbeCard(state = state, target = "zapret")
+            }
         }
 
         // --- Область действия ---
@@ -133,7 +183,11 @@ fun ZapretPage(state: AppState) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = config.toCommandLine(),
+                // В byedpi-режиме команда zapret вообще не выполняется --
+                // показывать её было бы враньём, карточка отдаёт то,
+                // что реально заспавнит механизм.
+                text = if (byedpi) state.config.byeDpi.toCommandLine(config.domainList())
+                else config.toCommandLine(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 3,

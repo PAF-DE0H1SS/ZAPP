@@ -36,6 +36,17 @@ ABIS=(
 cc_for()  { echo "$HOSTTRIPLE/bin/$3$API-clang"; }
 cxx_for() { echo "$HOSTTRIPLE/bin/$3$API-clang++"; }
 
+# Сборка выбранных инструментов по списку аргументов (`./build.sh byedpi`);
+# без аргументов собирается всё, как раньше. Нужно, чтобы не пересобирать
+# полчаса go-бинари ради одного C-файла.
+WANT=("$@")
+pick() {
+  [ ${#WANT[@]} -eq 0 ] && return 0
+  local t
+  for t in "${WANT[@]}"; do [ "$t" = "$1" ] && return 0; done
+  return 1
+}
+
 build_libs() {
   local abi="$1" host="$2" cprefix="$3"
   local prefix="$OUT/$abi/prefix"
@@ -139,6 +150,27 @@ build_ovpntun() {
     -o "$OUT/$abi/ovpntun" "$HERE/ovpntun.c"
 }
 
+build_byedpi() {
+  # byedpi (hufrea/byedpi) -- локальный SOCKS-прокси обхода DPI: работает
+  # без root, потому что не трогает ядро (в этом его смысл для норут-сборки).
+  # Чистый C99 без внешних зависимостей: только сокеты, getopt и libc,
+  # поэтому bionic-compat не нужен -- он существует ради netfilter-заголовков.
+  # -D_DEFAULT_SOURCE как в родном Makefile: vmsplice/splice и прочий POSIX.
+  local abi="$1" host="$2" cprefix="$3"
+  local cc; cc="$(cc_for x "$host" "$cprefix")"
+  local dir="$OUT/$abi/build-byedpi"
+  rm -rf "$dir"; mkdir -p "$dir"
+  cp -r "$SRC/byedpi/." "$dir/"
+  rm -rf "$dir/.git"
+  cd "$dir"
+  # shellcheck disable=SC2046
+  "$cc" -std=c99 -O2 -D_DEFAULT_SOURCE -D_FORTIFY_SOURCE=2 -fPIE \
+    packets.c main.c conev.c proxy.c desync.c mpool.c extend.c \
+    -pie -Wl,--gc-sections -s -o byedpi
+  install -m 755 byedpi "$OUT/$abi/byedpi"
+  cd "$HERE"
+}
+
 mkdir -p "$OUT" "$SRC"
 # Сырьё качается при его отсутствии (в git оно не входит).
 fetch() { [ -f "$SRC/$2" ] || curl -sfL -o "$SRC/$2" "$1"; }
@@ -149,6 +181,7 @@ fetch https://www.netfilter.org/projects/libnetfilter_queue/files/libnetfilter_q
 [ -d "$SRC/goodbyedpi-linux" ] || git clone -q --depth 1 https://github.com/wickstudio/GoodbyeDPI-Linux.git "$SRC/goodbyedpi-linux"
 [ -d "$SRC/amneziawg-tools" ] || git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-tools.git "$SRC/amneziawg-tools"
 [ -d "$SRC/amnezia-box" ]     || git clone -q --depth 1 -b master https://github.com/amnezia-vpn/amnezia-box.git "$SRC/amnezia-box"
+[ -d "$SRC/byedpi" ]          || git clone -q --depth 1 https://github.com/hufrea/byedpi.git "$SRC/byedpi"
 # Тарболлы netfilter распаковываются один раз: configure лежит в них готовым.
 for f in "$SRC"/*.tar.bz2; do
   base="$(basename "$f" .tar.bz2)"
@@ -216,12 +249,14 @@ for entry in "${ABIS[@]}"; do
   done
   echo "=== $abi (GOARCH=$goarch) ==="
   mkdir -p "$OUT/$abi"
-  build_libs "$abi" "$host" "$cprefix"
-  build_nfqws "$abi" "$host" "$cprefix"
-  build_goodbyedpi "$abi" "$host" "$cprefix"
-  build_wg "$abi" "$host" "$cprefix"
-  build_box "$abi" "$goarch" "$goarm"
-  build_ovpntun "$abi" "$host" "$cprefix"
-  ls -la "$OUT/$abi/nfqws" "$OUT/$abi/goodbyedpi" "$OUT/$abi/wg" "$OUT/$abi/box" "$OUT/$abi/ovpntun"
+  built=()
+  if pick nfqws || pick goodbyedpi; then build_libs "$abi" "$host" "$cprefix"; fi
+  if pick nfqws; then build_nfqws "$abi" "$host" "$cprefix"; built+=(nfqws); fi
+  if pick goodbyedpi; then build_goodbyedpi "$abi" "$host" "$cprefix"; built+=(goodbyedpi); fi
+  if pick wg; then build_wg "$abi" "$host" "$cprefix"; built+=(wg); fi
+  if pick box; then build_box "$abi" "$goarch" "$goarm"; built+=(box); fi
+  if pick ovpntun; then build_ovpntun "$abi" "$host" "$cprefix"; built+=(ovpntun); fi
+  if pick byedpi; then build_byedpi "$abi" "$host" "$cprefix"; built+=(byedpi); fi
+  for t in "${built[@]}"; do ls -la "$OUT/$abi/$t"; done
 done
 echo "=== готово ==="

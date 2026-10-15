@@ -5,8 +5,9 @@ package xyz.azraellab.zapp.core.update
  *
  * Версия нужна не для сравнения (версии компонентов идут своим ходом),
  * а для диагностики: «box не работает» на фоне box 1.22 и на фоне
- * 1.260910 -- две разные истории. Список ровно совпадает с TOOLS в
- * native/pack.sh.
+ * 1.260910 -- две разные истории. Список -- все инструменты TOOLS из
+ * native/pack.sh, у которых есть своя версия (ovpntun -- мост без
+ * версии, он в карточке не показывается).
  */
 enum class ZappComponent(val binary: String, val args: List<String>) {
     BOX("box", listOf("version")),
@@ -15,7 +16,8 @@ enum class ZappComponent(val binary: String, val args: List<String>) {
     GOODBYEDPI("goodbyedpi", listOf("--version")),
     WIREGUARD("wg", listOf("--version")),
     OPENVPN("openvpn", listOf("--version")),
-    LYREBIRD("lyrebird", listOf("-version"));
+    LYREBIRD("lyrebird", listOf("-version")),
+    BYEDPI("byedpi", listOf("--version"));
 
     /** Отображаемое имя -- имя файла бинаря, оно же в `box --version`. */
     val title: String get() = binary

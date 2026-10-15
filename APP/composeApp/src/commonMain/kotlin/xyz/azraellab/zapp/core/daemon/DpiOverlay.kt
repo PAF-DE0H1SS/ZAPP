@@ -1,6 +1,8 @@
 package xyz.azraellab.zapp.core.daemon
 
 import kotlin.concurrent.Volatile
+import xyz.azraellab.zapp.core.ByeDpiConfig
+import xyz.azraellab.zapp.core.DpiBackend
 import xyz.azraellab.zapp.core.probe.RelayTuning
 
 /**
@@ -63,6 +65,28 @@ object DpiOverlay {
     /** Принимает свежий тюнинг из конфига (нормализация -- на приёме). */
     fun updateRelay(tuning: RelayTuning) {
         relay = tuning.normalized()
+    }
+
+    /**
+     * Кто держит порт релея: встроенный релей или бинарь byedpi (§130).
+     *
+     * Порт у обоих механизмов один -- конфиг туннеля не меняется, меняется
+     * только ответственный процесс. Читают ветки и воркеры демонов при
+     * старте, поэтому поля -- под `Volatile`, а не под свой lock.
+     */
+    @Volatile
+    var backend: DpiBackend = DpiBackend.RELAY
+        private set
+
+    /** Настройки byedpi: читает сам бинарь при старте (аргументы строки). */
+    @Volatile
+    var byeDpi: ByeDpiConfig = ByeDpiConfig()
+        private set
+
+    /** Принимает свежий выбор механизма из конфига. */
+    fun updateByeDpi(backend: DpiBackend, config: ByeDpiConfig) {
+        this.backend = backend
+        this.byeDpi = config
     }
 
     /**

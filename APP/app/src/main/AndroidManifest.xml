@@ -15,6 +15,13 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!--
+        Старт после перезагрузки (§137): только при включённом тумблере
+        «Старт при загрузке устройства» и хотя бы одном флаге автостарта
+        (см. BootAutostart). Разрешение normal — выдаётся молча.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
         Foreground-сервис: туннель держится вне зависимости от того, свёрнуто
         ли приложение, а системный значок VPN остаётся видимым. Тип
         specialUse для сервиса, который не попадает в штатные категории
@@ -127,7 +134,7 @@
 
         <!--
             Служба подмены координат: цикл живёт вне Activity, а шторка
-            показывает текущую точку и кнопку СТОП. Старт -- только из
+            показывает текущую точку и кнопку СТОП. Старт — только из
             приложения, от посторонних вызовов закрыт exported=false.
         -->
         <service
@@ -138,6 +145,21 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="mock_location_spoofing" />
         </service>
+
+        <!--
+            Старт из перезагрузки (§137). exported=true — единственный
+            способ получить системную рассылку BOOT_COMPLETED, и он
+            безопасен: действие объявлено protected broadcast, прислать
+            его может только система, подделать из другого приложения —
+            SecurityException.
+        -->
+        <receiver
+            android:name=".BootAutostart"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!--
             Плитки быстрого доступа (шторка уведомлений). Три отдельных

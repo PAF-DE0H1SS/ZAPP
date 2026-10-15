@@ -73,6 +73,10 @@ internal fun parserTests(out: MutableList<DevTest>) {
     out += DevTest("parsers/vless-name", DevCategory.PARSERS, "vless: имя из фрагмента") {
         checkEq("My Node", requireNotNull(ProxyUri.parse(vless)).name, "name")
     }
+    out += DevTest("parsers/vless-name-encoded", DevCategory.PARSERS, "vless: спецсимвол в имени кодируется") {
+        val link = "vless://$UUID@example.com:443?encryption=none&security=tls&type=ws#A%26"
+        checkEq("A&", requireNotNull(ProxyUri.parse(link)).name, "name")
+    }
     out += DevTest("parsers/vless-complete", DevCategory.PARSERS, "vless: конфиг полный") {
         checkTrue(requireNotNull(ProxyUri.parse(vless)).isComplete, "isComplete")
     }
@@ -131,6 +135,11 @@ internal fun parserTests(out: MutableList<DevTest>) {
         checkEq(original.server, reparsed.server, "server")
         checkEq(original.port, reparsed.port, "port")
         checkEq(original.name, reparsed.name, "name")
+    }
+
+    out += DevTest("parsers/trojan-single-char-name", DevCategory.PARSERS, "trojan: имя из одного символа") {
+        val config = requireNotNull(ProxyUri.parse("trojan://secret@host.example:443?type=tcp#M"))
+        checkEq("M", config.name, "name")
     }
 
     // --- ProxyUri: vmess ---

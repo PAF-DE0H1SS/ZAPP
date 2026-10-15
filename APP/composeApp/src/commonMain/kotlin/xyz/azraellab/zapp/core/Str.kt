@@ -587,11 +587,19 @@ enum class Str {
     DPI_STANDALONE_ROOT,
     DPI_STANDALONE_NOROOT,
 
+    /** Механизм обхода без root: релей или byedpi (§130). */
+    DPI_BACKEND,
+    DPI_BACKEND_HINT,
+
     /** Компоненты приложения: распакованные нативные бинари. */
     COMPONENTS,
     COMPONENTS_REINSTALL,
     COMPONENTS_ABSENT,
     DAEMON_AUTOSTART,
+
+    /** Старт автосервисов после перезагрузки устройства (§137). */
+    AUTOSTART_BOOT,
+    AUTOSTART_BOOT_HINT,
 
     /** Системные уведомления: текст отдаётся в нотификацию целиком. */
     NOTIFY_GPS_ON,
@@ -1498,10 +1506,26 @@ enum class Str {
             "Можно запускать без VPN и Tor: пассивный туннель поднимается автоматически.",
             "可脱离 VPN 或 Tor 运行：自动建立直通隧道。"
         )
+        DPI_BACKEND -> pick(lang, "Bypass mechanism", "Механизм обхода", "绕过机制")
+        DPI_BACKEND_HINT -> pick(
+            lang,
+            "A separate byedpi process with its own strategies; the tunnel rules stay the same.",
+            "Отдельный процесс byedpi со своими стратегиями; правила туннеля не меняются.",
+            "独立的 byedpi 进程，自有策略；隧道规则不变。"
+        )
         COMPONENTS -> pick(lang, "Components", "Компоненты", "组件")
         COMPONENTS_REINSTALL -> pick(lang, "Reinstall", "Переустановить", "重新安装")
         COMPONENTS_ABSENT -> pick(lang, "Not installed", "Не установлены", "未安装")
         DAEMON_AUTOSTART -> pick(lang, "Start on launch", "Старт при запуске", "启动时自动运行")
+        AUTOSTART_BOOT -> pick(lang, "Start on device boot", "Старт при загрузке устройства", "开机时自动启动")
+        AUTOSTART_BOOT_HINT -> pick(
+            lang,
+            "After a reboot the app raises the same services its launch settings ask for: " +
+                "the tunnel, the bypass and location spoofing. Needs at least one of them enabled.",
+            "После перезагрузки приложение поднимает те же сервисы, что и при обычном запуске: " +
+                "туннель, обход и подмену геолокации. Нужен хотя бы один включённый автозапуск.",
+            "重启后应用会拉起与启动时相同的服务：隧道、绕过与位置模拟。需至少启用一项自动启动。"
+        )
 
         SETTINGS_DEV -> pick(lang, "For developers", "Для разработчиков", "开发者选项")
         DEV_TESTS -> pick(lang, "Tests", "Тесты", "测试")

@@ -1,5 +1,8 @@
 package xyz.azraellab.zapp.core.dev
 
+import xyz.azraellab.zapp.core.ByeDpiConfig
+import xyz.azraellab.zapp.core.ByeDpiStrategy
+import xyz.azraellab.zapp.core.DpiBackend
 import xyz.azraellab.zapp.core.GoodbyeDpiConfig
 import xyz.azraellab.zapp.core.GoodbyeDpiMode
 import xyz.azraellab.zapp.core.daemon.DpiOverlay
@@ -155,5 +158,91 @@ internal fun dpiTests(out: MutableList<DevTest>) {
         checkFalse(config.autoStart, "не стартует сам")
         checkFalse(config.fakeCsum, "подмена выключена")
         checkEq(null, config.fakeSeq, "seq не задан")
+    }
+
+    // --- byedpi: пресеты, аргументы, выбор механизма (§130) ---
+
+    out += DevTest("dpi/byedpi-strategies", DevCategory.DPI, "Пресеты byedpi: коды и аргументы") {
+        val codes = ByeDpiStrategy.entries.map { it.code }
+        checkEq(codes.size, codes.toSet().size, "коды уникальны: $codes")
+        ByeDpiStrategy.entries.forEach { strategy ->
+            checkEq(strategy, ByeDpiStrategy.of(strategy.code), strategy.code)
+            checkEq(strategy, ByeDpiStrategy.of(" ${strategy.code.uppercase()} "), strategy.code)
+            checkTrue(strategy.args.isNotEmpty(), "${strategy.code}: аргументы есть")
+            checkTrue(strategy.args.all { it.isNotBlank() }, "${strategy.code}: пустых аргументов нет")
+            checkTrue(strategy.args.first().startsWith("--"), "${strategy.code}: первый аргумент -- флаг")
+            checkTrue(strategy.ru.isNotBlank() && strategy.en.isNotBlank(), "${strategy.code}: подписи")
+        }
+        checkEq(ByeDpiStrategy.DISORDER, ByeDpiStrategy.of("не то"), "неизвестный -- дефолт")
+        checkEq(ByeDpiStrategy.DISORDER, ByeDpiStrategy.of(null), "null -- дефолт")
+    }
+
+    out += DevTest("dpi/byedpi-command", DevCategory.DPI, "Аргументы byedpi: порт релея, без лишнего") {
+        val args = ByeDpiConfig().toArgs()
+        // Слушатель обязан быть тем же портом, что у релея: бэкенды
+        // подменяют друг друга на месте, конфиг туннеля не меняется.
+        checkEq("-i", args.getOrNull(0), "bind первым")
+        checkEq("127.0.0.1", args.getOrNull(1), "только loopback")
+        checkEq("-p", args.getOrNull(2), "порт вторым")
+        checkEq(DpiOverlay.RELAY_PORT.toString(), args.getOrNull(3), "порт релея")
+        checkIn("--disorder", args, "стратегия по умолчанию")
+        checkTrue(args.none { it == "-H" }, "без доменов -H не пишется")
+        checkTrue(
+            ByeDpiConfig(strategy = "tlsrec").toArgs().contains("--tlsrec"),
+            "стратегия подставляется целиком"
+        )
+        // Дефолт -- дисклеймер: на Android машине это не веб-тест, тут
+        // важен сам факт, что README-дефолт для Linux не потерян.
+        checkEq(ByeDpiStrategy.DISORDER.code, ByeDpiConfig().strategy, "дефолтная стратегия")
+        checkTrue(ByeDpiConfig().extraArgs.isEmpty(), "хвост пуст по умолчанию")
+        checkTrue(
+            ByeDpiConfig().toCommandLine().startsWith("byedpi -i 127.0.0.1 -p "),
+            "карточка команды показывает реальную строку"
+        )
+    }
+
+    out += DevTest("dpi/byedpi-hosts", DevCategory.DPI, "Список доменов уходит inline (§133)") {
+        val args = ByeDpiConfig().toArgs(listOf("a.com", "b.com"))
+        val at = args.indexOf("-H")
+        checkTrue(at >= 0, "-H есть")
+        checkEq(":a.com b.com", args.getOrNull(at + 1), "inline-строка через двоеточие")
+        checkTrue(
+            ByeDpiConfig().toArgs(emptyList()).none { it.startsWith(":") },
+            "пустой список -- нет и строки"
+        )
+    }
+
+    out += DevTest("dpi/byedpi-extra", DevCategory.DPI, "Хвост своих аргументов идёт после пресета") {
+        val config = ByeDpiConfig(extraArgs = "  --ttl 5\t--timeout 3 ")
+        checkEq(listOf("--ttl", "5", "--timeout", "3"), config.extraList(), "разбор хвоста")
+        val args = config.toArgs()
+        // После пресета: поздний флаг перекрывает ранний, иначе хвост
+        // был бы мёртвым грузом после `--disorder 1`.
+        checkTrue(
+            args.indexOf("--ttl") > args.indexOf("--disorder"),
+            "хвост после пресета"
+        )
+        checkEq("5", args.getOrNull(args.indexOf("--ttl") + 1), "значение хвоста")
+        checkTrue(ByeDpiConfig(extraArgs = "   ").extraList().isEmpty(), "пробелы -- не аргументы")
+    }
+
+    out += DevTest("dpi/backend-of", DevCategory.DPI, "Выбор механизма: коды и дефолт") {
+        DpiBackend.entries.forEach { backend ->
+            checkEq(backend, DpiBackend.of(backend.code), backend.code)
+            checkEq(backend, DpiBackend.of(" ${backend.code.uppercase()} "), backend.code)
+        }
+        checkEq(DpiBackend.RELAY, DpiBackend.of("не то"), "неизвестный -- релей")
+        checkEq(DpiBackend.RELAY, DpiBackend.of(null), "null -- релей")
+        checkEq(DpiBackend.BYEDPI, DpiBackend.of(DpiBackend.BYEDPI.code), "стабильный код")
+    }
+
+    out += DevTest("dpi/overlay-backend", DevCategory.DPI, "DpiOverlay принимает механизм из конфига") {
+        DpiOverlay.updateByeDpi(DpiBackend.BYEDPI, ByeDpiConfig(strategy = "fake"))
+        checkEq(DpiBackend.BYEDPI, DpiOverlay.backend, "бэкенд принят")
+        checkEq("fake", DpiOverlay.byeDpi.strategy, "стратегия принята")
+        // Возврат к дефолту обязателен: сьюты общий объект, состояние
+        // после теста должно быть таким, каким его ждут остальные.
+        DpiOverlay.updateByeDpi(DpiBackend.RELAY, ByeDpiConfig())
+        checkEq(DpiBackend.RELAY, DpiOverlay.backend, "релей -- обратно")
     }
 }

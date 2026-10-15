@@ -146,6 +146,28 @@ internal fun vpnTests(out: MutableList<DevTest>) {
         checkEq("", VpnConfig(profiles = listOf(profile(id = "a"))).repairedActive().activeProfileId, "пустой id -- как есть")
     }
 
+    // C5: источник мостов Tor переживает пересборку списка -- раньше он жил
+    // только в activeProfileId и сбрасывался на top-100 при каждом
+    // обновлении источника.
+    out += DevTest("vpn/bridge-source-repair", DevCategory.VPN, "Источник мостов переживает обновление") {
+        val alive = VpnConfig(
+            torBridgeSourceId = "tor-b",
+            activeProfileId = "vpn-x",
+            profiles = listOf(profile(id = "vpn-x"), profile(id = "tor-b"))
+        )
+        checkEq("tor-b", alive.repairedActive().torBridgeSourceId, "живой источник не трогаем")
+
+        val dangling = VpnConfig(
+            torBridgeSourceId = "gone",
+            activeProfileId = "vpn-x",
+            profiles = listOf(profile(id = "vpn-x"), profile(id = "tor-b"))
+        )
+        val repaired = dangling.repairedActive()
+        checkEq("", repaired.torBridgeSourceId, "висячий источник очищен")
+        checkEq("vpn-x", repaired.activeProfileId, "выбор VPN не задет")
+        checkEq("", VpnConfig(torBridgeSourceId = "gone").repairedActive().torBridgeSourceId, "без профилей -- пусто")
+    }
+
     // --- Список: живые, архив, мосты ---
 
     val mixed = listOf(

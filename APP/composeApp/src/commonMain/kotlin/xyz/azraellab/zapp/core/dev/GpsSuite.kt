@@ -53,6 +53,16 @@ internal fun gpsTests(out: MutableList<DevTest>) {
         checkTrue(GpsConfig(mode = "vpn").target is GpsTarget.VpnLocation, "VpnLocation")
     }
 
+    // C6: enabled раньше был мёртвым полем -- подмена не переживала рестарт.
+    // Теперь это намерение пользователя, по которому поднимается автостарт.
+    out += DevTest("gps/autostart", DevCategory.GPS, "Тумблер переживает рестарт") {
+        checkTrue(GpsConfig(enabled = true).autostart, "включено + точка по умолчанию")
+        checkTrue(GpsConfig(enabled = true, mode = "route", route = "0,0;1,1").autostart, "маршрут")
+        checkFalse(GpsConfig(enabled = false).autostart, "выключено")
+        checkFalse(GpsConfig(enabled = true, mode = "disabled").autostart, "режим отменяет тумблер")
+        checkFalse(GpsConfig(enabled = true, mode = "что-то").autostart, "мусорный режим")
+    }
+
     out += DevTest("gps/target-disabled", DevCategory.GPS, "Выключено и неизвестный режим -- Off") {
         checkTrue(GpsConfig(mode = "disabled").target is GpsTarget.Off, "disabled")
         checkTrue(GpsConfig(mode = "что-то").target is GpsTarget.Off, "мусор")

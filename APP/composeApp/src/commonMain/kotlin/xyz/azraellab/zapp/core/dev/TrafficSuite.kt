@@ -292,7 +292,7 @@ internal fun trafficTests(out: MutableList<DevTest>) {
 
     out += DevTest("traffic/link-speed-display", DevCategory.TRAFFIC, "Строка плашки") {
         checkEq(
-            "↓ 1.5 KB/s  ↑ 0 B/s",
+            "↓ 1.5 KiB/s  ↑ 0 B/s",
             LinkSpeed(1536, 0).toDisplayString(),
             "display"
         )
@@ -300,9 +300,9 @@ internal fun trafficTests(out: MutableList<DevTest>) {
 
     out += DevTest("traffic/status-line", DevCategory.TRAFFIC, "Плашка: скорость, пинг, режимы") {
         val speed = LinkSpeed(1536, 0)
-        checkEq("↓ 1.5 KB/s  ↑ 0 B/s  (T|Z)", statusLine(true, speed, null, "T|Z"), "без пинга")
-        checkEq("↓ 1.5 KB/s  ↑ 0 B/s · 45 ms  (T|Z)", statusLine(true, speed, 45, "T|Z"), "с пингом")
-        checkEq("↓ 1.5 KB/s  ↑ 0 B/s · 45 ms", statusLine(true, speed, 45, ""), "режимов нет")
+        checkEq("↓ 1.5 KiB/s  ↑ 0 B/s  (T|Z)", statusLine(true, speed, null, "T|Z"), "без пинга")
+        checkEq("↓ 1.5 KiB/s  ↑ 0 B/s · 45 ms  (T|Z)", statusLine(true, speed, 45, "T|Z"), "с пингом")
+        checkEq("↓ 1.5 KiB/s  ↑ 0 B/s · 45 ms", statusLine(true, speed, 45, ""), "режимов нет")
         checkEq("↓ …  ↑ …", statusLine(true, null, null, ""), "ещё не посчитали")
         checkEq("↓ …  ↑ … · 45 ms", statusLine(true, null, 45, ""), "пинг без скорости")
         checkEq("(Z|GDPI)", statusLine(false, speed, 45, "Z|GDPI"), "не подключены -- только живые режимы")
@@ -314,10 +314,10 @@ internal fun trafficTests(out: MutableList<DevTest>) {
         checkEq("0 B/s", formatSpeed(-100), "отрицательное -- ноль")
         checkEq("512 B/s", formatSpeed(512), "байты")
         checkEq("1023 B/s", formatSpeed(1023), "без перехода")
-        checkEq("1 KB/s", formatSpeed(1024), "кило")
-        checkEq("1.5 KB/s", formatSpeed(1536), "полтора")
-        checkEq("10 KB/s", formatSpeed(10240), "десять -- без дроби")
-        checkEq("1 MB/s", formatSpeed(1048576), "мега")
-        checkEq("1 GB/s", formatSpeed(1073741824L), "гига")
+        checkEq("1 KiB/s", formatSpeed(1024), "кило")
+        checkEq("1.5 KiB/s", formatSpeed(1536), "полтора")
+        checkEq("10 KiB/s", formatSpeed(10240), "десять -- без дроби")
+        checkEq("1 MiB/s", formatSpeed(1048576), "мега")
+        checkEq("1 GiB/s", formatSpeed(1073741824L), "гига")
     }
 }

@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -184,8 +183,10 @@ private fun BridgesExpandable(state: AppState, checkProgress: AppState.CheckProg
 
     var limit by rememberSaveable(pageSize) { mutableIntStateOf(pageSize) }
     // "" -- пользователь ещё не выбирал: активным считается то, чем
-    // подключены (activeProfileId).
-    var selectedId by rememberSaveable { mutableStateOf("") }
+    // подключены (activeProfileId). Выбор держится в конфиге, а не в
+    // памяти страницы: он должен пережить рестарт и повторный онбординг,
+    // где activeProfileId пересобирается заново (C5).
+    val selectedId = config.torBridgeSourceId
 
     val sources = remember(config.profiles) { VpnConnects.torBridges(config.profiles) }
     val source = sources.firstOrNull { it.id == selectedId }
@@ -194,8 +195,8 @@ private fun BridgesExpandable(state: AppState, checkProgress: AppState.CheckProg
     // Смена источника = смена активного профиля: и подключение, и подпись
     // под статусом смотрят на activeProfileId.
     val pick: (String) -> Unit = { id ->
-        selectedId = id
         state.selectProfile(id)
+        state.mutate { it.copy(vpn = it.vpn.copy(torBridgeSourceId = id)) }
     }
 
     val bridges = remember(source) { source?.let { TorBridges.parse(it.rawConfig) }.orEmpty() }

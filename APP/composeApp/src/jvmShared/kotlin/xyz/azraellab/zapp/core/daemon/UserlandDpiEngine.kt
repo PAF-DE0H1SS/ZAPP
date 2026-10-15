@@ -93,7 +93,10 @@ internal class UserlandDpiEngine(
             val fresh = synchronized(lock) {
                 if (gen != generation) return@synchronized false
                 setState(DaemonState.RUNNING)
-                log(DaemonEvent(raw = "relay running (split clienthello on ${DpiOverlay.tcpPorts.joinToString(", ").ifEmpty { "all tcp" }})"))
+                // Подпись области -- честная: раньше пустые порты
+                // подписывались «all tcp», хотя через релей в таком
+                // случае не шло ни байта (C7).
+                log(DaemonEvent(raw = "relay running (split clienthello on ${DpiOverlay.scopeLabel()})"))
                 true
             }
             // Пока пробовали, старт отменили -- чужую ссылку снимаем сами.

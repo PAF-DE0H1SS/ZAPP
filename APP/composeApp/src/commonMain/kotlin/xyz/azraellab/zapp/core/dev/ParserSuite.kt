@@ -450,6 +450,32 @@ internal fun parserTests(out: MutableList<DevTest>) {
         }
     }
 
+    // C15: lyrebird на Android не умеет резолвить (Go без cgo, /etc/resolv.conf
+    // нет), поэтому имена мостов разрешаются приложением заранее.
+    out += DevTest("parsers/bridge-resolve-hosts", DevCategory.PARSERS, "Имена мостов подменяются на IP") {
+        val raw = """
+            obfs4 bridge.example.com:443 FINGERPRINT cert=x iat-mode=0
+            192.0.2.9:80 FINGERPRINT
+        """.trimIndent()
+        val out = TorBridges.resolveHosts(raw) { host -> if (host == "bridge.example.com") "198.51.100.7" else null }
+        checkContains(out, "obfs4 198.51.100.7:443 FINGERPRINT", "имя заменено на IP")
+        checkContains(out, "cert=x iat-mode=0", "аргументы моста целы")
+        checkContains(out, "192.0.2.9:80 FINGERPRINT", "IP-мост не тронут")
+    }
+
+    out += DevTest("parsers/bridge-resolve-ipv6", DevCategory.PARSERS, "IPv6 и неудачный резолв") {
+        // IPv6-имя подставляется в скобках, как ждёт tor.
+        val v6 = TorBridges.resolveHosts("obfs4 v6.example.com:9001 FP") { "2001:db8::1" }
+        checkContains(v6, "obfs4 [2001:db8::1]:9001 FP", "IPv6 в скобках")
+        // Резолв не удался -- строка уходит как была, а не ломается.
+        val failed = TorBridges.resolveHosts("obfs4 dead.example.com:443 FP") { null }
+        checkContains(failed, "obfs4 dead.example.com:443 FP", "строка цела при отказе")
+        // Литерал не спрашивается у резолвера вообще.
+        val asked = mutableListOf<String>()
+        TorBridges.resolveHosts("obfs4 10.0.0.1:443 FP") { asked += it; null }
+        checkEq(0, asked.size, "IP не резолвится")
+    }
+
     // --- GpsRouteCodec ---
 
     out += DevTest("parsers/route-parse-basic", DevCategory.PARSERS, "Маршрут: широта,долгота через ;") {

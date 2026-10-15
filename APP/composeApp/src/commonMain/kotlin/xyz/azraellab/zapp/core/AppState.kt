@@ -1016,8 +1016,12 @@ class AppState(
      * имитация -- через настройки разработчика, потому что этот AppOps
      * нельзя спросить диалогом. Даже отказ по одному разрешению не
      * обрывает цепочку: движок сам скажет в журнале, чего ему не хватило.
+     *
+     * [askPermissions] выключается в автостарте: приложение не должно
+     * дёргать пользователя системными диалогами при простом открытии.
+     * Без разрешений старт тихо откладывается до ручного нажатия.
      */
-    fun startGps(onResult: (Boolean) -> Unit = {}) {
+    fun startGps(askPermissions: Boolean = true, onResult: (Boolean) -> Unit = {}) {
         AppLog.log("gps", "start requested")
         if (!gpsEngine.supported) {
             AppLog.log("gps", "unsupported on this platform")
@@ -1030,20 +1034,27 @@ class AppState(
         // Порядок: гео, имитация (настройки), уведомления -- и только
         // потом старт движка, который сам проверит, чего ему не хватило.
         val queue = mutableListOf<PermissionId>()
-        listOf(PermissionId.LOCATION_FINE, PermissionId.LOCATION_MOCK).forEach { id ->
-            val state = permissions.statuses.value.firstOrNull { it.id == id }?.state
-            if (state == PermissionState.DENIED || state == PermissionState.SETTINGS) {
-                queue += id
+        if (askPermissions) {
+            listOf(PermissionId.LOCATION_FINE, PermissionId.LOCATION_MOCK).forEach { id ->
+                val state = permissions.statuses.value.firstOrNull { it.id == id }?.state
+                if (state == PermissionState.DENIED || state == PermissionState.SETTINGS) {
+                    queue += id
+                }
             }
-        }
-        val notifications = permissions.statuses.value
-            .firstOrNull { it.id == PermissionId.NOTIFICATIONS }
-        if (notifications?.state == PermissionState.DENIED) {
-            queue += PermissionId.NOTIFICATIONS
+            val notifications = permissions.statuses.value
+                .firstOrNull { it.id == PermissionId.NOTIFICATIONS }
+            if (notifications?.state == PermissionState.DENIED) {
+                queue += PermissionId.NOTIFICATIONS
+            }
         }
 
         fun step() {
             if (queue.isEmpty()) {
+                // Намерение «включить подмену» уходит в конфиг до старта
+                // движка: именно оно переживает рестарт (автостарт читает
+                // gps.enabled), а не состояние движка, которое живёт в
+                // памяти процесса.
+                mutate { it.copy(gps = it.gps.copy(enabled = true)) }
                 // Синхронная часть старта (разбор конфига, доступ к сервису)
                 // здесь же: исключение иначе пропало бы между диалогом
                 // разрешения и состоянием, а статус обязан иметь причину.
@@ -1060,9 +1071,15 @@ class AppState(
         step()
     }
 
-    /** Останавливает подмену. */
+    /**
+     * Останавливает подмену.
+     *
+     * Сбрасывает и [GpsConfig.enabled]: «выключено» -- тоже решение
+     * пользователя, и после рестарта поднимать подмену заново нельзя.
+     */
     fun stopGps() {
         AppLog.log("gps", "stop")
+        mutate { it.copy(gps = it.gps.copy(enabled = false)) }
         gpsEngine.stop()
     }
 
@@ -1254,10 +1271,14 @@ class AppState(
      * не должен его обходить. Если живых не осталось -- откат к
      * выбранному, пусть мёртвому: tor попробует сам, список мостов в
      * конфиге у него есть.
+     *
+     * Ручной источник -- [VpnConfig.torBridgeSourceId], а не
+     * `activeProfileId`: тот общий с VPN и сбрасывается при обновлении
+     * источника (C5).
      */
     private fun selectTorBridge(): VpnProfile? {
         val bridges = VpnConnects.torBridges(config.vpn.profiles)
-        val preferred = if (config.vpn.groupMode) "" else config.vpn.activeProfileId
+        val preferred = if (config.vpn.groupMode) "" else config.vpn.torBridgeSourceId
         return VpnConnects.torBridgeFor(bridges, preferred)
             ?: VpnConnects.torBridgeFor(bridges, config.vpn.activeProfileId)
     }
@@ -1878,6 +1899,13 @@ class AppState(
         ) {
             startDpi()
         }
+        // Подмена геолокации переживает рестарт через gps.enabled:
+        // тумблер на странице GPS -- это намерение, а не состояние
+        // процесса. Разрешения не спрашиваем (диалоги при открытии --
+        // не то, за чем пришли), движок сам откажется и запишет причину.
+        if (config.gps.autostart) {
+            startGps(askPermissions = false)
+        }
         if (config.vpn.autoStart && (config.vpn.groupMode || config.vpn.activeProfile() != null)) {
             connectVpn()
         }
@@ -1990,6 +2018,21 @@ class AppState(
         return dpiAppFilter(selections, catalog)
     }
 
+    /**
+     * Домены, сузившие область обхода (для журнала и правил релея).
+     *
+     * Берутся только у живых демонов: выключенный zapret со списком
+     * доменов не сузжает ничью область. Объединение обеих областей --
+     * релей один на двоих, и подпись обязана показывать обе.
+     */
+    private fun dpiDomains(): List<String> {
+        val up = setOf(DaemonState.STARTING, DaemonState.RUNNING)
+        val hosts = linkedSetOf<String>()
+        if (zapretDaemon.state.value in up) hosts += config.zapret.domainList()
+        if (dpiDaemon.state.value in up) hosts += config.goodbyeDpi.domainList()
+        return hosts.toList()
+    }
+
     /** Порты живых демонов обхода: (tcp, udp), свежие из конфига и состояний. */
     private fun dpiPortSets(): Pair<Set<String>, Set<String>> {
         val up = setOf(DaemonState.STARTING, DaemonState.RUNNING)
@@ -2021,7 +2064,7 @@ class AppState(
      */
     private fun refreshDpiOverlay(sets: Pair<Set<String>, Set<String>>) {
         val (tcp, udp) = sets
-        val changed = DpiOverlay.update(tcp, udp.isNotEmpty())
+        val changed = DpiOverlay.update(tcp, udp.isNotEmpty(), dpiDomains())
         if (DpiOverlay.active) {
             when (tunnel.state.value) {
                 TunnelState.DISCONNECTED -> {

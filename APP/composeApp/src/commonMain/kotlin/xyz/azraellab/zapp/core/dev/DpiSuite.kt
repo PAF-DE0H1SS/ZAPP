@@ -2,6 +2,7 @@ package xyz.azraellab.zapp.core.dev
 
 import xyz.azraellab.zapp.core.GoodbyeDpiConfig
 import xyz.azraellab.zapp.core.GoodbyeDpiMode
+import xyz.azraellab.zapp.core.daemon.DpiOverlay
 
 /**
  * GoodbyeDPI: режимы короткими кодами `-1..-9` и флаги рукопожатия.
@@ -119,6 +120,22 @@ internal fun dpiTests(out: MutableList<DevTest>) {
         val config = GoodbyeDpiConfig(domains = " a.com , b.com ,,")
         checkEq(listOf("a.com", "b.com"), config.domainList(), "domainList")
         checkTrue(GoodbyeDpiConfig().domainList().isEmpty(), "пусто")
+    }
+
+    // C7: подпись области в журнале. Раньше пустые порты подписывались
+    // «all tcp», хотя через релей в таком случае не шло ни байта.
+    out += DevTest("dpi/scope-label", DevCategory.DPI, "Область обхода подписана честно") {
+        DpiOverlay.update(listOf("80", "443"), quicBlock = false)
+        checkEq("80, 443", DpiOverlay.scopeLabel(), "только порты")
+
+        DpiOverlay.update(listOf("443"), quicBlock = false, hosts = listOf("youtube.com"))
+        checkEq("443 for youtube.com", DpiOverlay.scopeLabel(), "порты и домены")
+
+        DpiOverlay.update(emptyList(), quicBlock = true, hosts = listOf("youtube.com"))
+        checkEq("domains only: youtube.com", DpiOverlay.scopeLabel(), "домены без портов")
+
+        DpiOverlay.update(emptyList(), quicBlock = false)
+        checkEq("nothing routed", DpiOverlay.scopeLabel(), "пусто -- не «all tcp»")
     }
 
     out += DevTest("dpi/command-line", DevCategory.DPI, "Строка для показа") {

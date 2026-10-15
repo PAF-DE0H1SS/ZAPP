@@ -195,6 +195,16 @@ data class VpnConfig(
     val enabled: Boolean = false,
     val autoStart: Boolean = false,
     val activeProfileId: String = "",
+    /**
+     * Источник мостов Tor, выбранный на вкладке Tor.
+     *
+     * Раньше выбор жил только в [activeProfileId], но тот общий с VPN:
+     * обновление источника пересобирает список, id исчезает, и
+     * `repairedActive` сносил выбор на первый узел -- мост после рестарта
+     * или повторного онбординга сбрасывался на top-100. Поле хранит выбор
+     * отдельно и переживает пересборку списка.
+     */
+    val torBridgeSourceId: String = "",
     val profiles: List<VpnProfile> = emptyList(),
     val routing: VpnRouting = VpnRouting(),
     val killSwitch: Boolean = false,
@@ -292,10 +302,19 @@ data class VpnConfig(
      * `activeProfile()` возвращает null, и редактор показывает «Профилей нет»,
      * когда их сотни. Выбор просто переезжает на первый узел -- как в
      * `Preset.applyTo`.
+     *
+     * Источник мостов Tor чинится тем же способом, но отдельно: у него свой
+     * id, и пока он жив, выбор держится (C5). Сбрасывать его на первый узел
+     * списка нельзя -- список начинается с VPN-профилей, а не с мостов.
      */
-    fun repairedActive(): VpnConfig =
-        if (activeProfileId.isBlank() || profiles.any { it.id == activeProfileId }) this
-        else copy(activeProfileId = profiles.firstOrNull()?.id ?: "")
+    fun repairedActive(): VpnConfig {
+        val activeRepaired =
+            if (activeProfileId.isBlank() || profiles.any { it.id == activeProfileId }) this
+            else copy(activeProfileId = profiles.firstOrNull()?.id ?: "")
+        val bridgeAlive = activeRepaired.profiles.any { it.id == activeRepaired.torBridgeSourceId }
+        return if (activeRepaired.torBridgeSourceId.isBlank() || bridgeAlive) activeRepaired
+        else activeRepaired.copy(torBridgeSourceId = "")
+    }
 
     fun profileById(id: String): VpnProfile? = profiles.firstOrNull { it.id == id }
 

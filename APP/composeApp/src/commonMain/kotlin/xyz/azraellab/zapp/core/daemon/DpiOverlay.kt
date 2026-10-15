@@ -34,6 +34,16 @@ object DpiOverlay {
     var tcpPorts: List<String> = emptyList()
         private set
 
+    /**
+     * Домены, сузившие область обхода (hostlist демонов).
+     *
+     * Пусто -- область не сузжена. Нужно для журнала: подпись «all tcp»
+     * врала, когда обход ограничен списком доменов.
+     */
+    @Volatile
+    var domains: List<String> = emptyList()
+        private set
+
     /** Блокировать ли QUIC: заменяет udp-десинхронизацию отсутствием канала. */
     @Volatile
     var quicBlock: Boolean = false
@@ -62,14 +72,31 @@ object DpiOverlay {
      * признаку переподнимает уже живую туннельную сессию, а молчаливые
      * повторы (демон дышит, конфиг тот же) переподключения не стоят.
      */
-    fun update(tcp: Collection<String>, quicBlock: Boolean): Boolean {
+    fun update(tcp: Collection<String>, quicBlock: Boolean, hosts: Collection<String> = emptyList()): Boolean {
         val ports = tcp.toList()
+        val hostlist = hosts.toList()
         val changed = active != ports.isNotEmpty() ||
             this.tcpPorts != ports ||
+            this.domains != hostlist ||
             this.quicBlock != quicBlock
         this.tcpPorts = ports
+        this.domains = hostlist
         this.quicBlock = quicBlock
         this.active = ports.isNotEmpty() || quicBlock
         return changed
+    }
+
+    /**
+     * Подпись области обхода для журнала.
+     *
+     * Портов нет -- трафик через релей не идёт вовсе, и раньше подпись
+     * «all tcp» врала об этом. Домены сузили область -- они тоже
+     * показываются, иначе по строке журнала нельзя понять, что обходится.
+     */
+    fun scopeLabel(): String = when {
+        tcpPorts.isEmpty() && domains.isEmpty() -> "nothing routed"
+        tcpPorts.isEmpty() -> "domains only: " + domains.joinToString(", ")
+        domains.isEmpty() -> tcpPorts.joinToString(", ")
+        else -> tcpPorts.joinToString(", ") + " for " + domains.joinToString(", ")
     }
 }

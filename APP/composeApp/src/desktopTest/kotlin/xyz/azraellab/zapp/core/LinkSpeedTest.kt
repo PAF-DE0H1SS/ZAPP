@@ -104,15 +104,15 @@ class LinkSpeedTest {
     fun formatSpeedCoversAllUnits() {
         assertEquals("0 B/s", formatSpeed(0))
         assertEquals("512 B/s", formatSpeed(512))
-        assertEquals("1 KB/s", formatSpeed(1024))
-        assertEquals("1.5 KB/s", formatSpeed(1536))
-        assertEquals("5 MB/s", formatSpeed(5L * 1024 * 1024))
-        assertEquals("2 GB/s", formatSpeed(2L * 1024 * 1024 * 1024))
+        assertEquals("1 KiB/s", formatSpeed(1024))
+        assertEquals("1.5 KiB/s", formatSpeed(1536))
+        assertEquals("5 MiB/s", formatSpeed(5L * 1024 * 1024))
+        assertEquals("2 GiB/s", formatSpeed(2L * 1024 * 1024 * 1024))
     }
 
     @Test
     fun displayStringShowsBothDirections() {
         val line = LinkSpeed(downBps = 1536, upBps = 512).toDisplayString()
-        assertEquals("↓ 1.5 KB/s  ↑ 512 B/s", line)
+        assertEquals("↓ 1.5 KiB/s  ↑ 512 B/s", line)
     }
 }

@@ -77,4 +77,45 @@ object TorBridges {
         if (host.isEmpty()) return null
         return host to port
     }
+
+    /**
+     * Подставляет IP вместо доменного имени в bridge-строках.
+     *
+     * lyrebird собран на Go без cgo и резолвит через `/etc/resolv.conf`,
+     * которого на Android нет: он стучится на `[::1]:53`, и доменные мосты
+     * мертвы, тогда как IP-мосты работают (журнал работ 2026-10-03). Свой
+     * резолвер у бинаря чинить нечем, зато системный здоровый, поэтому
+     * имена разрешаются здесь, в приложении, и в torrc уходят готовые
+     * адреса.
+     *
+     * [resolve] возвращает IP или null -- строка уходит как была, без
+     * префикса Bridge тор её примет ровно так же, как и раньше. Худший
+     * исход -- прежнее поведение, а не сломанный мост.
+     */
+    fun resolveHosts(rawConfig: String, resolve: (String) -> String?): String =
+        rawConfig.lineSequence().joinToString("\n") { raw ->
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#")) return@joinToString raw
+            val body = if (line.startsWith("Bridge ", ignoreCase = true)) {
+                line.substring(7).trim()
+            } else {
+                line
+            }
+            val tokens = body.split(Regex("\\s+")).filter { it.isNotEmpty() }
+            if (tokens.isEmpty()) return@joinToString raw
+            val first = tokens[0].lowercase()
+            val endpointIndex = if (first in TRANSPORTS) 1 else 0
+            val endpoint = tokens.getOrNull(endpointIndex) ?: return@joinToString raw
+            val (host, port) = splitEndpoint(endpoint) ?: return@joinToString raw
+            // Числовой адрес уже готов: резолвить нечего, строка цела.
+            if (host.isAddressLiteral()) return@joinToString raw
+            val ip = resolve(host) ?: return@joinToString raw
+            val rebuilt = tokens.toMutableList()
+            rebuilt[endpointIndex] = if (ip.contains(':')) "[$ip]:$port" else "$ip:$port"
+            "Bridge " + rebuilt.joinToString(" ")
+        }
+
+    /** IPv4-литерал, IPv6 или имя хоста. Резолв нужен только последним. */
+    private fun String.isAddressLiteral(): Boolean =
+        contains(':') || matches(Regex("\\d{1,3}(\\.\\d{1,3}){3}"))
 }

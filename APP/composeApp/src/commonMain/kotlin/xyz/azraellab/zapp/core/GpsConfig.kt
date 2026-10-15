@@ -65,6 +65,18 @@ data class GpsConfig(
             GpsMode.VPN_LOCATION -> GpsTarget.VpnLocation
             GpsMode.DISABLED -> GpsTarget.Off
         }
+
+    /**
+     * Поднимать ли подмену при старте приложения.
+     *
+     * [enabled] -- намерение пользователя (тумблер на странице GPS), а не
+     * состояние процесса: раньше поле лежало в конфиге мёртвым грузом,
+     * подмена сбрасывалась при каждом рестарте, и приходилось жать «Старт»
+     * заново. Режим [GpsMode.DISABLED] отменяет намерение: сценария
+     * подмены нет, ловить нечего.
+     */
+    val autostart: Boolean
+        get() = enabled && GpsMode.of(mode) != GpsMode.DISABLED
 }
 
 /** Сценарий подмены. */

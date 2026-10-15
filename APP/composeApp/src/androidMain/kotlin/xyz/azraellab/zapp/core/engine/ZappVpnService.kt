@@ -77,6 +77,17 @@ class ZappVpnService : VpnService() {
      */
     private var defaultNetCb: ConnectivityManager.NetworkCallback? = null
 
+    /**
+     * Сеть, несущая туннель прямо сейчас.
+     *
+     * Держится для [VpnService.setUnderlyingNetworks] и чтобы отличать
+     * «ушла наша сеть» от «ушла чужая»: колбэки приходят на каждую
+     * физическую сеть устройства, и трогать подложку при смене второй
+     * симки было бы неверно.
+     */
+    @Volatile
+    private var underlying: Network? = null
+
     /** Флаги дренажа: колбэки сыплются пачками, обход нужен один за последний. */
     private val bypassRefreshPending = AtomicBoolean(false)
     private val bypassRefreshRunning = AtomicBoolean(false)
@@ -177,12 +188,17 @@ class ZappVpnService : VpnService() {
     }
 
     /**
-     * Следит за дефолтной сетью ради таблицы обхода uid0.
+     * Следит за дефолтной сетью ради таблицы обхода uid0 и ради самой
+     * системы.
      *
      * Android переписывает свои маршруты при смене сети сам, а наше
      * правило построено на имени таблицы, которое тогда устаревает --
      * и демоны root возвращаются в туннель с петлёй. Колбэк зовёт
      * [UidZeroBypass.refresh], который без поднятого туннеля -- no-op.
+     *
+     * Плюс [VpnService.setUnderlyingNetworks]: без него система считает,
+     * что туннель висит на сети, которой уже нет, и приложение смотрит
+     * на чужую метрику -- «нет интернета» при работающем туннеле.
      */
     private fun registerDefaultNetworkCb() {
         val cm = getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager ?: run {
@@ -190,8 +206,19 @@ class ZappVpnService : VpnService() {
             return
         }
         val cb = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) = refreshBypassLater()
-            override fun onLost(network: Network) = refreshBypassLater()
+            override fun onAvailable(network: Network) {
+                underlying = network
+                tellUnderlying(arrayOf(network))
+                refreshBypassLater()
+            }
+
+            override fun onLost(network: Network) {
+                // Пропала не та сеть, что под туннелем -- трогать нечего.
+                if (network != underlying) return
+                underlying = null
+                tellUnderlying(null)
+                refreshBypassLater()
+            }
         }
         // NOT_VPN -- реальная сеть под туннелем; у самого VPN этого
         // флага нет, иначе подписка ловила бы только его самого.
@@ -205,6 +232,19 @@ class ZappVpnService : VpnService() {
                 daemonLogcat(TAG, "underlying network callback: registered")
             }
             .onFailure { daemonLogcat(TAG, "underlying network callback failed: ${it.message}") }
+    }
+
+    /**
+     * Сообщает системе, какая сеть несёт туннель.
+     *
+     * null -- «подложки нет»: система перестаёт считать туннель работающим
+     * по умолчанию и не шлёт уведомления от имени мёртвой сети. Ошибка
+     * здесь не фатальна -- маршруты перепишутся и сами, зовётся поэтому
+     * через runCatching и только логируется.
+     */
+    private fun tellUnderlying(networks: Array<Network>?) {
+        runCatching { setUnderlyingNetworks(networks) }
+            .onFailure { daemonLogcat(TAG, "setUnderlyingNetworks failed: ${it.message}") }
     }
 
     /**

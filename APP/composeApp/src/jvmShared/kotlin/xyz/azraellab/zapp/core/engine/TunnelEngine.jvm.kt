@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnProfile
+import xyz.azraellab.zapp.core.TorBridges
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.daemon.DaemonEngine
 import xyz.azraellab.zapp.core.daemon.DaemonEvent
@@ -734,9 +735,21 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
             // (мёртвый основной мост) экономит минуты bootstrap'а. Дубли
             // строк между источниками схлопываются -- списки часто одни
             // и те же, отличаясь порядком.
+            //
+            // Доменные имена разрешаются здесь, а не lyrebird: у того Go
+            // без cgo и /etc/resolv.conf на Android нет, поэтому доменные
+            // мосты у него мертвы. Кэш один на запуск -- одни и те же
+            // имена в списках повторяются десятками.
+            val hostCache = HashMap<String, String>()
+            fun resolved(raw: String) = TorBridges.resolveHosts(raw) { host ->
+                hostCache.getOrPut(host) {
+                    runCatching { InetAddress.getAllByName(host).firstOrNull()?.hostAddress }
+                        .getOrNull().orEmpty()
+                }.ifEmpty { null }
+            }
             val seen = mutableSetOf<String>()
             fun appendBridges(raw: String) {
-                for (line in raw.lineSequence().map { it.trim() }) {
+                for (line in resolved(raw).lineSequence().map { it.trim() }) {
                     if (line.isEmpty() || line.startsWith("#")) continue
                     val normalized = if (line.startsWith("Bridge ", ignoreCase = true)) line
                     else "Bridge $line"

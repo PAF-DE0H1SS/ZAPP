@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 
 /**
@@ -262,7 +263,16 @@ fun <T> ZappChoiceRow(
                 FilterChip(
                     selected = isSelected,
                     onClick = { if (enabled) onSelect(option.value) },
-                    label = { Text(option.label, maxLines = 1, softWrap = false) },
+                    // Кириллица/иероглифы в чипе длиннее, чем кажется:
+                    // без многоточия строка резалась по краю (UX5).
+                    label = {
+                        Text(
+                            text = option.label,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primary,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimary

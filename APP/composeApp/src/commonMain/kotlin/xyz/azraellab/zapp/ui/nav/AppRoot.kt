@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.ui.components.debugPath
@@ -208,6 +209,7 @@ fun AppRoot(state: AppState) {
                                     text = tr(shown.short),
                                     style = MaterialTheme.typography.labelSmall,
                                     maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     color = if (isSelected) {
                                         MaterialTheme.colorScheme.primary
                                     } else {
@@ -224,6 +226,7 @@ fun AppRoot(state: AppState) {
                                                 text = " | ",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
                                         }
@@ -231,6 +234,7 @@ fun AppRoot(state: AppState) {
                                             text = tr(member.short),
                                             style = MaterialTheme.typography.labelSmall,
                                             maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
                                             color = if (isSelected && member == activeTab) {
                                                 MaterialTheme.colorScheme.primary
                                             } else {

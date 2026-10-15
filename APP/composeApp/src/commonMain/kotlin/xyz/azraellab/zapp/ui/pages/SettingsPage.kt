@@ -76,6 +76,7 @@ import xyz.azraellab.zapp.ui.consistency.isLocked
 import xyz.azraellab.zapp.ui.consistency.lockReason
 import xyz.azraellab.zapp.ui.consistency.settingLocks
 import xyz.azraellab.zapp.ui.nav.ZappBackHandler
+import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.tr
 
 /**
@@ -287,7 +288,7 @@ private fun GeneralSection(state: AppState) {
                 selected = AppLangState.current.code,
                 onSelect = { code -> AppLangState.set(AppLang.of(code)) }
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(AzraelSpace.xs))
             Text(
                 text = tr(Str.WELCOME_Q_REGION_HINT),
                 style = MaterialTheme.typography.bodySmall,
@@ -1425,7 +1426,7 @@ private fun InfoRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(4.dp),
+            .padding(AzraelSpace.xs),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant)

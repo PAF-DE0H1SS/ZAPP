@@ -99,7 +99,11 @@ internal class AndroidTrafficSource : TrafficSource {
                 rootLogged = true
                 // Нейтральная формулировка: это успешный фолбэк, а не сбой.
                 // Слова «denied»/«error» уводили строку в журнал ошибок.
-                AppLog.log("traffic", "counters via su: root fallback used")
+                // Строка про su не должна попадать в норут-журнал: там
+                // этот путь и так недостижим, но и упоминаний не нужно.
+                if (BuildMode.rootAllowed) {
+                    AppLog.log("traffic", "counters via su: root fallback used")
+                }
             }
             return nowMs to list
         }

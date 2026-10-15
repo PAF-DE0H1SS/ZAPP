@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -54,7 +55,32 @@ fun RegionDropdown(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            RegionRegistry.all.forEach { region ->
+            // Очистка выбора (B7): после того как страна поставлена,
+            // пути обратно к «везде» не было вовсе. Первым пунктом и
+            // с тем же текстом, что и строка в пустом состоянии, --
+            // набор сходится, а не приходится угадывать.
+            DropdownMenuItem(
+                text = { Text(tr(Str.WELCOME_REGION_ANYWHERE)) },
+                trailingIcon = {
+                    if (selected.isBlank()) {
+                        Text(
+                            text = "\u2713",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
+                onClick = {
+                    expanded = false
+                    if (selected.isNotBlank()) onSelect("")
+                },
+                modifier = Modifier.debugPath("$path.anywhere")
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            // Порядок -- по текущему языку: по-русски список должен
+            // читаться по-русски, а не по английскому имени (B7).
+            RegionRegistry.allSorted(lang).forEach { region ->
                 DropdownMenuItem(
                     text = { Text(RegionRegistry.localized(region.code, lang)) },
                     trailingIcon = {

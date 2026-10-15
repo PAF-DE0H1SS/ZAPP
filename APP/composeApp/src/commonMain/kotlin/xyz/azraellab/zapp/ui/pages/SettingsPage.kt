@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppConfig
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
+import xyz.azraellab.zapp.core.BuildMode
 import xyz.azraellab.zapp.core.Docs
 import xyz.azraellab.zapp.core.GoodbyeDpiMode
 import xyz.azraellab.zapp.core.RegionTuner
@@ -36,6 +37,7 @@ import xyz.azraellab.zapp.core.ZapretMode
 import xyz.azraellab.zapp.core.ZapretStrategy
 import xyz.azraellab.zapp.core.consistency.SettingKeys
 import xyz.azraellab.zapp.core.dev.isDebugBuild
+import xyz.azraellab.zapp.core.engine.isLive
 import xyz.azraellab.zapp.core.log.AppLog
 import xyz.azraellab.zapp.core.log.ErrorLog
 import xyz.azraellab.zapp.core.log.looksLikeErrorLine
@@ -60,6 +62,7 @@ import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappButtonRow
 import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
+import xyz.azraellab.zapp.ui.components.ZappDialog
 import xyz.azraellab.zapp.ui.components.ZappListRow
 import xyz.azraellab.zapp.ui.components.ZappNumberField
 import xyz.azraellab.zapp.ui.components.ZappSectionTitle
@@ -379,6 +382,14 @@ private fun PerfSection(state: AppState) {
 @Composable
 private fun PermissionsSection(state: AppState) {
     val statuses by state.permissions.statuses.collectAsState()
+
+    // Перечитываем при каждом входе на экран (B9): мок-локацию выдают мимо
+    // приложения (`appops set` в шелле или экран настроек разработчика),
+    // и без этого опроса здесь висело бы «Не дано» до самого force-stop.
+    // Возврат из системных настроек ловит resume-слушатель Activity,
+    // этот вызов закрывает простое открытие вкладки.
+    LaunchedEffect(Unit) { state.permissions.refresh() }
+
     PageGroup(tr(Str.SETTINGS_PERMISSIONS)) {
         ZappCard {
             if (statuses.isEmpty()) {
@@ -409,12 +420,26 @@ private fun DeviceSection(state: AppState) {
             InfoRow(tr(Str.PROBE_SYSTEM), probe?.system.orDash())
             InfoRow(tr(Str.PROBE_KERNEL), probe?.kernel.orDash())
             InfoRow(tr(Str.PROBE_API), probe?.apiLevel?.takeIf { it > 0 }?.toString().orDash())
-            InfoRow(tr(Str.PROBE_ROOT), tr((probe?.root
-                ?: xyz.azraellab.zapp.core.probe.Probe.UNKNOWN).label))
-            InfoRow(tr(Str.PROBE_MAGISK), tr((probe?.magisk
-                ?: xyz.azraellab.zapp.core.probe.Probe.UNKNOWN).label))
+            // Строки Root и Magisk -- только в рут-сборке. В норуте их
+            // не должно быть вообще, а не «Нет»: норут обязан не
+            // упоминать root ни в одном месте экрана (E1, E2).
+            if (BuildMode.rootAllowed) {
+                InfoRow(tr(Str.PROBE_ROOT), tr((probe?.root
+                    ?: xyz.azraellab.zapp.core.probe.Probe.UNKNOWN).label))
+                InfoRow(tr(Str.PROBE_MAGISK), tr((probe?.magisk
+                    ?: xyz.azraellab.zapp.core.probe.Probe.UNKNOWN).label))
+            }
             InfoRow(tr(Str.PROBE_VPN), tr((probe?.vpnTunnel
                 ?: xyz.azraellab.zapp.core.probe.Probe.UNKNOWN).label))
+            // Повторная проверка (B2): политику Magisk выдают вне
+            // приложения, и без сброса кэша «Root: Нет» висело бы на
+            // экране до самого перезапуска -- без единой подсказки.
+            ZappButton(
+                text = tr(Str.PROBE_AGAIN),
+                onClick = { state.reprobe() },
+                role = ButtonRole.GHOST,
+                path = "settings.device.reprobe"
+            )
         }
     }
 }
@@ -570,13 +595,13 @@ private fun PresetsSection(state: AppState) {
     val scope = rememberCoroutineScope()
     val message = remember { mutableStateOf<Str?>(null) }
     var failure by rememberSaveable { mutableStateOf(false) }
+    var confirmReset by rememberSaveable { mutableStateOf(false) }
+    var includeProfiles by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(message.value) {
-        if (message.value != null) {
-            kotlinx.coroutines.delay(3000)
-            message.value = null
-        }
-    }
+    // Баннер не гаснет по таймеру: раньше исчезал через 3 с, и до кнопки
+    // «Загрузить» пользователь не успевал прочитать, что пресет применился.
+    // Держится до следующего действия -- любая операция перезаписывает
+    // сообщение своей, а уход со страницы убирает его вместе с состоянием.
 
     PageGroup(tr(Str.SETTINGS_PRESETS)) {
         message.value?.let { text ->
@@ -610,13 +635,24 @@ private fun PresetsSection(state: AppState) {
                 }
             }
 
+            // Галочка выключена по умолчанию (B5): без неё файл пресета
+            // несёт настройки, а не ключи тысячи узлов. Подпись показывает,
+            // сколько именно коннектов уйдёт внутрь, если включить.
+            ZappSettingRow(
+                title = tr(Str.PRESET_INCLUDE_PROFILES),
+                subtitle = tr(Str.PRESET_RESET_PROFILES)
+                    .format(state.config.vpn.profiles.size),
+                checked = includeProfiles,
+                onCheckedChange = { includeProfiles = it },
+                path = "settings.presets.includeProfiles"
+            )
             ZappButtonRow(modifier = Modifier.fillMaxWidth()) {
                 ZappButton(
                     text = tr(Str.COMMON_EXPORT),
                     role = ButtonRole.SECONDARY,
                     onClick = {
                         scope.launch {
-                            val result = state.exportPreset()
+                            val result = state.exportPreset(includeProfiles)
                             message.value = result.key()
                             failure = !result.ok
                         }
@@ -639,14 +675,87 @@ private fun PresetsSection(state: AppState) {
             ZappButton(
                 text = tr(Str.COMMON_RESET),
                 role = ButtonRole.GHOST,
-                onClick = {
-                    scope.launch {
-                        state.resetToDefaults()
-                        message.value = Str.ERR_PRESET_APPLIED
-                        failure = false
-                    }
-                },
+                onClick = { confirmReset = true },
                 modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+
+    // Сброс одним тапом стирал регион, приветственный тур, все профили,
+    // домены, kill switch, правила по приложениям и статистику -- разом и
+    // без единого слова (B4). Теперь сначала перечисление того, что
+    // исчезнет, и только потом необратимое действие.
+    if (confirmReset) {
+        ZappDialog(
+            title = tr(Str.PRESET_RESET_TITLE),
+            body = tr(Str.PRESET_RESET_KEEP),
+            bullets = listOf(
+                tr(Str.PRESET_RESET_REGION),
+                tr(Str.PRESET_RESET_PROFILES).format(state.config.vpn.profiles.size),
+                tr(Str.PRESET_RESET_POLICY),
+                tr(Str.PRESET_RESET_USAGE)
+            ),
+            confirmText = tr(Str.COMMON_RESET),
+            cancelText = tr(Str.COMMON_CANCEL),
+            danger = true,
+            path = "settings.presets.reset",
+            onConfirm = {
+                confirmReset = false
+                scope.launch {
+                    state.resetToDefaults()
+                    message.value = Str.ERR_PRESET_APPLIED
+                    failure = false
+                }
+            },
+            onDismiss = { confirmReset = false }
+        )
+    }
+}
+
+/**
+ * Поведение туннеля: kill switch, DNS при kill switch, автозапуск.
+ *
+ * Строки жили в редакторе профиля (C3), где ими пользовались разве что
+ * наткнувшись на них среди полей узла: переключатели-то свойства всего
+ * туннеля, а не конкретного коннекта. Крышка не трогается во время
+ * сессии -- смена kill switch на ходу означала бы мгновенный сброс
+ * маршрутов под ногами идущего establish, и до переподключения видна
+ * подсказка «Применится при следующем подключении».
+ */
+@Composable
+private fun VpnBehaviorGroup(state: AppState) {
+    val vpn = state.config.vpn
+    val locks = settingLocks(state)
+    val tunnelLive = state.tunnel.state.collectAsState().value.isLive
+    PageGroup(tr(Str.VPN_BEHAVIOR)) {
+        ZappCard {
+            ZappSettingRow(
+                title = tr(Str.VPN_KILL_SWITCH),
+                checked = vpn.killSwitch,
+                subtitle = if (tunnelLive) tr(Str.PERAPP_NEXT_CONNECT)
+                else lockReason(locks, SettingKeys.KILL_SWITCH),
+                enabled = !isLocked(locks, SettingKeys.KILL_SWITCH) && !tunnelLive,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(vpn = it.vpn.copy(killSwitch = on)) }
+                },
+                path = "settings.vpn.kill_switch"
+            )
+            ZappSettingRow(
+                title = tr(Str.VPN_KILL_SWITCH_DNS),
+                checked = vpn.killSwitchDns,
+                enabled = vpn.killSwitch && !tunnelLive,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(vpn = it.vpn.copy(killSwitchDns = on)) }
+                },
+                path = "settings.vpn.kill_switch_dns"
+            )
+            ZappSettingRow(
+                title = tr(Str.VPN_AUTOSTART),
+                checked = vpn.autoStart,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(vpn = it.vpn.copy(autoStart = on)) }
+                },
+                path = "settings.vpn.autostart"
             )
         }
     }
@@ -659,6 +768,7 @@ private fun PresetsSection(state: AppState) {
     PageGroup(tr(Str.VPN_PROFILES)) {
         VpnProfileEditor(state)
     }
+    VpnBehaviorGroup(state)
     PageGroup(tr(Str.VPN_ROUTING)) {
         VpnRoutingCard(state)
     }
@@ -1257,12 +1367,41 @@ private fun DocsSection() {
     }
 }
 
+/**
+ * «О программе».
+ *
+ * Было две строки -- версия и платформа, и багрепорт всё равно
+ * начинался с «проверь, что у тебя стоит». Теперь здесь же сборка
+ * (root-вариант или стандартный), лицензия, сведения об устройстве и
+ * проверка обновлений -- не надо уходить для этого в «Обновления».
+ */
 @Composable
 private fun AboutSection(state: AppState) {
+    val probe by state.probe.collectAsState()
+    val updateState by state.updateState.collectAsState()
     PageGroup(tr(Str.SETTINGS_ABOUT)) {
         ZappCard {
-            InfoRow(label = tr(Str.ABOUT_VERSION), value = state.appVersion)
-            InfoRow(label = tr(Str.ABOUT_PLATFORM), value = platformName(state))
+            InfoRow(tr(Str.ABOUT_VERSION), state.appVersion)
+            InfoRow(tr(Str.ABOUT_PLATFORM), platformName(state))
+            // Метка root-сборки рисуется только когда BuildMode.rootAllowed:
+            // норут обязан не упоминать root ни одной видимой строкой (E5).
+            InfoRow(
+                tr(Str.ABOUT_BUILD),
+                tr(if (BuildMode.rootAllowed) Str.ABOUT_BUILD_ROOT else Str.ABOUT_BUILD_PLAIN)
+            )
+            InfoRow(tr(Str.ABOUT_LICENSE), tr(Str.ABOUT_LICENSE_NAME))
+        }
+        ZappCard {
+            InfoRow(tr(Str.PROBE_SYSTEM), probe?.system.orDash())
+            InfoRow(tr(Str.PROBE_API), probe?.apiLevel?.takeIf { it > 0 }?.toString().orDash())
+            InfoRow(tr(Str.UPD_CHECK), tr(updateState.labelKey()))
+            ZappButton(
+                text = tr(Str.UPD_CHECK),
+                role = ButtonRole.SECONDARY,
+                enabled = updateState != UpdateState.CHECKING,
+                onClick = { state.checkForUpdates() },
+                path = "settings.about.check_updates"
+            )
         }
     }
 }

@@ -197,6 +197,15 @@ data class Choice<T>(
 )
 
 /**
+ * Сколько вариантов ещё рисуются чипами.
+ *
+ * Порог -- про «вариантов мало, они должны быть видны сразу» из
+ * документации компонента: протоколы, транспорты и прочие короткие
+ * наборы остаются на виду, всё длиннее уходит в ленивый диалог.
+ */
+private const val CHIPS_MAX = 12
+
+/**
  * Выбор одного варианта из списка чипами.
  *
  * Чипы, а не выпадающий список: вариантов мало, они должны быть видны сразу,
@@ -216,6 +225,24 @@ fun <T> ZappChoiceRow(
     enabled: Boolean = true
 ) {
     if (options.isEmpty()) return
+
+    // Длинный список чипами не рисуем: 935 коннектов в инлайновом FlowRow
+    // считаются целиком и толкают остальной экран на тысячи пикселей вниз,
+    // пока kill switch остаётся за пределами короткого свайпа (B6). До
+    // порога -- привычные чипы, дальше -- свёрнутая строка с ленивым
+    // списком и поиском.
+    if (options.size > CHIPS_MAX) {
+        ZappPickerRow(
+            label = label,
+            options = options,
+            selected = selected,
+            onSelect = onSelect,
+            modifier = modifier,
+            path = path,
+            enabled = enabled
+        )
+        return
+    }
 
     Column(
         modifier = modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f),

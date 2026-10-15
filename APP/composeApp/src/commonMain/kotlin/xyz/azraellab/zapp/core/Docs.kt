@@ -52,10 +52,17 @@ object Docs {
                 ),
                 Item(
                     L("Kill switch", "Kill switch", "防火墙开关"),
-                    L(
+                    // Как именно держится -- зависит от сборки: с root это
+                    // отдельная цепочка iptables, без root -- сама сессия
+                    // VpnService. Общий текст обязан быть честным в обеих.
+                    if (BuildMode.rootAllowed) L(
                         "With root, iptables blocks all outbound traffic except the connect endpoints while the tunnel is up. If the tunnel dies, nothing leaks.",
                         "При наличии root iptables блокирует весь исходящий трафик, кроме адресов коннекта, пока туннель поднят. Если туннель упал -- ничего не утекает.",
                         "有 root 时，iptables 除节点地址外阻断全部出站流量。隧道断开也不会泄露。"
+                    ) else L(
+                        "While the session is up, all app traffic goes through the tunnel. If the tunnel dies, packets are dropped rather than leaked.",
+                        "Пока сессия поднята, весь трафик приложений идёт через туннель. Если туннель упал, пакеты отбрасываются, а не утекают.",
+                        "会话运行期间，应用流量全部经由隧道。隧道断开时数据包被丢弃，不会泄露。"
                     )
                 )
             )
@@ -129,6 +136,17 @@ object Docs {
                         "Every action and error: starts, stops, imports, checks, tunnel and daemon output. Turn it off in Settings > Log if you do not need it; the buffer is also saved to the file zapp.log.",
                         "Каждое действие и ошибка: старты, остановки, импорты, проверки, вывод туннеля и демонов. Выключить можно в Настройки > Журнал; буфер также пишется в файл zapp.log.",
                         "记录所有操作与错误：启动、停止、导入、检测、隧道与守护进程输出。可在“设置 > 日志”关闭；缓冲同时写入 zapp.log 文件。"
+                    )
+                ),
+                Item(
+                    L("Warn about netlink", "Предупреждение про netlink", "netlink 警告"),
+                    // C13: строку видно в журнале, и без объяснения она
+                    // читается как поломка. Текст без слов из запретного
+                    // списка noroot-сборки (см. i18n/noroot_silent_on_root).
+                    L(
+                        "«WARN network: netlink unavailable» means the system denies the built-in interface monitor (SELinux on Android). Not a failure: ZAPP watches network changes itself and re-reads routes and rules when you switch between Wi-Fi and mobile data, so the tunnel keeps working.",
+                        "«WARN network: netlink unavailable» -- система запретила встроенный монитор интерфейсов (SELinux в Android). Это не поломка: ZAPP следит за сменой сети сам и перечитывает маршруты и правила при переходе с Wi-Fi на мобильные, туннель продолжает работать.",
+                        "「WARN network: netlink unavailable」表示系统禁止内置的网络接口监控（Android 的 SELinux）。这不是故障：ZAPP 自行获知网络变化，并在 Wi-Fi 与移动数据切换时重新读取路由和规则，隧道照常工作。"
                     )
                 )
             )

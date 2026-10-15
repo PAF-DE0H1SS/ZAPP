@@ -154,6 +154,10 @@ private fun WelcomeStep(onNext: () -> Unit) {
 private fun PermissionsStep(state: AppState, onNext: () -> Unit, onBack: () -> Unit) {
     val statuses by state.permissions.statuses.collectAsState()
 
+    // Тот же переспрос при входе (B9): шаг можно открыть повторно уже
+    // после того, как разрешение выдали мимо приложения.
+    LaunchedEffect(Unit) { state.permissions.refresh() }
+
     // Пока не выдано всё, что можно выдать, дальше не пускаем:
     // незапрошенные разрешения -- самая частая причина «не работает».
     val allGranted = statuses.all {
@@ -208,6 +212,20 @@ private fun PermissionsStep(state: AppState, onNext: () -> Unit, onBack: () -> U
 private enum class AutoStep { PENDING, RUNNING, DONE, FAILED }
 
 /**
+ * Шаг и, для неудачи, причина.
+ *
+ * [reason] -- ключ переведённой строки, [detail] -- сырой текст ошибки
+ * (то, что реально ответила сеть: «http 404», «fetch»): его переводить
+ * нечего, и именно он объясняет случай. Раньше шаг падал с ✗ и молчал:
+ * было видно, что не вышло, но не почему (B8).
+ */
+private data class AutoStepState(
+    val step: AutoStep = AutoStep.PENDING,
+    val reason: Str? = null,
+    val detail: String = ""
+)
+
+/**
  * Автонастройка: опросник о себе, затем последовательные шаги.
  *
  * Опросник идёт первым и применяется сразу при выборе ответа: класс
@@ -224,12 +242,12 @@ private enum class AutoStep { PENDING, RUNNING, DONE, FAILED }
  */
 @Composable
 private fun AutoSetupStep(state: AppState) {
-    var sources by remember { mutableStateOf(AutoStep.PENDING) }
-    var pings by remember { mutableStateOf(AutoStep.PENDING) }
-    var strategy by remember { mutableStateOf(AutoStep.PENDING) }
-    var components by remember { mutableStateOf(AutoStep.PENDING) }
-    var updates by remember { mutableStateOf(AutoStep.PENDING) }
-    var perfStep by remember { mutableStateOf(AutoStep.PENDING) }
+    var sources by remember { mutableStateOf(AutoStepState()) }
+    var pings by remember { mutableStateOf(AutoStepState()) }
+    var strategy by remember { mutableStateOf(AutoStepState()) }
+    var components by remember { mutableStateOf(AutoStepState()) }
+    var updates by remember { mutableStateOf(AutoStepState()) }
+    var perfStep by remember { mutableStateOf(AutoStepState()) }
     var finished by remember { mutableStateOf(false) }
 
     // Загруженный пресет выключает автонастройку: настройки уже заданы.
@@ -271,22 +289,41 @@ private fun AutoSetupStep(state: AppState) {
         val strategyRunning = state.strategyRunning
 
         // --- Источники: обновить и дождаться статуса ---
-        sources = AutoStep.RUNNING
-        state.refreshSources()
-        var waits = 0
-        while (sourceStatus.value.values.any { it.state == AppState.SourceState.LOADING } &&
-            waits < 300
-        ) {
-            delay(200); waits++
-        }
-        sources = if (sourceStatus.value.values.any { it.state == AppState.SourceState.OK }) {
-            AutoStep.DONE
+        sources = AutoStepState(AutoStep.RUNNING)
+        val enabledIds = state.config.vpn.sources.filter { it.enabled }.map { it.id }.toSet()
+        fun enabledStatus() = sourceStatus.value.filter { it.key in enabledIds }
+        if (enabledIds.isEmpty()) {
+            sources = AutoStepState(AutoStep.FAILED, Str.WELCOME_FAIL_NO_SOURCES)
         } else {
-            AutoStep.FAILED
+            state.refreshSources(enabledIds)
+            var waits = 0
+            // Пока хоть один источник в IDLE или LOADING -- обновление не
+            // закончилось. Раньше ждали только LOADING: refreshSources
+            // запускает корутину, первый статус появляется не мгновенно,
+            // и опрос успевал выйти до старта -- тогда шаг судил по
+            // прошлому запуску и падал по-разному при одинаковых условиях.
+            while (enabledStatus().values.any {
+                    it.state == AppState.SourceState.IDLE ||
+                        it.state == AppState.SourceState.LOADING
+                } && waits < 300
+            ) {
+                delay(200); waits++
+            }
+            val done = enabledStatus().values
+            sources = if (done.any { it.state == AppState.SourceState.OK }) {
+                AutoStepState(AutoStep.DONE)
+            } else {
+                AutoStepState(
+                    step = AutoStep.FAILED,
+                    reason = Str.WELCOME_FAIL_SOURCES,
+                    detail = done.firstNotNullOfOrNull { it.error.ifBlank { null } } ?: ""
+                )
+            }
         }
+        var waits = 0
 
         // --- Коннекты: проверка живости ---
-        pings = AutoStep.RUNNING
+        pings = AutoStepState(AutoStep.RUNNING)
         if (state.visibleVpnProfiles().isNotEmpty()) {
             state.checkAllVisible()
             waits = 0
@@ -294,33 +331,41 @@ private fun AutoSetupStep(state: AppState) {
             waits = 0
             while (checkProgress.value.running && waits < 600) { delay(200); waits++ }
             pings = if (state.visibleVpnProfiles().any { it.health.alive == true }) {
-                AutoStep.DONE
+                AutoStepState(AutoStep.DONE)
             } else {
-                AutoStep.FAILED
+                AutoStepState(AutoStep.FAILED, Str.WELCOME_FAIL_PINGS)
             }
         } else {
-            pings = AutoStep.DONE
+            pings = AutoStepState(AutoStep.DONE)
         }
 
         // --- Стратегия обхода ---
-        strategy = AutoStep.RUNNING
+        strategy = AutoStepState(AutoStep.RUNNING)
         state.autoPickStrategy("zapret")
         waits = 0
         while (!strategyRunning.value && waits < 15) { delay(200); waits++ }
         waits = 0
         while (strategyRunning.value && waits < 150) { delay(200); waits++ }
         strategy = if (state.strategyOutcome.value?.target == "zapret") {
-            AutoStep.DONE
+            AutoStepState(AutoStep.DONE)
         } else {
-            AutoStep.FAILED
+            AutoStepState(AutoStep.FAILED, Str.WELCOME_FAIL_STRATEGY)
         }
 
         // --- Компоненты: нативные бинари распакованы? ---
-        components = AutoStep.RUNNING
-        components = if (NativeBinaries.installed().isNotEmpty()) AutoStep.DONE else AutoStep.FAILED
+        components = AutoStepState(AutoStep.RUNNING)
+        // Распаковка идёт фоном с самого старта: проверка до её конца
+        // давала ✗ в зависимости от того, сколько миллисекунд ушло на
+        // предыдущие шаги. Ждём конца и только потом спрашиваем.
+        NativeBinaries.awaitReady()
+        components = if (NativeBinaries.installed().isNotEmpty()) {
+            AutoStepState(AutoStep.DONE)
+        } else {
+            AutoStepState(AutoStep.FAILED, Str.WELCOME_FAIL_COMPONENTS)
+        }
 
         // --- Обновления: быстрая проверка, не блокирует надолго ---
-        updates = AutoStep.RUNNING
+        updates = AutoStepState(AutoStep.RUNNING)
         state.checkForUpdates()
         waits = 0
         while (state.updateState.value == UpdateState.UNKNOWN ||
@@ -329,15 +374,17 @@ private fun AutoSetupStep(state: AppState) {
             if (waits >= 75) break
             delay(200); waits++
         }
+        // Провал и таймаут (UNKNOWN) и явная ошибка сети (ERROR) --
+        // неудача; раньше ERROR считался выполненным шагом.
         updates = when (state.updateState.value) {
-            UpdateState.UNKNOWN -> AutoStep.FAILED
-            else -> AutoStep.DONE
+            UpdateState.CURRENT, UpdateState.AVAILABLE -> AutoStepState(AutoStep.DONE)
+            else -> AutoStepState(AutoStep.FAILED, Str.WELCOME_FAIL_UPDATES)
         }
 
         // --- Производительность: применить ответы опросника ---
-        perfStep = AutoStep.RUNNING
+        perfStep = AutoStepState(AutoStep.RUNNING)
         applyUsage()
-        perfStep = AutoStep.DONE
+        perfStep = AutoStepState(AutoStep.DONE)
 
         finished = true
     }
@@ -457,7 +504,8 @@ private fun AutoSetupStep(state: AppState) {
     }
 
     val steps = listOf(sources, pings, strategy, components, updates, perfStep)
-    val doneCount = if (presetApplied) steps.size else steps.count { it == AutoStep.DONE || it == AutoStep.FAILED }
+    val doneCount = if (presetApplied) steps.size
+    else steps.count { it.step == AutoStep.DONE || it.step == AutoStep.FAILED }
     val progress by animateFloatAsState(
         targetValue = doneCount / steps.size.toFloat(),
         animationSpec = AzraelMotion.spec(AzraelMotion.state),
@@ -469,12 +517,13 @@ private fun AutoSetupStep(state: AppState) {
     )
 
     ZappCard(modifier = Modifier.fillMaxWidth()) {
-        AutoRow(tr(Str.WELCOME_AUTO_SOURCES), if (presetApplied) AutoStep.DONE else sources)
-        AutoRow(tr(Str.WELCOME_AUTO_PING), if (presetApplied) AutoStep.DONE else pings)
-        AutoRow(tr(Str.WELCOME_AUTO_STRATEGY), if (presetApplied) AutoStep.DONE else strategy)
-        AutoRow(tr(Str.WELCOME_AUTO_COMPONENTS), if (presetApplied) AutoStep.DONE else components)
-        AutoRow(tr(Str.WELCOME_AUTO_UPDATES), if (presetApplied) AutoStep.DONE else updates)
-        AutoRow(tr(Str.WELCOME_AUTO_PERF), if (presetApplied) AutoStep.DONE else perfStep)
+        val presetStep = AutoStepState(AutoStep.DONE)
+        AutoRow(tr(Str.WELCOME_AUTO_SOURCES), if (presetApplied) presetStep else sources)
+        AutoRow(tr(Str.WELCOME_AUTO_PING), if (presetApplied) presetStep else pings)
+        AutoRow(tr(Str.WELCOME_AUTO_STRATEGY), if (presetApplied) presetStep else strategy)
+        AutoRow(tr(Str.WELCOME_AUTO_COMPONENTS), if (presetApplied) presetStep else components)
+        AutoRow(tr(Str.WELCOME_AUTO_UPDATES), if (presetApplied) presetStep else updates)
+        AutoRow(tr(Str.WELCOME_AUTO_PERF), if (presetApplied) presetStep else perfStep)
     }
 
     ZappButton(
@@ -492,7 +541,8 @@ private fun AutoSetupStep(state: AppState) {
  * RUNNING подсвечивается пульсацией -- видно, что шаг не завис, а работает.
  */
 @Composable
-private fun AutoRow(title: String, step: AutoStep) {
+private fun AutoRow(title: String, state: AutoStepState) {
+    val step = state.step
     val marker = when (step) {
         AutoStep.PENDING -> "○"
         AutoStep.RUNNING -> "…"
@@ -527,15 +577,28 @@ private fun AutoRow(title: String, step: AutoStep) {
             color = color,
             modifier = Modifier.alpha(pulse)
         )
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            color = when (step) {
-                AutoStep.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
-                else -> MaterialTheme.colorScheme.onSurface
-            },
-            modifier = Modifier.weight(1f),
-            maxLines = 2
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = when (step) {
+                    AutoStep.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 2
+            )
+            // Причина -- прямо под строкой: ✗ без объяснения заставляет
+            // гадать, что именно сломалось, и в трёх проходах «падало»
+            // разное (B8). detail -- сырой ответ источника.
+            if (step == AutoStep.FAILED && (state.reason != null || state.detail.isNotBlank())) {
+                Text(
+                    text = listOf(state.reason?.let { tr(it) }.orEmpty(), state.detail)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
     }
 }

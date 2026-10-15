@@ -10,6 +10,7 @@ import xyz.azraellab.zapp.core.TrafficConfig
 import xyz.azraellab.zapp.core.UsageProfile
 import xyz.azraellab.zapp.core.UsageTuner
 import xyz.azraellab.zapp.core.VpnConfig
+import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.ZapretConfig
 import xyz.azraellab.zapp.core.GpsConfig
@@ -200,6 +201,63 @@ internal fun configTests(out: MutableList<DevTest>) {
         checkEq(777L, preset.createdAtMs, "время")
         checkEq(config.zapret, preset.zapret, "zapret")
         checkEq(config.goodbyeDpi, preset.goodbyeDpi, "goodbyeDpi")
+    }
+
+    // --- B5: коннекты в пресете ---
+
+    out += DevTest("config/preset-from-strips-connections", DevCategory.CONFIG, "Preset.from по умолчанию не тащит коннекты") {
+        val config = AppConfig(
+            vpn = VpnConfig(
+                activeProfileId = "a",
+                profiles = listOf(VpnProfile(id = "a", gateway = "1.2.3.4")),
+                killSwitch = true
+            )
+        )
+        val plain = Preset.from(config, name = "zapp", nowMs = 1L)
+        checkTrue(plain.vpn.profiles.isEmpty(), "без галочки список пуст")
+        checkEq("", plain.vpn.activeProfileId, "и выбор сброшен")
+        checkTrue(plain.vpn.killSwitch, "настройки туннеля при этом сохранены")
+
+        val full = Preset.from(config, name = "zapp", nowMs = 1L, includeProfiles = true)
+        checkEq(1, full.vpn.profiles.size, "с галочкой список внутри")
+        checkEq("a", full.vpn.activeProfileId, "выбор сохранён")
+    }
+
+    out += DevTest("config/preset-from-fills-identity", DevCategory.CONFIG, "Профиль без id и имени получает оба") {
+        val config = AppConfig(
+            vpn = VpnConfig(profiles = listOf(VpnProfile(gateway = "5.6.7.8")))
+        )
+        val profile = Preset.from(config, name = "zapp", nowMs = 1L, includeProfiles = true)
+            .vpn.profiles.single()
+        checkTrue(profile.id.isNotBlank(), "id пустой")
+        checkTrue(profile.name.isNotBlank(), "имя пустое")
+        checkContains(profile.name, "5.6.7.8", "в имени остаётся адрес шлюза")
+    }
+
+    out += DevTest("config/preset-apply-keeps-connections", DevCategory.CONFIG, "Пресет без коннектов не стирает список") {
+        val base = AppConfig(
+            vpn = VpnConfig(
+                activeProfileId = "keep",
+                profiles = listOf(VpnProfile(id = "keep", gateway = "9.9.9.9"))
+            )
+        )
+        val applied = Preset(vpn = VpnConfig(enabled = true)).applyTo(base)
+        checkEq(1, applied.vpn.profiles.size, "список цел")
+        checkEq("keep", applied.vpn.activeProfileId, "выбор цел")
+        checkTrue(applied.vpn.enabled, "настройки пресета применены")
+    }
+
+    out += DevTest("config/preset-apply-repairs-active-id", DevCategory.CONFIG, "Выбор, оставшийся за пределами списка, чинится") {
+        val base = AppConfig(
+            vpn = VpnConfig(
+                activeProfileId = "gone",
+                profiles = listOf(VpnProfile(id = "gone"), VpnProfile(id = "survivor"))
+            )
+        )
+        val applied = Preset(
+            vpn = VpnConfig(profiles = listOf(VpnProfile(id = "survivor", gateway = "1.1.1.1")))
+        ).applyTo(base)
+        checkEq("survivor", applied.vpn.activeProfileId, "выбор переехал на существующий")
     }
 
     // --- Валидация пресета ---

@@ -63,6 +63,17 @@ object RootShell {
     fun available(): Boolean = mode() != Mode.NONE
 
     /**
+     * Сбрасывает результат пробы: следующий [mode] спросит систему заново.
+     *
+     * Нужен кнопке «повторить проверку» (B2): политика Magisk меняется
+     * вне приложения, и без сброса «Root: Нет» оставалось бы на экране
+     * до самого перезапуска -- плюс ни одной подсказки, что делать.
+     */
+    fun forget() {
+        synchronized(probeLock) { probed = null }
+    }
+
+    /**
      * Собирает argv для запуска [command] через `sh`.
      *
      * На десктопе без root команда идёт от текущего пользователя -- это не
@@ -179,7 +190,16 @@ object RootShell {
     private val EXTRA_DIRS = listOf("/data/local/tmp", "/system/bin", "/system/xbin", "/vendor/bin")
 
     private const val DEFAULT_TIMEOUT_MS = 5000L
-    private const val PROBE_TIMEOUT_MS = 1500L
+
+    /**
+     * Сколько ждём ответ пробы `id`.
+     *
+     * 1500 мс было маловато на загруженных и медленных устройствах: `su`
+     * поднимается дольше, проба не успевала, и приложение показывало
+     * «Root: Нет» на устройстве с работающим root. 3000 мс -- с запасом;
+     * цена редкого вызова несравнима с ложным отказом.
+     */
+    private const val PROBE_TIMEOUT_MS = 3000L
     private const val READER_JOIN_MS = 300L
     private val SAFE_CHARS = ".,_-=/:@+%~"
 }

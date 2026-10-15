@@ -37,6 +37,10 @@ actual object StrategyProbe {
         relay: RelayTuning,
         hooks: ProbeHooks
     ): StrategyProbeOutcome? {
+        // Обе половины нужны и разного: !rootAllowed -- про сборку (в норуте
+        // реле -- единственный путь в принципе), !available -- про устройство
+        // (в рут-сборке без работающего su остаётся тот же рельеф). Правило
+        // целиком -- в KDoc `BuildMode` (E9).
         val useRelay = !BuildMode.rootAllowed || !RootShell.available()
         val candidates = when {
             useRelay -> relayCandidates(relay)

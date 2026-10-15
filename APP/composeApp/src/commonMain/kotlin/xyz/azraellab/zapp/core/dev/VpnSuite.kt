@@ -130,6 +130,22 @@ internal fun vpnTests(out: MutableList<DevTest>) {
         checkEq(null, config.profileById("zzz"), "неизвестный id")
     }
 
+    out += DevTest("vpn/active-profile-repair", DevCategory.VPN, "Висячий выбор чинится на первый узел") {
+        val alive = VpnConfig(
+            activeProfileId = "b",
+            profiles = listOf(profile(id = "a"), profile(id = "b"))
+        )
+        checkEq("b", alive.repairedActive().activeProfileId, "живой id не трогаем")
+
+        val dangling = VpnConfig(
+            activeProfileId = "gone",
+            profiles = listOf(profile(id = "a"), profile(id = "b"))
+        )
+        checkEq("a", dangling.repairedActive().activeProfileId, "висячий уезжает на первый")
+        checkEq("", VpnConfig(activeProfileId = "gone").repairedActive().activeProfileId, "без профилей -- пусто")
+        checkEq("", VpnConfig(profiles = listOf(profile(id = "a"))).repairedActive().activeProfileId, "пустой id -- как есть")
+    }
+
     // --- Список: живые, архив, мосты ---
 
     val mixed = listOf(

@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import xyz.azraellab.zapp.core.BuildMode
 import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
@@ -272,7 +273,13 @@ object SingboxConfig {
             relayRules = builtOutbounds.any { tagOf(it) == DpiOverlay.RELAY_TAG }
         )
         val extraNotes = notes + cascade.notes + buildList {
-            if (vpn.killSwitch) add("kill-switch: applied by engine (iptables)")
+            // Замерено: цепочка iptables создаётся только когда есть su;
+            // без root её нет, и запись «applied by engine (iptables)»
+            // врала бы и про механизм, и про само применение.
+            if (vpn.killSwitch) add(
+                if (BuildMode.rootAllowed) "kill-switch: applied by engine (iptables)"
+                else "kill-switch: applied by the VPN session"
+            )
             if (vpn.routing.allowPerAppBypass && vpn.routing.bypassAppList().isNotEmpty()) {
                 add("per-app bypass: ${vpn.routing.bypassAppList().size} package(s)")
             }
@@ -656,7 +663,9 @@ object SingboxConfig {
             // (b/155595000), мониторы интерфейсов там отключены, и автобинд
             // физического интерфейса некому резолвить. Сокеты ядра и так идут
             // мимо VPN (приложение исключено из туннеля), штатной маршрутизации
-            // достаточно.
+            // достаточно. Если монитор всё же ругается («WARN network: netlink
+            // unavailable»), это ожидаемо и задокументировано в справке (C13):
+            // смену сети отслеживает само приложение.
             put("auto_detect_interface", false)
         }
     }

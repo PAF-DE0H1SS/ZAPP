@@ -2,6 +2,7 @@ package xyz.azraellab.zapp.core.probe
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import xyz.azraellab.zapp.core.root.RootShell
 
 /**
  * Разведка десктопа.
@@ -24,3 +25,6 @@ actual suspend fun probeDevice(): DeviceProbe = withContext(Dispatchers.IO) {
         vpnTunnel = Probe.NO
     )
 }
+
+/** На десктопе root не пробуется, но кэш сбрасываем -- контракт один. */
+actual fun forgetRootProbe() = RootShell.forget()

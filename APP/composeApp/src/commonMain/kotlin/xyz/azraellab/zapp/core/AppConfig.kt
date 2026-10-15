@@ -229,11 +229,34 @@ data class Preset(
         RegionTuner.apply(config.copy(
             zapret = zapret,
             goodbyeDpi = goodbyeDpi,
-            vpn = vpn,
+            vpn = mergedVpn(config.vpn),
             gps = gps,
             region = region,
             perApp = perApp
         ), region)
+
+    /**
+     * VPN-часть пресета, склеенная со списком коннектов принимающей стороны.
+     *
+     * Пустой список -- это пресет настроек, а не «удали всё» (B5): иначе
+     * загрузка готовой настройки стирала бы все коннекты, и СТАРТ отвечал
+     * бы `no active profile`. Список в пресете есть -- берём его, но выбор
+     * обязан попадать внутрь: подмена 868 профилей на 789 оставляла старый
+     * `activeProfileId` в воздухе, и та же ошибка появлялась уже здесь.
+     */
+    private fun mergedVpn(current: VpnConfig): VpnConfig {
+        if (vpn.profiles.isEmpty()) {
+            return vpn.copy(
+                profiles = current.profiles,
+                activeProfileId = current.activeProfileId
+            )
+        }
+        val active = vpn.activeProfileId
+            .takeIf { id -> vpn.profiles.any { it.id == id } }
+            ?: current.activeProfileId.takeIf { id -> vpn.profiles.any { it.id == id } }
+            ?: vpn.profiles.first().id
+        return vpn.copy(activeProfileId = active)
+    }
 
     fun validate(): List<String> {
         val problems = mutableListOf<String>()
@@ -262,19 +285,57 @@ data class Preset(
          * Время передаётся снаружи, а не берётся из `Clock.System.now()`:
          * это лишняя зависимость ради одного числа, которое всё равно знает
          * вызывающий.
+         *
+         * Коннекты по умолчанию не включаются (B5): тысяча профилей тянет
+         * за собой учётные данные всех узлов и раздувает файл до мегабайтов,
+         * а для передачи настроек -- региона, обхода, правил по приложениям
+         * -- список не нужен. При [includeProfiles] каждый профиль получает
+         * id и имя, если они пусты: иначе в файле остаются строки без
+         * названия и с одинаковым пустым id, по которым импорт не отличает
+         * один коннект от другого.
          */
-        fun from(config: AppConfig, name: String, nowMs: Long): Preset = Preset(
+        fun from(
+            config: AppConfig,
+            name: String,
+            nowMs: Long,
+            includeProfiles: Boolean = false
+        ): Preset = Preset(
             name = name,
             createdAtMs = nowMs,
             region = config.region,
             zapret = config.zapret,
             goodbyeDpi = config.goodbyeDpi,
-            vpn = config.vpn,
+            vpn = if (includeProfiles) {
+                config.vpn.copy(
+                    profiles = config.vpn.profiles.mapIndexed { i, p -> p.exported(i) }
+                )
+            } else {
+                config.vpn.copy(profiles = emptyList(), activeProfileId = "")
+            },
             gps = config.gps,
             perApp = config.perApp
         )
     }
 }
+
+/**
+ * Профиль, пригодный для записи в файл пресета.
+ *
+ * Пустой id склеивает при импорте разные коннекты в один, пустое имя даёт
+ * в списке строку без названия. Обе величины берутся из того, что у профиля
+ * уже есть: протокол и адрес шлюза -- это и есть то, по чему коннект
+ * узнают на глаз. Индекс входит в id, чтобы совпадения не было и у
+ * одинаково настроенных профилей.
+ */
+private fun VpnProfile.exported(index: Int): VpnProfile = copy(
+    id = id.ifBlank { "p$index-${gateway.hashCode().toString(36)}" },
+    name = name.ifBlank {
+        listOf(protocol, gateway)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { "profile $index" }
+    }
+)
 
 /**
  * Кодирование и разбор настроек.

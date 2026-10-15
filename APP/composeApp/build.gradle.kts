@@ -29,7 +29,36 @@ kotlin {
 
     jvm("desktop")
 
+    // Версия в коде генерируется из того же gradle-свойства, что и
+    // versionName APK. Руками константа больше не правится: застыла на
+    // 2.7.3 и заставляла приложение считать себя старым — проверка
+    // обновлений предлагала установить уже установленную версию.
+    val appVersionDir = layout.buildDirectory.dir("generated/appVersion/kotlin")
+    val generateAppVersion = tasks.register("generateAppVersion") {
+        val version = providers.provider {
+            (project.findProperty("zappVersion") as String?) ?: "0.0.0"
+        }
+        val outDir = appVersionDir
+        inputs.property("appVersion", version)
+        outputs.dir(outDir)
+        doLast {
+            val pkg = outDir.get().asFile.resolve("xyz/azraellab/zapp/core/update")
+            pkg.mkdirs()
+            pkg.resolve("AppVersion.kt").writeText(
+                """
+                package xyz.azraellab.zapp.core.update
+
+                /** Сгенерировано сборкой из gradle.properties (zappVersion). Не править руками. */
+                const val APP_VERSION: String = "${version.get()}"
+                """.trimIndent() + "\n"
+            )
+        }
+    }
+
     sourceSets {
+        commonMain {
+            kotlin.srcDir(files(appVersionDir).builtBy(generateAppVersion))
+        }
         // Общий JVM-слой: Android и десктоп -- обе JVM, поэтому HTTP-клиент,
         // геолокация и сокеты пишутся один раз здесь, а не копируются в
         // androidMain и desktopMain. Промежуточный source set -- штатный

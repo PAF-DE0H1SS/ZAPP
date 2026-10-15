@@ -44,4 +44,33 @@ internal fun i18nTests(out: MutableList<DevTest>) {
             checkEq(marks[1], marks[2], "RU vs ZH: % в <$ru> / <$zh>")
         }
     }
+
+    // E5/E7: норут-сборка обязана не упоминать root ни одной строкой,
+    // которую пользователь может увидеть. Исключены ровно три ключа --
+    // строки «Root» и «Magisk» на странице «Устройство» и метка
+    // root-сборки в «О программе»: все три выведены под
+    // `if (BuildMode.rootAllowed)`, и в норуте их просто нет. Всё
+    // остальное обязано быть нейтральным: маркеры взяты такие, под
+    // которые попадает и журнал, и справка, и подсказки.
+    out += DevTest(
+        id = "i18n/noroot_silent_on_root",
+        category = DevCategory.I18N,
+        name = "Норут: ни одна UI-строка не говорит про root"
+    ) {
+        val markers = listOf("root", "magisk", "nfqueue", "iptables", "суперпольз")
+        val gatedByBuild = setOf(Str.PROBE_ROOT, Str.PROBE_MAGISK, Str.ABOUT_BUILD_ROOT)
+        val hits = mutableListOf<String>()
+        for (key in Str.entries) {
+            if (key in gatedByBuild) continue
+            for (lang in AppLang.entries) {
+                val text = key.of(lang).trim()
+                for (marker in markers) {
+                    if (text.contains(marker, ignoreCase = true)) {
+                        hits += "${key.name}/${lang.name} <$text> -- $marker"
+                    }
+                }
+            }
+        }
+        checkTrue(hits.isEmpty(), "строки с запретными словами: ${hits.joinToString("; ")}")
+    }
 }

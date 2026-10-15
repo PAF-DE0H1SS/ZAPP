@@ -63,6 +63,7 @@ import xyz.azraellab.zapp.core.probe.DeviceProbe
 import xyz.azraellab.zapp.core.probe.ProbeHooks
 import xyz.azraellab.zapp.core.probe.StrategyProbe
 import xyz.azraellab.zapp.core.probe.StrategyProbeOutcome
+import xyz.azraellab.zapp.core.probe.forgetRootProbe
 import xyz.azraellab.zapp.core.probe.probeDevice
 import xyz.azraellab.zapp.core.update.APP_VERSION
 import xyz.azraellab.zapp.core.update.ReleaseInfo
@@ -728,6 +729,10 @@ class AppState(
         if (loaded) return
         loaded = true
         config = runCatching { store.readConfig() }.getOrNull() ?: AppConfig()
+        // Висячий выбор из старой версии конфига: id узла -- хеш текста
+        // ссылки, обновление источника его могло убрать. Без починки
+        // редактор показывал «Профилей нет» при сотнях профилей.
+        config = config.copy(vpn = config.vpn.repairedActive())
         DpiOverlay.updateRelay(config.relay)
         AppLog.enabled = config.detailLogEnabled
         AppLog.log("app", "start v${APP_VERSION}")
@@ -751,6 +756,18 @@ class AppState(
         }
         scope.launch { sourceRefreshLoop() }
         watchDaemons()
+    }
+
+    /**
+     * Повторная разведка устройства (B2).
+     *
+     * Сбрасывает кэш пробы root и переспрашивает систему: политику
+     * Magisk выдают вне приложения, и без этого «Root: Нет» висел бы
+     * на экране до самого перезапуска, ни словом не объясняя, что делать.
+     */
+    fun reprobe() {
+        forgetRootProbe()
+        scope.launch { _probe.value = runCatching { probeDevice() }.getOrNull() }
     }
 
     /** Заменяет настройки целиком и планирует запись. */
@@ -873,13 +890,20 @@ class AppState(
         return ok
     }
 
-    /** Выгрузка текущих настроек как пресета. */
-    suspend fun exportPreset(): PresetMessage {
+    /**
+     * Выгрузка текущих настроек как пресета.
+     *
+     * Коннекты в файл идут только по прямому запросу (B5): по умолчанию
+     * список пуст, и файл весит десятки килобайт вместо полутора мегабайтов
+     * с ключами всех узлов. Пресет без коннектов при импорте не трогает
+     * список принимающей стороны -- см. `Preset.applyTo`.
+     */
+    suspend fun exportPreset(includeProfiles: Boolean = false): PresetMessage {
         if (!gateway.available) {
             lastMessage = PresetMessage.unavailable
             return PresetMessage.unavailable
         }
-        val preset = Preset.from(config, "zapp", System.currentTimeMillis())
+        val preset = Preset.from(config, "zapp", System.currentTimeMillis(), includeProfiles)
         val ok = runCatching {
             gateway.write(PresetFiles.export(preset), PresetFiles.suggestedName(preset))
         }.getOrDefault(false)
@@ -1612,12 +1636,13 @@ class AppState(
                         .copy(id = freshProfileId(current.vpn.profiles, source.id, cfg.raw), sourceId = source.id)
                 }
             val profiles = current.vpn.profiles.filter { it.sourceId != source.id } + keep + added
+            // Выбор держим, пока он жив: висячий id чинится в repairedActive.
             current.copy(
                 vpn = current.vpn.copy(
                     profiles = profiles,
                     activeProfileId = profiles.firstOrNull { it.id == current.vpn.activeProfileId }?.id
                         ?: current.vpn.activeProfileId
-                )
+                ).repairedActive()
             )
         }
         return configs.size
@@ -1650,7 +1675,7 @@ class AppState(
                     profiles = profiles,
                     activeProfileId = profiles.firstOrNull { it.id == current.vpn.activeProfileId }?.id
                         ?: current.vpn.activeProfileId
-                )
+                ).repairedActive()
             )
         }
         return 1

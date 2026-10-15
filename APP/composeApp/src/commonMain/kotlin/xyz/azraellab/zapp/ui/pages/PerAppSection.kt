@@ -217,7 +217,7 @@ fun PerAppPicker(state: AppState, scope: PerAppScope) {
             )
         }
         if (scope.requiresRoot() && !BuildMode.rootAllowed) {
-            ZappBanner(title = tr(Str.PERAPP_ROOT_ONLY))
+            ZappBanner(title = tr(Str.PERAPP_SCOPE_UNAVAILABLE))
         }
         if (scope.isTunnel() && tunnelState == TunnelState.CONNECTED) {
             ZappBanner(title = tr(Str.PERAPP_NEXT_CONNECT))

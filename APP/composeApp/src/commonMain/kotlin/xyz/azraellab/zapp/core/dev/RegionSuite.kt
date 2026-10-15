@@ -1,10 +1,10 @@
 package xyz.azraellab.zapp.core.dev
 
 import xyz.azraellab.zapp.core.AppConfig
+import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.RegionPolicies
 import xyz.azraellab.zapp.core.RegionRegistry
 import xyz.azraellab.zapp.core.RegionTuner
-import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.VpnProtocol
 
 /**
@@ -54,6 +54,17 @@ internal fun regionTests(out: MutableList<DevTest>) {
     out += DevTest("region/registry-sorted", DevCategory.CONFIG, "Реестр отсортирован по английскому имени") {
         val names = RegionRegistry.all.map { it.nameEn.lowercase() }
         checkEq(names.sorted(), names, "регионы должны быть отсортированы")
+    }
+
+    out += DevTest("region/registry-sorted-ru", DevCategory.CONFIG, "Русский список стран идёт по русским именам") {
+        val names = RegionRegistry.allSorted(AppLang.RU).map { it.nameRu.lowercase() }
+        checkEq(names.sorted(), names, "порядок должен совпадать с русским алфавитом")
+        val zh = RegionRegistry.allSorted(AppLang.ZH).map { it.nameZh.lowercase() }
+        checkEq(zh.sorted(), zh, "китайский -- по иероглифам")
+        // Иначе функция могла бы существовать и просто возвращать
+        // английский порядок, никем не замеченный.
+        val byEnglish = RegionRegistry.allSorted(AppLang.RU).map { it.nameEn.lowercase() }
+        checkFalse(names == byEnglish, "русский порядок не должен совпадать с английским")
     }
 
     out += DevTest("region/registry-bycode", DevCategory.CONFIG, "byCode находит по коду и не зависит от регистра") {

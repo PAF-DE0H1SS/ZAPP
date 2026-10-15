@@ -56,3 +56,6 @@ private fun probeMagisk(): Probe {
     }
     return if (viaLink) Probe.YES else Probe.NO
 }
+
+/** Сброс кэша пробы: кнопка «повторить проверку» переспрашивает `su`. */
+actual fun forgetRootProbe() = RootShell.forget()

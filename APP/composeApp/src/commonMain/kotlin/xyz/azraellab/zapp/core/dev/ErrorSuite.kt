@@ -13,6 +13,7 @@ import xyz.azraellab.zapp.core.log.isError
 import xyz.azraellab.zapp.core.log.looksLikeErrorLine
 import xyz.azraellab.zapp.core.log.redactSensitive
 import xyz.azraellab.zapp.core.log.stripAnsi
+import xyz.azraellab.zapp.core.log.tidyDaemonLine
 
 /**
  * Причины сбоя в журналах.
@@ -215,6 +216,21 @@ internal fun errorTextTests(out: MutableList<DevTest>) {
         checkFalse(looksLikeErrorLine("[notice] Bootstrapped 100% (done)"), "тор notice -- не ошибка")
         checkTrue(looksLikeErrorLine("OPTIONS ERROR: --management-query-passwords failed"), "openvpn error")
         checkFalse(looksLikeErrorLine("2026-10-06 12:07:50 INFO: using --management"), "openvpn info")
+    }
+
+    // C11: хвост sing-box клеится с ведущим пробелом, и заготовка
+    // «listen packet connection using» превращалась в «using  using
+    // outbound/...» -- мусор и в ленте демона, и в zapp-errors.log.
+    out += DevTest("log/tidy-double-using", DevCategory.UI, "Двойной `using` в строке демона убран") {
+        val dirty = "+0000 2026-10-14 16:15:45 ERROR [807993497 15.14s] connection: " +
+            "listen packet connection using  using outbound/urltest[auto]: context deadline exceeded"
+        val clean = tidyDaemonLine(dirty)
+        checkNotContains(clean, "using  using", "двойного `using` больше нет")
+        checkContains(clean, "using outbound/urltest[auto]", "выбранный узел в строке остался")
+        checkContains(clean, "listen packet connection using", "заготовка сообщения цела")
+        val normal = "connection: open connection to 8.8.8.8:443 using outbound/urltest[auto]: timeout"
+        checkEq(normal, tidyDaemonLine(normal), "обычная строка не меняется")
+        checkEq("", tidyDaemonLine(""), "пустая остаётся пустой")
     }
 
     // --- Одна строка диагностики ---

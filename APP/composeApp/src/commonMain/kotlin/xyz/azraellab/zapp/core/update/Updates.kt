@@ -4,16 +4,20 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import xyz.azraellab.zapp.core.log.AppLog
+import xyz.azraellab.zapp.core.log.causeChain
 import xyz.azraellab.zapp.core.net.httpGetText
 
 /**
  * Версия приложения.
  *
- * Одна константа здесь, а не разбросанные строки: версия показывается в
- * настройках и сравнивается с тегом релиза, и расхождение в одном знаке
- * заставило бы пользователя думать, что обновление сломано.
+ * Константа генерируется сборкой из `gradle.properties` (см. `generateAppVersion`
+ * в build.gradle.kts): одна правка версии кормит и versionName APK, и код.
+ * Раньше константа жила здесь руками и застыла на 2.7.3 — приложение считало
+ * себя старым и в проверке обновлений предлагало установить уже установленную
+ * версию.
  */
-const val APP_VERSION: String = "2.7.3"
+// APP_VERSION: см. сгенерированный AppVersion.kt (пакет xyz.azraellab.zapp.core.update)
 
 /** Ссылка на последний официальный релиз: prerelease сюда не попадают. */
 private const val RELEASES_URL = "https://api.github.com/repos/PAF-DE0H1SS/ZAPP/releases/latest"
@@ -118,14 +122,31 @@ fun localDayEndMs(nowMs: Long): Long {
  * и предложить её как обновление.
  */
 suspend fun fetchLatestRelease(): ReleaseInfo? {
-    val body = httpGetText(RELEASES_URL) ?: return null
+    // Каждый путь возврата null логируется со своей причиной: раньше все
+    // три сливались в «unknown», и багрепорт «обновления не проверяются»
+    // ничего не говорил -- сеть это, пустой тег релиза или битый JSON.
+    val body = httpGetText(RELEASES_URL)
+    if (body == null) {
+        AppLog.log("update", "check: no response from GitHub (сеть или таймаут)")
+        return null
+    }
     return runCatching {
         val root = RELEASE_JSON.parseToJsonElement(body).jsonObject
         fun field(name: String): String =
             root[name]?.jsonPrimitive?.contentOrNull() ?: ""
+        val tag = field("tag_name")
+        if (tag.isBlank()) {
+            AppLog.log("update", "check: пустой tag_name в ответе релиза")
+            return null
+        }
+        val url = field("html_url")
+        if (url.isBlank()) {
+            AppLog.log("update", "check: пустой html_url в ответе релиза")
+            return null
+        }
         ReleaseInfo(
-            version = field("tag_name").ifBlank { return null },
-            url = field("html_url").ifBlank { return null },
+            version = tag,
+            url = url,
             name = field("name"),
             publishedAt = field("published_at"),
             apkUrl = runCatching {
@@ -135,7 +156,12 @@ suspend fun fetchLatestRelease(): ReleaseInfo? {
                     ?: ""
             }.getOrDefault("")
         )
-    }.getOrNull()
+    }.getOrElse { e ->
+        // Ошибка разбора: GitHub мог вернуть HTML ошибки или заглушку
+        // блокировщика -- в журнале видно, что именно пришло.
+        AppLog.log("update", "check: разбор ответа не удался: ${e.causeChain().ifEmpty { e::class.simpleName ?: "error" }}")
+        null
+    }
 }
 
 /**

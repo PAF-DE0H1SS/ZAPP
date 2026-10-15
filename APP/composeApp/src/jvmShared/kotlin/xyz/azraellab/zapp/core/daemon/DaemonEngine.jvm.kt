@@ -9,6 +9,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.BuildMode
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.log.tidyDaemonLine
 import xyz.azraellab.zapp.core.native.BinaryResolver
 import xyz.azraellab.zapp.core.root.RootShell
 import java.io.File
@@ -201,7 +202,9 @@ private class JvmDaemonEngine(
             runCatching {
                 process.inputStream.bufferedReader().forEachLine { line ->
                     if (line.isEmpty()) return@forEachLine
-                    runCatching { log(DaemonEvent(raw = line)) }
+                    // Чистка двойного `using` (C11) здесь, на входе: одна
+                    // точка обслуживает и ленту демона, и zapp-errors.log.
+                    runCatching { log(DaemonEvent(raw = tidyDaemonLine(line))) }
                 }
             }
         }.apply {

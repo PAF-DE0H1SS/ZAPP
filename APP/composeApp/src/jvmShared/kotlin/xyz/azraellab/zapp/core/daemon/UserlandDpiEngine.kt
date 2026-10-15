@@ -41,7 +41,10 @@ internal class UserlandDpiEngine(
             }
             gen = ++generation
             setState(DaemonState.STARTING)
-            log(DaemonEvent(raw = "no root: nfqueue unavailable -- userland relay 127.0.0.1:${DpiOverlay.RELAY_PORT}"))
+            // Причина (нет nfqueue) остаётся, формулировка -- без слова про
+            // root: строка видна в журнале и в норут-сборке, где права
+            // и так не запрашиваются.
+            log(DaemonEvent(raw = "nfqueue unavailable -- userland relay 127.0.0.1:${DpiOverlay.RELAY_PORT}"))
         }
         Thread({ probe(gen) }, "zapp-userland-dpi").apply {
             isDaemon = true

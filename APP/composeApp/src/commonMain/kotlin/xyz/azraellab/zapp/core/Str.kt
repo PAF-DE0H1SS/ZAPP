@@ -60,6 +60,9 @@ enum class Str {
     COMMON_IMPORT,
     COMMON_RESET,
     COMMON_CLOSE,
+    COMMON_CANCEL,
+    COMMON_SEARCH,
+    COMMON_NOTHING_FOUND,
 
     /** Списки доменов и приложений. */
     LIST_DOMAINS,
@@ -84,6 +87,7 @@ enum class Str {
     VPN_KEEPALIVE,
     VPN_KILL_SWITCH,
     VPN_KILL_SWITCH_DNS,
+    VPN_BEHAVIOR,
     VPN_SPLIT_TUNNELING,
     VPN_AUTO_RECONNECT,
     VPN_BYPASS_LAN,
@@ -217,7 +221,11 @@ enum class Str {
     SETTINGS_SECTION_GENERAL,
     ABOUT_VERSION,
     ABOUT_LICENSE,
+    ABOUT_LICENSE_NAME,
     ABOUT_PLATFORM,
+    ABOUT_BUILD,
+    ABOUT_BUILD_ROOT,
+    ABOUT_BUILD_PLAIN,
 
     /** Per-app: выбор приложений под каждую функцию. */
     SETTINGS_PERAPP,
@@ -231,7 +239,7 @@ enum class Str {
     PERAPP_MODE_EXCLUDE,
     PERAPP_ALL_APPS,
     PERAPP_NO_MATCH,
-    PERAPP_ROOT_ONLY,
+    PERAPP_SCOPE_UNAVAILABLE,
     PERAPP_NEXT_CONNECT,
     PERAPP_SELF_EXCLUDED,
 
@@ -267,6 +275,14 @@ enum class Str {
     WELCOME_AUTO_COMPONENTS,
     WELCOME_AUTO_UPDATES,
     WELCOME_AUTO_PERF,
+
+    /** Причины неудач шагов автонастройки (B8): ✗ без объяснения ничего не объясняет. */
+    WELCOME_FAIL_NO_SOURCES,
+    WELCOME_FAIL_SOURCES,
+    WELCOME_FAIL_PINGS,
+    WELCOME_FAIL_STRATEGY,
+    WELCOME_FAIL_COMPONENTS,
+    WELCOME_FAIL_UPDATES,
     WELCOME_SKIP,
     WELCOME_LOAD_PRESET,
     WELCOME_LOAD_PRESET_HINT,
@@ -317,7 +333,6 @@ enum class Str {
     LOCK_PERF_CASCADE,
 
     /** Ошибки. */
-    ERR_NO_ROOT,
     ERR_TUNNEL_FAILED,
     ERR_PRESET_BAD_FILE,
     ERR_PRESET_UNAVAILABLE,
@@ -329,6 +344,15 @@ enum class Str {
     ERR_PRESET_DELETED,
     ERR_PRESET_FAILED,
     ERR_PRESET_EMPTY,
+
+    /** Сброс настроек: подтверждение с перечислением (B4). */
+    PRESET_RESET_TITLE,
+    PRESET_RESET_KEEP,
+    PRESET_RESET_REGION,
+    PRESET_RESET_PROFILES,
+    PRESET_RESET_POLICY,
+    PRESET_RESET_USAGE,
+    PRESET_INCLUDE_PROFILES,
     TRAFFIC_OPEN_WINDOW,
     TRAFFIC_PER_APP,
     TRAFFIC_SMOOTH,
@@ -360,6 +384,7 @@ enum class Str {
     PROBE_ROOT,
     PROBE_MAGISK,
     PROBE_VPN,
+    PROBE_AGAIN,
     PROBE_API,
 
     /** Туннель. */
@@ -620,6 +645,9 @@ enum class Str {
         COMMON_RESET -> pick(lang, "Reset", "Сбросить", "重置")
         COMMON_CLOSE -> pick(lang, "Close", "Закрыть", "关闭")
         COMMON_BACK -> pick(lang, "Back", "Назад", "返回")
+        COMMON_CANCEL -> pick(lang, "Cancel", "Отмена", "取消")
+        COMMON_SEARCH -> pick(lang, "Search", "Поиск", "搜索")
+        COMMON_NOTHING_FOUND -> pick(lang, "Nothing found", "Ничего не нашлось", "未找到")
 
         LIST_DOMAINS -> pick(lang, "Domains", "Домены", "域名")
         LIST_APPS -> pick(lang, "Applications", "Приложения", "应用")
@@ -641,6 +669,7 @@ enum class Str {
         VPN_MTU -> pick(lang, "MTU", "MTU", "MTU")
         VPN_KEEPALIVE -> pick(lang, "Keepalive, s", "Keepalive, с", "保活, 秒")
         VPN_KILL_SWITCH -> pick(lang, "Kill switch", "Kill switch", "断网保护")
+        VPN_BEHAVIOR -> pick(lang, "Tunnel behavior", "Поведение туннеля", "隧道行为")
         VPN_KILL_SWITCH_DNS -> pick(
             lang,
             "Allow configured DNS while kill switch is on",
@@ -742,11 +771,11 @@ enum class Str {
         )
         PERAPP_ALL_APPS -> pick(lang, "All apps go through", "Пойдут все приложения", "全部应用走该功能")
         PERAPP_NO_MATCH -> pick(lang, "Nothing found", "Ничего не нашлось", "未找到")
-        PERAPP_ROOT_ONLY -> pick(
+        PERAPP_SCOPE_UNAVAILABLE -> pick(
             lang,
-            "DPI bypass runs only in the root build; without root the list has no effect.",
-            "Обход DPI работает только в root-сборке; без root список ни на что не влияет.",
-            "DPI 绕过仅在 root 版本中生效；无 root 时列表不起作用。"
+            "This bypass mode isn't available in this build: the list will have no effect here.",
+            "Этот режим обхода недоступен в этой сборке: список здесь ни на что не повлияет.",
+            "此绕过模式在本版本中不可用：列表不会生效。"
         )
         PERAPP_NEXT_CONNECT -> pick(
             lang,
@@ -894,6 +923,42 @@ enum class Str {
             "Профиль производительности",
             "应用性能配置"
         )
+        WELCOME_FAIL_NO_SOURCES -> pick(
+            lang,
+            "No sources are enabled",
+            "Нет включённых источников",
+            "没有启用的来源"
+        )
+        WELCOME_FAIL_SOURCES -> pick(
+            lang,
+            "No source responded",
+            "Ни один источник не ответил",
+            "没有来源响应"
+        )
+        WELCOME_FAIL_PINGS -> pick(
+            lang,
+            "No connection responded",
+            "Ни один коннект не ответил",
+            "没有连接响应"
+        )
+        WELCOME_FAIL_STRATEGY -> pick(
+            lang,
+            "Strategy not picked",
+            "Стратегия не подобрана",
+            "未选出策略"
+        )
+        WELCOME_FAIL_COMPONENTS -> pick(
+            lang,
+            "Components not unpacked",
+            "Компоненты не распакованы",
+            "组件未解包"
+        )
+        WELCOME_FAIL_UPDATES -> pick(
+            lang,
+            "Update check failed",
+            "Проверка обновлений не удалась",
+            "更新检查失败"
+        )
         WELCOME_Q_TITLE -> pick(
             lang,
             "A few words about you",
@@ -946,7 +1011,16 @@ enum class Str {
         )
         ABOUT_VERSION -> pick(lang, "Version", "Версия", "版本")
         ABOUT_LICENSE -> pick(lang, "License", "Лицензия", "许可")
+        ABOUT_LICENSE_NAME -> pick(
+            lang,
+            "ZAPP License Terms",
+            "Условия лицензии ZAPP",
+            "ZAPP 许可条款"
+        )
         ABOUT_PLATFORM -> pick(lang, "Platform", "Платформа", "平台")
+        ABOUT_BUILD -> pick(lang, "Build", "Сборка", "版本")
+        ABOUT_BUILD_ROOT -> pick(lang, "root build", "root-сборка", "root 版本")
+        ABOUT_BUILD_PLAIN -> pick(lang, "standard", "стандартная", "标准")
 
         GPS_LOCATION -> pick(lang, "Location", "Местоположение", "位置")
         GPS_HEADING -> pick(lang, "Heading", "Направление", "方向")
@@ -1053,7 +1127,6 @@ enum class Str {
             "随父级选项一起禁用。"
         )
 
-        ERR_NO_ROOT -> pick(lang, "Root access required", "Нужны права root", "需要 root 权限")
         ERR_TUNNEL_FAILED -> pick(lang, "Tunnel failed to start", "Не удалось поднять туннель", "隧道启动失败")
         ERR_PRESET_BAD_FILE -> pick(lang, "Not a preset file", "Это не файл пресета", "不是预设文件")
         ERR_PRESET_UNAVAILABLE -> pick(lang, "File access unavailable", "Доступ к файлам недоступен", "无法访问文件")
@@ -1065,6 +1138,40 @@ enum class Str {
         ERR_PRESET_DELETED -> pick(lang, "Preset deleted", "Пресет удалён", "预设已删除")
         ERR_PRESET_FAILED -> pick(lang, "Operation failed", "Операция не удалась", "操作失败")
         ERR_PRESET_EMPTY -> pick(lang, "File is empty", "Файл пуст", "文件为空")
+        PRESET_RESET_TITLE -> pick(lang, "Reset settings?", "Сбросить настройки?", "重置设置？")
+        PRESET_RESET_KEEP -> pick(
+            lang,
+            "Sources will be kept.",
+            "Источники сохранятся.",
+            "源将保留。"
+        )
+        // Регион и приветственный тур сбрасываются вместе: welcomeDone
+        // прячет регион, и без него повторный тур показал бы старую страну.
+        PRESET_RESET_REGION -> pick(
+            lang,
+            "Region and welcome tour",
+            "Регион и приветственный тур",
+            "地区与欢迎引导"
+        )
+        PRESET_RESET_PROFILES -> pick(lang, "Profiles: %d", "Профили: %d", "配置：%d")
+        PRESET_RESET_POLICY -> pick(
+            lang,
+            "Domains, kill switch, per-app rules",
+            "Домены, kill switch, правила по приложениям",
+            "域名、kill switch、按应用规则"
+        )
+        PRESET_RESET_USAGE -> pick(
+            lang,
+            "Usage statistics",
+            "Статистика использования",
+            "使用统计"
+        )
+        PRESET_INCLUDE_PROFILES -> pick(
+            lang,
+            "Include connections",
+            "Включать коннекты",
+            "包含连接"
+        )
 
         SETTINGS_PERMISSIONS -> pick(lang, "Permissions", "Разрешения", "权限")
         PERM_GRANT -> pick(lang, "Grant", "Разрешить", "允许")
@@ -1092,6 +1199,7 @@ enum class Str {
         PROBE_ROOT -> pick(lang, "Root", "Root", "Root")
         PROBE_MAGISK -> pick(lang, "Magisk", "Magisk", "Magisk")
         PROBE_VPN -> pick(lang, "VPN API", "VPN API", "VPN API")
+        PROBE_AGAIN -> pick(lang, "Check again", "Повторить проверку", "重新检测")
         PROBE_API -> pick(lang, "API level", "Уровень API", "API 级别")
 
         ENGINE_STATE_DISCONNECTED -> pick(lang, "Off", "Выключен", "已断开")

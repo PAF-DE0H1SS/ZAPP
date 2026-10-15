@@ -284,6 +284,19 @@ data class VpnConfig(
 
     fun activeProfile(): VpnProfile? = profiles.firstOrNull { it.id == activeProfileId }
 
+    /**
+     * Починка висячего выбора.
+     *
+     * id узла -- хеш текста ссылки: обновление источника пересобирает список,
+     * и прежний id исчезает, хотя узлы остаются. Держать висячий id нельзя:
+     * `activeProfile()` возвращает null, и редактор показывает «Профилей нет»,
+     * когда их сотни. Выбор просто переезжает на первый узел -- как в
+     * `Preset.applyTo`.
+     */
+    fun repairedActive(): VpnConfig =
+        if (activeProfileId.isBlank() || profiles.any { it.id == activeProfileId }) this
+        else copy(activeProfileId = profiles.firstOrNull()?.id ?: "")
+
     fun profileById(id: String): VpnProfile? = profiles.firstOrNull { it.id == id }
 
     /**

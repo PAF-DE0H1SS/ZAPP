@@ -295,6 +295,22 @@ object RegionRegistry {
     val all: List<Region>
         get() = ALL.sortedBy { it.nameEn.lowercase() }
 
+    /**
+     * Страны в порядке текущего языка.
+     *
+     * [all] отсортирован по английскому имени: на английском это то же
+     * самое, а при русской локали список шёл по-английски -- Россия
+     * искалась между Румынией и Руандой (B7). Китай -- по иероглифам,
+     * это и есть его алфавитный порядок.
+     */
+    fun allSorted(lang: AppLang): List<Region> = ALL.sortedBy {
+        when (lang) {
+            AppLang.RU -> it.nameRu
+            AppLang.ZH -> it.nameZh
+            else -> it.nameEn
+        }.lowercase()
+    }
+
     fun byCode(code: String?): Region? =
         ALL.firstOrNull { it.code.equals(code?.trim(), ignoreCase = true) }
 

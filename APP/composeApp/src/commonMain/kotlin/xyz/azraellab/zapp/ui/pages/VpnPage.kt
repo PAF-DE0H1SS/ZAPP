@@ -221,6 +221,11 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
         active?.let { a ->
             append(" · ")
             append(a.name.ifBlank { tr(VpnProtocol.of(a.protocol).strKey) })
+            // Имя повторяется у десятков узлов (все «Sweden»), и по
+            // субтитру не отличить выбранный: протокол добавляет
+            // различимость без лишнего текста (C10).
+            append(" · ")
+            append(VpnProtocol.of(a.protocol).label(lang))
         }
     }
 
@@ -333,16 +338,34 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
         }
 
         if (shown.isEmpty()) {
+            // Две разные пустоты, которые раньше выглядели одинаково:
+            // коннектов нет вообще (ссылки не добавлены) и коннекты есть,
+            // но фильтр или поиск их весь отсеял. Сообщение «В источнике
+            // нет ссылок» при 574 узлах под поиском ввело в заблуждение.
+            val nothingFiltered = visible.isEmpty()
             ZappCard {
                 ZappEmptyState(
-                    title = tr(Str.LIST_EMPTY_PROFILES),
-                    body = tr(Str.VPN_SOURCE_EMPTY),
+                    title = if (nothingFiltered) tr(Str.LIST_EMPTY_PROFILES) else tr(Str.COMMON_NOTHING_FOUND),
+                    body = if (nothingFiltered) tr(Str.VPN_SOURCE_EMPTY) else tr(Str.COMMON_SEARCH),
                     action = {
-                        ZappButton(
-                            text = tr(Str.VPN_ADD_LINKS),
-                            onClick = { importOpen = true },
-                            path = "vpn.add_links_empty"
-                        )
+                        if (nothingFiltered) {
+                            ZappButton(
+                                text = tr(Str.VPN_ADD_LINKS),
+                                onClick = { importOpen = true },
+                                path = "vpn.add_links_empty"
+                            )
+                        } else {
+                            // Сброс фильтра -- единственный разумный выход,
+                            // когда список спрятан самими настройками.
+                            ZappButton(
+                                text = tr(Str.COMMON_RESET),
+                                onClick = {
+                                    query = ""
+                                    onlyAlive = false
+                                },
+                                path = "vpn.filter_reset"
+                            )
+                        }
                     }
                 )
             }

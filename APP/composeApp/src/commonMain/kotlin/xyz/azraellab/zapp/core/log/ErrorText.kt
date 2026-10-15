@@ -108,6 +108,22 @@ fun List<String>.errorLine(): String? {
         ?: lines.firstOrNull { it.isNotBlank() }
 }
 
+/**
+ * Делает строку вывода демона пристойной (C11).
+ *
+ * sing-box склеивает две своих заготовки: у `open connection to 8.8.8.8:443`
+ * хвост `using outbound/...` приходит с ведущим пробелом и читается
+ * нормально, а у `listen packet connection using` тот же хвост ложится
+ * вслед за собственным «using» -- в ленту и в `zapp-errors.log` попадает
+ * `listen packet connection using  using outbound/urltest[auto]`. Бинарь
+ * свой мы не чиним, поэтому чистится строка на входе в журнал: один
+ * `using`, без двойного пробела, смысл не меняется.
+ */
+private val DOUBLE_USING = Regex("\\busing\\s+using\\s+")
+
+/** Строка вывода демона без артефакта двойного `using`. */
+fun tidyDaemonLine(line: String): String = line.replace(DOUBLE_USING, "using ")
+
 /** События приложения, которые сами по себе означают сбой демона. */
 private val DAEMON_ERROR_TEXTS = setOf(
     Str.DAEMON_LOG_EXIT,

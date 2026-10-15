@@ -649,6 +649,82 @@ internal fun vpnTests(out: MutableList<DevTest>) {
         checkEq(LifecyclePhase.INACTIVE, GpsState.ERROR.phase, "подмена упала -- покой")
     }
 
+    // --- Здоровье узла по реальному обмену (A3) ---
+
+    val link = "vless://00000000-0000-0000-0000-000000000000@node.example:443#Sweden"
+
+    out += DevTest("vpn/node-tag-from-link", DevCategory.VPN, "Тег узла -- displayName самой ссылки") {
+        val p = profile(id = "1", rawConfig = link)
+        checkEq("Sweden", VpnConnects.nodeTag(p), "имя из ссылки")
+        // Имя профиля не указатель: пользователь мог переименовать
+        // коннект, а тег в боксе остался прежним.
+        val renamed = profile(id = "2", name = "Мой узел", rawConfig = link)
+        checkEq("Sweden", VpnConnects.nodeTag(renamed), "переименование не меняет тег")
+    }
+
+    out += DevTest("vpn/node-tag-unsupported-configs", DevCategory.VPN, "Целые конфиги и wg не отдают тег") {
+        checkEq(null, VpnConnects.nodeTag(profile(protocol = VpnProtocol.SINGBOX.code, rawConfig = "{}")), "singbox")
+        checkEq(null, VpnConnects.nodeTag(profile(protocol = VpnProtocol.XRAY.code, rawConfig = "{}")), "xray")
+        checkEq(null, VpnConnects.nodeTag(profile(gateway = "1.2.3.4")), "без ссылки")
+        checkEq(null, VpnConnects.nodeTag(profile(rawConfig = "  ")), "пустая ссылка")
+    }
+
+    out += DevTest("vpn/node-tag-unnamed-link-falls-back-to-address", DevCategory.VPN, "Ссылка без имени даёт адрес") {
+        val bare = "vless://00000000-0000-0000-0000-000000000000@host.example:8443"
+        checkEq("host.example:8443", VpnConnects.nodeTag(profile(rawConfig = bare)), "адрес")
+    }
+
+    out += DevTest("vpn/profile-by-node-tag", DevCategory.VPN, "Тег пробы находит профиль") {
+        val profiles = listOf(
+            profile(id = "a", rawConfig = link),
+            profile(id = "b", rawConfig = "trojan://pw@two.example:443#Latvia")
+        )
+        checkEq("a", VpnConnects.profileIdByNodeTag(profiles, "Sweden"), "первый")
+        checkEq("b", VpnConnects.profileIdByNodeTag(profiles, "Latvia"), "второй")
+        checkEq(null, VpnConnects.profileIdByNodeTag(profiles, "auto"), "группа -- не профиль")
+        checkEq(null, VpnConnects.profileIdByNodeTag(profiles, "Mars"), "нет такого тега")
+    }
+
+    out += DevTest("vpn/profile-by-node-tag-duplicates", DevCategory.VPN, "Дубликаты тега берутся по номеру") {
+        val profiles = listOf(
+            profile(id = "first", rawConfig = link),
+            profile(id = "second", rawConfig = link)
+        )
+        checkEq("first", VpnConnects.profileIdByNodeTag(profiles, "Sweden"), "оригинал")
+        checkEq("second", VpnConnects.profileIdByNodeTag(profiles, "Sweden (2)"), "второй дубликат")
+        // Номер больше, чем есть копий, -- сопоставлять не с чем.
+        checkEq(null, VpnConnects.profileIdByNodeTag(profiles, "Sweden (7)"), "нет такой копии")
+    }
+
+    out += DevTest("vpn/exchange-health-fresh-same-delay-skipped", DevCategory.VPN, "Свежий замер с той же задержкой не пишется") {
+        val old = LinkHealth(alive = true, latencyMs = 100, checkedAtMs = 1_000_000L, error = "timeout")
+        checkEq(
+            null,
+            VpnConnects.exchangeHealth(old, delayMs = 120, nowMs = 1_000_000L + 60_000L),
+            "в пределах допуска и окна"
+        )
+    }
+
+    out += DevTest("vpn/exchange-health-stale-or-changed-written", DevCategory.VPN, "Устаревший или изменившийся замер пишется") {
+        val base = LinkHealth(alive = true, latencyMs = 100, checkedAtMs = 1_000_000L)
+        val now = 1_000_000L + 1_800_000L
+        val stale = VpnConnects.exchangeHealth(base, delayMs = 100, nowMs = now)
+        checkEq(true, stale?.alive, "жив по-прежнему")
+        checkEq(now, stale?.checkedAtMs, "время свежее")
+        checkEq("", stale?.error, "ошибка прошлой проверки снята")
+        // Разница больше допуска -- узел реально изменился.
+        val changed = VpnConnects.exchangeHealth(base, delayMs = 400, nowMs = 1_000_000L + 60_000L)
+        checkEq(400, changed?.latencyMs, "новая задержка")
+        // Вчерашняя запись обновляется всегда, даже с совпавшей задержкой.
+        val yesterday = LinkHealth(alive = false, latencyMs = 100, checkedAtMs = 1_000_000L)
+        checkEq(true, VpnConnects.exchangeHealth(yesterday, 100, nowMs = now)?.alive, "мёртвый оживлён")
+        // Проверки не было (null) -- обновляем.
+        checkEq(true, VpnConnects.exchangeHealth(LinkHealth(), 100, nowMs = now)?.alive, "непроверенный")
+        // Будущее время -- не свежесть, а следствие сбоя часов.
+        val future = LinkHealth(alive = true, latencyMs = 100, checkedAtMs = now + 60_000L)
+        checkEq(now, VpnConnects.exchangeHealth(future, 100, nowMs = now)?.checkedAtMs, "время впереди")
+    }
+
     out += DevTest("vpn/is-live-matches-phase", DevCategory.VPN, "Живость туннеля -- это фаза, не список состояний") {
         for (state in TunnelState.entries) {
             checkEq(

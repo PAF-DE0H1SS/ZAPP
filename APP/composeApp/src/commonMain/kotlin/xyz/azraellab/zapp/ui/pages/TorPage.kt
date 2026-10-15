@@ -98,6 +98,7 @@ fun TorPage(state: AppState) {
                         state = ownState,
                         label = tr(if (ownState.isLive) Str.COMMON_STOP else Str.COMMON_START),
                         animate = state.config.perf.animatedBackground,
+                        fps = state.config.perf.backgroundFps,
                         onClick = {
                             if (ownState.isLive) state.disconnectVpn()
                             else state.connectTor()
@@ -130,6 +131,7 @@ fun TorPage(state: AppState) {
                 }
                 // Скорость туннеля, пинг и активные режимы: живут, пока
                 // подключены, обновляются фоновыми опросами.
+                BootstrapLine(tunnelLog, ownState)
                 SpeedLine(state, ownState)
             }
         }

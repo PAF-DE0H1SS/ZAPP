@@ -67,7 +67,7 @@ actual suspend fun fetchClashProbe(
     secret: String,
     url: String,
     probeTimeoutMs: Int
-): Int? = withContext(Dispatchers.IO) {
+): ClashProbe? = withContext(Dispatchers.IO) {
     val p = port.coerceIn(1, 65535)
     val list = runCatching { getJson(p, secret, "/proxies", DISCOVERY_TIMEOUT_MS) }.getOrNull()
     if (list == null) {
@@ -79,19 +79,65 @@ actual suspend fun fetchClashProbe(
         AppLog.log("vpn", "watchdog: no probe target in ${list.length} bytes")
         return@withContext null
     }
-    val path = "/proxies/${encodePath(target)}/delay?url=${encodeQuery(url)}&timeout=$probeTimeoutMs"
-    val reply = runCatching {
-        request(p, secret, path, probeTimeoutMs + SOCKET_HEADROOM_MS)
-    }.getOrElse {
-        AppLog.log("vpn", "watchdog: probe via $target -- ${it::class.simpleName}")
-        return@withContext null
-    }
-    val delay = ClashStats.delay(reply.body.orEmpty())
+    val probe = probeVia(p, secret, target, url, probeTimeoutMs)
     // Цель и ответ обязательны в журнале: мгновенный отказ -- это обычно
     // не сбой сети, а 404 от записи, по которой `/delay` не меряет, и без
     // этих двух полей причину приходится отгадывать по косвенным признакам.
-    AppLog.log("vpn", "watchdog: probe via $target -> http=${reply.status} ${delay?.let { "${it}ms" } ?: reply.body?.take(60)}")
-    delay
+    AppLog.log(
+        "vpn",
+        "watchdog: probe via $target -> http=${probe.status} ${probe.delay?.let { "${it}ms" } ?: probe.body?.take(60)}"
+    )
+    probe.delay?.let { ClashProbe(target, it) }
+}
+
+/**
+ * Роспись: участники активной группы из `GET /proxies` (A3).
+ *
+ * Один локальный запрос на тик; дальше тикер ходит по списку сам.
+ */
+actual suspend fun fetchClashRoster(
+    port: Int,
+    secret: String,
+    timeoutMs: Int
+): List<String>? = withContext(Dispatchers.IO) {
+    val p = port.coerceIn(1, 65535)
+    val list = runCatching { getJson(p, secret, "/proxies", timeoutMs) }.getOrNull() ?: return@withContext null
+    ClashStats.probeRoster(list)
+}
+
+/**
+ * Замер **одного** узла росписи (A3): цель уже известна, `/proxies` за
+ * ней не ходим. Молчит о провалах: мёртвый узел в пачке -- норма, и
+ * строка на каждый такой узел захлебнула бы журнал. Итог пачки пишет
+ * вызывающий тикер.
+ */
+actual suspend fun fetchClashNodeProbe(
+    port: Int,
+    secret: String,
+    tag: String,
+    url: String,
+    probeTimeoutMs: Int
+): ClashProbe? = withContext(Dispatchers.IO) {
+    val p = port.coerceIn(1, 65535)
+    probeVia(p, secret, tag, url, probeTimeoutMs).delay?.let { ClashProbe(tag, it) }
+}
+
+/** Ответ `/delay` одной цели: код, тело и снятая задержка. */
+private class ProbeReply(val delay: Int?, val status: Int, val body: String?)
+
+/** `GET /proxies/<target>/delay` на готовом порту: транспорт без выбора цели. */
+private suspend fun probeVia(
+    port: Int,
+    secret: String,
+    target: String,
+    url: String,
+    probeTimeoutMs: Int
+): ProbeReply {
+    val path = "/proxies/${encodePath(target)}/delay?url=${encodeQuery(url)}&timeout=$probeTimeoutMs"
+    val reply = runCatching {
+        request(port, secret, path, probeTimeoutMs + SOCKET_HEADROOM_MS)
+    }.getOrElse { return ProbeReply(null, 0, it::class.simpleName) }
+    return ProbeReply(ClashStats.delay(reply.body.orEmpty()), reply.status, reply.body)
 }
 
 /** Ответ clash_api: тело и код статуса (0 -- соединение не состоялось). */

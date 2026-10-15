@@ -4,6 +4,8 @@ import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.daemon.DaemonEvent
 import xyz.azraellab.zapp.core.gps.GpsEvent
 import xyz.azraellab.zapp.core.log.ErrorLog
+import xyz.azraellab.zapp.core.log.bootstrapProgress
+import xyz.azraellab.zapp.core.log.bootstrapStageKey
 import xyz.azraellab.zapp.core.log.capLines
 import xyz.azraellab.zapp.core.log.causeChain
 import xyz.azraellab.zapp.core.log.diagnosisLine
@@ -231,6 +233,60 @@ internal fun errorTextTests(out: MutableList<DevTest>) {
         val normal = "connection: open connection to 8.8.8.8:443 using outbound/urltest[auto]: timeout"
         checkEq(normal, tidyDaemonLine(normal), "обычная строка не меняется")
         checkEq("", tidyDaemonLine(""), "пустая остаётся пустой")
+    }
+
+    // --- Прогресс сборки Tor (B1) ---
+
+    out += DevTest("log/bootstrap-progress-parse", DevCategory.UI, "Процент и стадия сборки Tor из журнала") {
+        val log = listOf(
+            "connecting",
+            "tor bootstrap, socks:9050 ...",
+            "tor bootstrap 10% (starting)",
+            "tor bootstrap 45% (requesting_descriptors)"
+        )
+        val progress = log.bootstrapProgress()
+        checkTrue(progress != null, "прогресс не найден")
+        checkEq(45, progress!!.percent, "взята не последняя строка")
+        checkEq("requesting_descriptors", progress.stage, "стадия из скобок")
+        // Скобки опциональны: строка без стадии валидна.
+        val bare = listOf("connecting", "tor bootstrap 50%")
+        checkEq(50, bare.bootstrapProgress()?.percent, "процент без стадии")
+        checkEq(null, bare.bootstrapProgress()?.stage, "стадии нет -- null")
+    }
+
+    out += DevTest("log/bootstrap-progress-session", DevCategory.UI, "Прогресс прошлой попытки не выдаётся за новую") {
+        // Строки до последнего `connecting` -- прошлая сессия: её 100% на
+        // старте новой означало бы «готово» до того, как tor стартовал.
+        val log = listOf("tor bootstrap 100% (done)", "connected", "connecting")
+        checkEq(null, log.bootstrapProgress(), "граница сессии уважена")
+        val restarted = log + "tor bootstrap 5% (starting)"
+        checkEq(5, restarted.bootstrapProgress()?.percent, "строки новой сессии читаются")
+        checkEq(null, emptyList<String>().bootstrapProgress(), "пустой журнал")
+    }
+
+    out += DevTest("log/bootstrap-progress-ignores-other", DevCategory.UI, "Служебные строки bootstrap -- не прогресс") {
+        val log = listOf("connecting", "tor bootstrap, socks:9050 ...", "tor bootstrap timeout (300s)")
+        checkEq(null, log.bootstrapProgress(), "строки без процента отброшены")
+        // Число обязано идти сразу после «bootstrap» и заканчиваться процентом.
+        val percent = listOf("connecting", "tor bootstrap 1200% (done)")
+        checkEq(100, percent.bootstrapProgress()?.percent, "перебор процентов зажат в 100")
+    }
+
+    out += DevTest("log/bootstrap-stage-map", DevCategory.UI, "Стадии tor'а покрыты группами переводов") {
+        checkEq(Str.TOR_STAGE_START, bootstrapStageKey("starting"), "starting")
+        checkEq(Str.TOR_STAGE_RELAY, bootstrapStageKey("conn"), "conn")
+        checkEq(Str.TOR_STAGE_RELAY, bootstrapStageKey("ap_conn_pt"), "ap_conn_pt")
+        checkEq(Str.TOR_STAGE_HANDSHAKE, bootstrapStageKey("handshake"), "handshake")
+        checkEq(Str.TOR_STAGE_DIR, bootstrapStageKey("loading_status"), "loading_status")
+        checkEq(Str.TOR_STAGE_DIR, bootstrapStageKey("loading_keys"), "loading_keys")
+        checkEq(Str.TOR_STAGE_DESCRIPTORS, bootstrapStageKey("loading_descriptors"), "loading_descriptors")
+        checkEq(Str.TOR_STAGE_DESCRIPTORS, bootstrapStageKey("requesting_descriptors"), "requesting_descriptors")
+        checkEq(Str.TOR_STAGE_CIRCUIT, bootstrapStageKey("circuit_create"), "circuit_create")
+        checkEq(Str.TOR_STAGE_DONE, bootstrapStageKey("done"), "done")
+        // Неизвестный тег не выдумывается: строка покажет один процент.
+        checkEq(null, bootstrapStageKey("brand_new_tag"), "неизвестный тег")
+        checkEq(null, bootstrapStageKey(null), "без тега")
+        checkEq(null, bootstrapStageKey(""), "пустой тег")
     }
 
     // --- Одна строка диагностики ---

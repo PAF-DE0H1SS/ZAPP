@@ -41,6 +41,9 @@ fun GoodbyeDpiPage(state: AppState) {
             path = "gdpi"
         )
 
+        // Та же подпись, что и на Zapret: режим один на обеих страницах.
+        StandaloneDpiHint()
+
         // --- Режим и автоподбор ---
         ZappCard {
             ZappChoiceRow(

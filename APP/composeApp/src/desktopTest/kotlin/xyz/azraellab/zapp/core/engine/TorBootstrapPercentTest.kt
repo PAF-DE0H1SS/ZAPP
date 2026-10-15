@@ -50,4 +50,32 @@ class TorBootstrapPercentTest {
         assertEquals(100, torProgressPercent(listOf(DaemonEvent(raw = "Bootstrapped 150%"))))
         assertEquals(10, torProgressPercent(listOf(DaemonEvent(raw = "Bootstrapped 10%"))))
     }
+
+    // B1: стадия идёт в журнал вместе с процентом -- между 45% и 50%
+    // у моста проходит минута, а для пользователя это разные ожидания.
+
+    @Test
+    fun `stage is parsed from the same line as the percent`() {
+        val lines = listOf(
+            DaemonEvent(raw = "Oct 04 [notice] Bootstrapped 45% (requesting_descriptors): Asking for relay descriptors"),
+            DaemonEvent(raw = "Oct 04 [notice] new bridge descriptor"),
+        )
+        assertEquals("requesting_descriptors", torProgressStage(lines))
+    }
+
+    @Test
+    fun `stage without parentheses is null`() {
+        assertEquals(null, torProgressStage(listOf(DaemonEvent(raw = "Bootstrapped 45%"))))
+        assertEquals(null, torProgressStage(emptyList()))
+        assertEquals(null, torProgressStage(listOf(DaemonEvent(raw = "Oct 04 [notice] Bootstrapped"))))
+    }
+
+    @Test
+    fun `stage line without percent is skipped for an older one`() {
+        val lines = listOf(
+            DaemonEvent(raw = "Bootstrapped 30% (loading_status)"),
+            DaemonEvent(raw = "Oct 04 [notice] Bootstrapped")
+        )
+        assertEquals("loading_status", torProgressStage(lines))
+    }
 }

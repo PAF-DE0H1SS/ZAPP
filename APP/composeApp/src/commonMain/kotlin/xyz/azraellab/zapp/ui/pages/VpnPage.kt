@@ -39,6 +39,8 @@ import xyz.azraellab.zapp.core.engine.SessionKind
 import xyz.azraellab.zapp.core.engine.TunnelState
 import xyz.azraellab.zapp.core.engine.isLive
 import xyz.azraellab.zapp.core.engine.shownFor
+import xyz.azraellab.zapp.core.log.bootstrapProgress
+import xyz.azraellab.zapp.core.log.bootstrapStageKey
 import xyz.azraellab.zapp.core.log.errorLine
 import xyz.azraellab.zapp.core.log.looksLikeErrorLine
 import xyz.azraellab.zapp.core.statusLine
@@ -112,6 +114,7 @@ fun VpnPage(state: AppState) {
                         state = ownState,
                         label = tr(if (ownState.isLive) Str.COMMON_STOP else Str.COMMON_START),
                         animate = state.config.perf.animatedBackground,
+                        fps = state.config.perf.backgroundFps,
                         onClick = {
                             if (ownState.isLive) state.disconnectVpn()
                             else state.connectVpn()
@@ -121,6 +124,8 @@ fun VpnPage(state: AppState) {
                 // Скорость туннеля, пинг и активные режимы: живут, пока
                 // подключены, обновляются фоновыми опросами. Режимы --
                 // только работающие: неактивные в строку не попадают.
+                // На подъёме вместо них -- процент сборки Tor (B1).
+                BootstrapLine(tunnelLog, ownState)
                 SpeedLine(state, ownState)
                 // Причина сбоя -- под статусом, не только в журнале внизу.
                 if (ownState == TunnelState.ERROR) {
@@ -471,18 +476,24 @@ internal fun SourcesExpandable(
         path = "$prefix.sources.expand"
     ) {
         ZappButtonRow {
+            // Веса по длине подписи, а не поровну: «Добавить источник»
+            // (17 знаков) в половине карточки упирался в минимальный кегль
+            // и обрезался до «Добавить ис…» (D2), тогда как короткое
+            // «Обновить» отдавало половину ширины впустую.
+            val addWeight = tr(Str.VPN_SOURCE_ADD).length.toFloat().coerceAtLeast(1f)
+            val refreshWeight = tr(Str.VPN_SOURCE_REFRESH).length.toFloat().coerceAtLeast(1f)
             ZappButton(
                 text = tr(Str.VPN_SOURCE_ADD),
                 role = if (adding) ButtonRole.GHOST else ButtonRole.SECONDARY,
                 onClick = { adding = !adding },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(addWeight),
                 path = "$prefix.sources.add"
             )
             ZappButton(
                 text = tr(Str.VPN_SOURCE_REFRESH),
                 role = ButtonRole.SECONDARY,
                 onClick = { state.refreshSources() },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(refreshWeight),
                 path = "$prefix.sources.refresh_all"
             )
         }
@@ -667,6 +678,29 @@ internal fun TunnelState.labelKey(): Str = when (this) {
     TunnelState.CONNECTED -> Str.ENGINE_STATE_CONNECTED
     TunnelState.RECONNECTING -> Str.ENGINE_STATE_RECONNECTING
     TunnelState.ERROR -> Str.ENGINE_STATE_ERROR
+}
+
+/**
+ * Прогресс сборки Tor под статусом (B1).
+ *
+ * Пока туннель поднимается, статус «Подключение...» висит минутами без
+ * изменений, а в журнале уже идут проценты и стадии -- они просто никем не
+ * показывались. Строка берёт разбор из чистой [bootstrapProgress] и
+ * показывается только на подъёме: после CONNECTED ей нечего сообщать.
+ *
+ * Общая для VPN и Tor: мост -- это тоже туннель, и на вкладке VPN такая
+ * сессия живёт так же, как на своей.
+ */
+@Composable
+internal fun BootstrapLine(tunnelLog: List<String>, tunnelState: TunnelState) {
+    if (tunnelState != TunnelState.CONNECTING && tunnelState != TunnelState.RECONNECTING) return
+    val progress = tunnelLog.bootstrapProgress() ?: return
+    val stage = bootstrapStageKey(progress.stage)?.let { " · " + tr(it) }
+    Text(
+        text = "${tr(Str.TOR_BOOTSTRAP)} ${progress.percent}%${stage ?: ""}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.tertiary
+    )
 }
 
 /**

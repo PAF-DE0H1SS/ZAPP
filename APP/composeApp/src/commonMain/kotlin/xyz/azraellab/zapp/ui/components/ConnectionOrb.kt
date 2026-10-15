@@ -59,6 +59,17 @@ import kotlin.math.sin
  * анимацией приложения: в выключенном состоянии рисуется один статичный
  * кадр, а кольцо подключения замирает -- это осознанный компромисс
  * режима экономии.
+ *
+ * Обновления троттлятся по [fps] -- так же, как звёздное поле. Без этого
+ * орб перерисовывался на каждом vsync дисплея, и одна только кнопка
+ * съедала **всё ядро** (замер на устройстве: 105 % ядра на странице VPN
+ * при включённой анимации против 3 % при выключенной): в кадре --
+ * path, clip и семь радиальных градиентов, каждый на каждый тик, а это
+ * и рисование, и сборка шейдеров. Периоды фаз (blob 9 с, дыхание 4 с,
+ * кольцо 1.1 с) от частоты кадров не зависят -- 30 fps выглядит так же.
+ *
+ * @fps сколько раз в секунду пересчитывается фаза (та же настройка,
+ *   что у фоновой анимации); выше неё частота не поднимается.
  */
 @Composable
 fun ConnectionOrb(
@@ -67,6 +78,7 @@ fun ConnectionOrb(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     animate: Boolean = true,
+    fps: Int = 30,
     size: Dp = 132.dp
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -81,17 +93,28 @@ fun ConnectionOrb(
 
     // Кадровый хронометр: фазы считаются от первой отрисовки, чтобы
     // периоды жили своей жизнью (blob 9с, дыхание 4с, кольцо 1.1с).
+    // Пересчёт -- не каждый кадр, а по бюджету [fps] (см. док-строку).
+    val frameMs = 1_000_000_000L / fps.coerceIn(15, 60)
     var elapsedMs by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(animate) {
+    LaunchedEffect(animate, frameMs) {
         if (!animate) {
             elapsedMs = 0f
             return@LaunchedEffect
         }
         var startNs = -1L
+        var lastWriteNs = -1L
         while (true) {
             withFrameNanos { now ->
-                if (startNs < 0) startNs = now
-                elapsedMs = (now - startNs) / 1_000_000f
+                if (startNs < 0) {
+                    startNs = now
+                    lastWriteNs = now
+                }
+                // Между записями кадры просто глотаются: ни пересчёта
+                // фаз, ни инвалидации холста, -- и вся нагрузка падает.
+                if (now - lastWriteNs >= frameMs) {
+                    lastWriteNs = now
+                    elapsedMs = (now - startNs) / 1_000_000f
+                }
             }
         }
     }

@@ -1,5 +1,7 @@
 package xyz.azraellab.zapp.core
 
+import xyz.azraellab.zapp.core.net.ProxyUri
+
 /**
  * Сортировка и фильтр списка коннектов.
  *
@@ -159,6 +161,72 @@ object VpnConnects {
      */
     fun sourcesByKind(sources: List<VpnSource>, kind: String): List<VpnSource> =
         sources.filter { it.kind == kind }
+
+    // --- Тег узла в clash_api (A3: здоровье по реальному обмену) ---
+
+    /**
+     * Тег, под которым sing-box видит коннект в clash_api; null -- тег
+     * отследить нельзя.
+     *
+     * Tag в конфиге собирается из самой ссылки (`tagOf` = `displayName()`),
+     * а не из имени профиля: переименованный вручную коннект в списке
+     * называется иначе, чем узел в боксе, и по имени пришёл бы замер от
+     * чужого узла. Целые конфиги sing-box и xray не разбираем: там свои
+     * outbounds с произвольными тегами, и любое совпадение по имени было
+     * бы догадкой.
+     */
+    fun nodeTag(profile: VpnProfile): String? {
+        val protocol = VpnProtocol.of(profile.protocol)
+        if (protocol == VpnProtocol.SINGBOX || protocol == VpnProtocol.XRAY) return null
+        val raw = profile.rawConfig
+        if (raw.isBlank() || "://" !in raw) return null
+        return runCatching { ProxyUri.parse(raw)?.displayName() }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Профиль, чей тег совпал с целью пробы, -- по нему пишется здоровье.
+     *
+     * sing-box снимает дубликаты тегов суффиксом ` (2)`, ` (3)` (см.
+     * `SingboxConfig.build`): номер -- порядок профиля в списке, поэтому
+     * и второй, и третий дубликат находятся по своему номеру, а не наугад.
+     */
+    fun profileIdByNodeTag(profiles: List<VpnProfile>, tag: String): String? {
+        profiles.firstOrNull { nodeTag(it) == tag }?.let { return it.id }
+        val match = DUPLICATE_TAG.find(tag) ?: return null
+        val base = match.groupValues[1]
+        val copy = match.groupValues[2].toIntOrNull() ?: return null
+        return profiles.filter { nodeTag(it) == base }.getOrNull(copy - 1)?.id
+    }
+
+    /**
+     * Здоровье узла после пробы через него самого; null -- писать нечего.
+     *
+     * Свежий замер с той же задержкой не перезаписывается: каждый тик
+     * обмена двигал бы `checkedAtMs`, и список перерисовывался бы раз в
+     * минуту без единого изменения. Устаревший (или отличившийся больше
+     * чем на [toleranceMs]) -- обновляется всегда, каким бы он ни был:
+     * честность списка важнее покоя перерисовки.
+     *
+     * @param nowMs текущее время; старые проверки (`checkedAtMs = 0`)
+     *   и будущие значения по времени в свежие не попадают.
+     * @param windowMs окно свежести; 0 -- обновлять всегда.
+     */
+    fun exchangeHealth(
+        old: LinkHealth,
+        delayMs: Int,
+        nowMs: Long,
+        toleranceMs: Int = 50,
+        windowMs: Long = 600_000L
+    ): LinkHealth? {
+        val fresh = old.alive == true &&
+            old.checkedAtMs > 0 &&
+            nowMs - old.checkedAtMs in 0 until windowMs &&
+            kotlin.math.abs(old.latencyMs - delayMs) <= toleranceMs
+        if (fresh) return null
+        return LinkHealth(alive = true, latencyMs = delayMs, checkedAtMs = nowMs, error = "")
+    }
+
+    private val DUPLICATE_TAG = Regex("""^(.*) \((\d+)\)$""")
 
     /** Протоколы, которых нет в urltest-группе (см. [groupMembers]). */
     private val GROUP_EXCLUDED = setOf(

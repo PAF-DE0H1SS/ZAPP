@@ -3,6 +3,7 @@ package xyz.azraellab.zapp.core.net
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
 /**
@@ -153,6 +154,88 @@ object ClashStats {
         return name.uppercase() !in META_NAMES && kind !in SERVICE_TYPES
     }
 
+    /**
+     * Роспись обмена (A3): узлы, здоровье которых качается по кругу.
+     *
+     * В group-режиме `/proxies/GLOBAL` отвечает 404, а у группы `auto`
+     * поле `now` пусто даже при работающем urltest'е -- активный узел
+     * через api не назвать (`/connections.chains` = `["auto"]`). Поэтому
+     * целью становится не один узел, а **список участников группы**:
+     * тикер ходит по нему по кругу и пишет здоровье тем, кто реально
+     * пропустил замер.
+     *
+     * Правила:
+     *  * группа (URLTest/Selector/LoadBalance) -> её участники `all`,
+     *    без служебных записей, `Direct`/`Reject` и групп;
+     *  * узел (одиночный конфиг, группы нет) -> список из одного;
+     *  * ничего пригодного -> пусто (розпись не нужна, хватает проба
+     *    активного узла из [probeTarget]).
+     */
+    fun probeRoster(body: String): List<String> {
+        val proxies = runCatching {
+            json.parseToJsonElement(body).jsonObject["proxies"]?.jsonObject
+        }.getOrNull() ?: return emptyList()
+        if (proxies.isEmpty()) return emptyList()
+
+        val types = HashMap<String, String>(proxies.size)
+        val selected = HashMap<String, String>(proxies.size)
+        for ((name, element) in proxies) {
+            val node = element as? JsonObject ?: continue
+            (node["type"] as? JsonPrimitive)?.content?.let { types[name] = it }
+            (node["now"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+                ?.let { selected[name] = it }
+        }
+
+        // Та же точка входа, что у probeTarget: активная группа правил.
+        var cursor: String = types.entries.firstOrNull { it.value in ACTIVE_GROUP_TYPES }?.key
+            ?: selected["GLOBAL"]
+            ?: proxies.keys.firstOrNull { selected.containsKey(it) }
+            ?: proxies.keys.firstOrNull()
+            ?: return emptyList()
+        var hops = 0
+        while (hops <= MAX_PROBE_HOPS) {
+            if (types[cursor] in ACTIVE_GROUP_TYPES) break
+            val next: String = selected[cursor] ?: break
+            if (next == cursor) break
+            cursor = next
+            hops++
+        }
+
+        if (types[cursor] !in ACTIVE_GROUP_TYPES) {
+            // Группы нет -- одиночный конфиг: цель одна, как у проба.
+            val target = probeTarget(body) ?: return emptyList()
+            return listOf(target)
+        }
+
+        val members = (proxies[cursor] as? JsonObject)?.get("all")?.jsonArray
+            ?.mapNotNull { (it as? JsonPrimitive)?.content }
+            .orEmpty()
+        // Вложенные группы в участниках не меряем: их тег -- не профиль
+        // (сопоставлять не с чем), а замер и так дублировал бы их узлы.
+        val roster = members.filter { types[it] !in ACTIVE_GROUP_TYPES && isProberable(it, types[it]) }
+        // Пустая группа (или одна только служебня) -- росписи нет, но и
+        // группа сама отвечает на /delay: тикер уйдёт к пробе через неё.
+        return roster.ifEmpty {
+            if (isProberable(cursor, types[cursor])) listOf(cursor) else emptyList()
+        }
+    }
+
+    /**
+     * Следующая пачка росписи и новый курсор: узлы идут по кругу.
+     *
+     * [cursor] живёт между тиками: пачка берётся с него, дальше -- по
+     * остатку списка и через конец в начало. За полный проход каждый узел
+     * получает свой замер ровно один раз, а не все разом (иначе тик
+     * превратился бы в многоминутный шторм проб).
+     */
+    fun nextBatch(roster: List<String>, cursor: Int, batchSize: Int): Pair<List<String>, Int> {
+        if (roster.isEmpty() || batchSize <= 0) return emptyList<String>() to 0
+        val size = minOf(batchSize, roster.size)
+        val start = if (cursor in 0 until roster.size) cursor else 0
+        val batch = List(size) { roster[(start + it) % roster.size] }
+        return batch to ((start + size) % roster.size)
+    }
+
     /** Значение числового поля: `"up": 123` или `"up":123`. */
     private fun field(body: String, key: String): Long? {
         val marker = "\"$key\""
@@ -205,13 +288,51 @@ expect suspend fun fetchClashTraffic(port: Int, secret: String, timeoutMs: Int):
  * null -- замер не прошёл: не нашлось ни одной цели, бокс не отвечает,
  * узел мёртв или туннель не пропускает трафик. Сторож трактует это
  * как сбой подключения.
+ *
+ * В [ClashProbe.target] возвращается и сама цель: замер шёл **через**
+ * этот узел, и по нему обновляется здоровье коннекта (A3) -- иначе в
+ * списке висел бы вчерашний замер достижимости при мёртвом сегодняшнем
+ * узле.
  */
 expect suspend fun fetchClashProbe(
     port: Int,
     secret: String,
     url: String,
     probeTimeoutMs: Int
-): Int?
+): ClashProbe?
+
+/**
+ * Роспись обмена: список узлов активной группы из `GET /proxies` (A3).
+ *
+ * null -- api не ответил (бокс не поднялся, порт закрыт). Пустой список --
+ * ответ есть, но росписывать нечего: вызывающий в этом случае уходит к
+ * пробе активного узла ([fetchClashProbe]), чтобы обмен не вставал.
+ */
+expect suspend fun fetchClashRoster(
+    port: Int,
+    secret: String,
+    timeoutMs: Int
+): List<String>?
+
+/**
+ * Проба **конкретного** узла росписи: `GET /proxies/<тег>/delay` (A3).
+ *
+ * Цель задана заранее -- без обхода `/proxies` за ней, как в
+ * [fetchClashProbe]: ростер уже известен, лишний запрос на каждый тик
+ * ни к чему. null -- замер не прошёл (узел мёртв или таймаут), это не
+ * ошибка: пачка просто идёт дальше, здоровье мёртвого узла остаётся
+ * прежним.
+ */
+expect suspend fun fetchClashNodeProbe(
+    port: Int,
+    secret: String,
+    tag: String,
+    url: String,
+    probeTimeoutMs: Int
+): ClashProbe?
+
+/** Итог пробы через узел: какая запись несла трафик и с какой задержкой. */
+data class ClashProbe(val target: String, val delayMs: Int)
 
 /**
  * Сегмент пути clash_api: всё вне RFC 3986 `unreserved` -- в %XX.

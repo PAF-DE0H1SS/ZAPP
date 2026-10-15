@@ -697,6 +697,74 @@ out += DevTest("parsers/singbox-group-all-bad-fails-fast", DevCategory.PARSERS, 
         checkEq(null, ClashStats.probeTarget("""{"proxies":{}}"""), "пусто")
     }
 
+    out += DevTest("parsers/clash-probe-roster", DevCategory.PARSERS, "Роспись: ростер группы и одиночный узел") {
+        // Замерено на устройстве (group-режим, 567 записей): `auto.now`
+        // пусто даже при работающем urltest'е, `GLOBAL` -- Fallback с
+        // 404 на /delay. Активный узел api не называет, зато группа
+        // отдаёт участников в `all` -- по ним и ходит роспись.
+        val grouped = """
+            {"proxies":{
+              "GLOBAL":{"type":"Fallback","now":"auto","all":["auto"]},
+              "auto":{"type":"URLTest","now":"","all":["node-1","node-2","direct","auto"]},
+              "node-1":{"type":"VLESS"},
+              "node-2":{"type":"Trojan"},
+              "direct":{"type":"Direct"}
+            }}
+        """.trimIndent()
+        val roster = ClashStats.probeRoster(grouped)
+        checkEq(listOf("node-1", "node-2"), roster, "участники без служебных, Direct и самой группы")
+
+        // Выбранная группа тоже ростер, а не единственный узел: обмен
+        // должен идти по всем, а не по одному lucky.
+        val selected = grouped.replace("\"now\":\"\"", "\"now\":\"node-2\"")
+        checkEq(listOf("node-1", "node-2"), ClashStats.probeRoster(selected), "группа с выбором -- весь ростер")
+
+        // Одиночный конфиг (замерено на устройстве): группы нет, ростер
+        // -- ровно та цель, которую нашла бы проба.
+        val single = """
+            {"proxies":{
+              "GLOBAL":{"type":"Fallback","now":"LV node","all":["LV node"]},
+              "LV node":{"type":"VLESS"},
+              "direct":{"type":"Direct"}
+            }}
+        """.trimIndent()
+        checkEq(listOf("LV node"), ClashStats.probeRoster(single), "одиночный узел -- список из одного")
+
+        // Служебня вся -- росписывать нечего, но и группы нет.
+        val onlyDirect =
+            """{"proxies":{"GLOBAL":{"type":"Fallback","now":"direct"},"direct":{"type":"Direct"}}}"""
+        checkEq(emptyList<String>(), ClashStats.probeRoster(onlyDirect), "прямой выход -- ростера нет")
+        checkEq(emptyList<String>(), ClashStats.probeRoster("not json"), "мусор")
+        checkEq(emptyList<String>(), ClashStats.probeRoster("""{"proxies":{}}"""), "пусто")
+    }
+
+    out += DevTest("parsers/clash-exchange-batch", DevCategory.PARSERS, "Пачка росписи идёт по кругу") {
+        val roster = listOf("a", "b", "c", "d", "e")
+        val (first, cursor1) = ClashStats.nextBatch(roster, 0, 2)
+        checkEq(listOf("a", "b"), first, "первая пачка")
+        checkEq(2, cursor1, "курсор после первой")
+        val (second, cursor2) = ClashStats.nextBatch(roster, cursor1, 2)
+        checkEq(listOf("c", "d"), second, "вторая пачка")
+        // Конец списка замыкается в начало: узлы не теряются.
+        val (third, cursor3) = ClashStats.nextBatch(roster, cursor2, 2)
+        checkEq(listOf("e", "a"), third, "хвост через начало")
+        checkEq(1, cursor3, "курсор вернулся в начало")
+        // Пачка больше списка -- весь список (с позиции курсора, кругом).
+        val (whole, cursor4) = ClashStats.nextBatch(roster, 4, 8)
+        checkEq(listOf("e", "a", "b", "c", "d"), whole, "пачка больше ростера -- весь ростер")
+        checkEq(4, cursor4, "за полный проход -- ровно круг")
+        // Вырожденные случаи: тик без узлов и чужой курсор не ломают цикл.
+        val (none, cursor5) = ClashStats.nextBatch(emptyList(), 7, 8)
+        checkEq(emptyList<String>(), none, "пустой ростер -- пустая пачка")
+        checkEq(0, cursor5, "пустой ростер -- курсор в нуле")
+        val (reset, cursor6) = ClashStats.nextBatch(roster, 99, 2)
+        checkEq(listOf("a", "b"), reset, "курсор за пределами списка сбрасывается")
+        checkEq(2, cursor6, "и двигается дальше")
+        val (zero, cursor7) = ClashStats.nextBatch(roster, 0, 0)
+        checkEq(emptyList<String>(), zero, "нулевая пачка -- пусто")
+        checkEq(0, cursor7, "и курсор не двигается")
+    }
+
     out += DevTest("parsers/clash-probe-encoding", DevCategory.PARSERS, "Путь пробы кодируется побайтово") {
         // Регрессия: посимвольный обход рассыпал суррогатные пары эмодзи на
         // половинки, и цель `🇳🇱 …` не находилась -- 404 вместо замера.

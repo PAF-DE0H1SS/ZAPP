@@ -43,6 +43,15 @@ enum class Str {
     TOR_ACTIVE_HINT,
     TOR_BRIDGE_SOURCE,
     TOR_SOURCES,
+    /** B1: живой прогресс сборки Tor на карточке. */
+    TOR_BOOTSTRAP,
+    TOR_STAGE_START,
+    TOR_STAGE_RELAY,
+    TOR_STAGE_HANDSHAKE,
+    TOR_STAGE_DIR,
+    TOR_STAGE_DESCRIPTORS,
+    TOR_STAGE_CIRCUIT,
+    TOR_STAGE_DONE,
 
     /** Действия. */
     COMMON_CONNECT,
@@ -622,6 +631,14 @@ enum class Str {
         )
         TOR_BRIDGE_SOURCE -> pick(lang, "Source", "Источник", "来源")
         TOR_SOURCES -> pick(lang, "Bridge sources", "Источники мостов", "桥接来源")
+        TOR_BOOTSTRAP -> pick(lang, "Tor bootstrap", "Сборка Tor", "Tor 引导")
+        TOR_STAGE_START -> pick(lang, "starting", "запуск", "启动")
+        TOR_STAGE_RELAY -> pick(lang, "connecting to a relay", "связь с ретранслятором", "连接中继")
+        TOR_STAGE_HANDSHAKE -> pick(lang, "handshake", "рукопожатие", "握手")
+        TOR_STAGE_DIR -> pick(lang, "network directory", "каталог сети", "网络目录")
+        TOR_STAGE_DESCRIPTORS -> pick(lang, "relay descriptors", "описания ретрансляторов", "中继描述")
+        TOR_STAGE_CIRCUIT -> pick(lang, "building a circuit", "построение цепочки", "建立电路")
+        TOR_STAGE_DONE -> pick(lang, "ready", "готово", "就绪")
         TAB_ZAPRET -> pick(lang, "Zapret", "Zapret", "Zapret")
         TAB_GOODBYE_DPI -> pick(lang, "GoodbyeDPI", "GoodbyeDPI", "GoodbyeDPI")
         TAB_GPS -> pick(lang, "GPS", "GPS", "GPS")

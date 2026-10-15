@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
+import xyz.azraellab.zapp.core.BuildMode
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.ZapretStrategy
 import xyz.azraellab.zapp.core.domains.DpiScope
@@ -21,6 +22,25 @@ import xyz.azraellab.zapp.ui.tr
 /** Подпись стратегии на языке интерфейса; в списке -- не код строки. */
 private fun ZapretStrategy.strategyLabel(): String =
     if (AppLangState.current == AppLang.RU) ru else en
+
+/**
+ * Подпись самостоятельности режима обхода (E4/Q4).
+ *
+ * Текст выбирается по сборке, а не по устройству (E9): в норуте о root
+ * не говорят ни слова, в рут-сборке пакеты действительно режутся в ядре,
+ * и подпись про пассивный туннель там была бы враньём. Одна карточка на
+ * обеих страницах: режим обхода один.
+ */
+@Composable
+internal fun StandaloneDpiHint() {
+    ZappCard {
+        Text(
+            text = tr(if (BuildMode.rootAllowed) Str.DPI_STANDALONE_ROOT else Str.DPI_STANDALONE_NOROOT),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
 
 /**
  * Страница Zapret.
@@ -41,6 +61,12 @@ fun ZapretPage(state: AppState) {
             onStop = { state.stopZapret() },
             path = "zapret"
         )
+
+        // E4/Q4: подпись того, что обход -- самостоятельный режим, а не
+        // приложение к VPN. Какая именно строка -- решает сборка: в норуте
+        // о ядре говорить нечего, в рут-сказ про пассивный туннель был бы
+        // враньём (там пакеты режутся в NFQUEUE).
+        StandaloneDpiHint()
 
         // --- Стратегия: автоподбор или ручной выбор ---
         ZappCard {

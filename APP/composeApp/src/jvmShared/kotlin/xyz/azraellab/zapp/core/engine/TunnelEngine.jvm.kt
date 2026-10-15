@@ -791,6 +791,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         // -10, а не -1: иначе первый десяток (0..9) не проходит проверку
         // «новый десяток» (5/10 == -1/10 == 0) и прогресс молчит до 10%.
         var lastPct = -10
+        var lastStage: String? = null
         while (System.currentTimeMillis() < deadline) {
             if (stopping) error("tor bootstrap cancelled")
             if (daemon.state.value == DaemonState.ERROR) {
@@ -803,9 +804,14 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
                 boxBuilt(SingboxConfig.buildTor(vpn, socksPort), vpn, null)
                 return
             }
-            if (pct in 0..99 && pct / 10 > lastPct / 10) {
+            // Процент пишется десятками, стадия -- при каждой смене: между
+            // «requesting_descriptors» и «loading_descriptors» процент один,
+            // а для моста это разные минуты ожидания (B1).
+            val stage = torProgressStage(daemon.log.value)
+            if (pct in 0..99 && (pct / 10 > lastPct / 10 || stage != lastStage)) {
                 lastPct = pct
-                log("tor bootstrap $pct%")
+                lastStage = stage
+                log("tor bootstrap $pct%" + (stage?.let { " ($it)" } ?: ""))
             }
             delay(500)
         }
@@ -1202,6 +1208,31 @@ internal fun torProgressPercent(lines: List<DaemonEvent>): Int {
         return pct.coerceIn(0, 100)
     }
     return -1
+}
+
+/**
+ * Тег стадии bootstrap из последней строки `Bootstrapped N% (tag)`.
+ *
+ * Без скобок -- null: строка без стадии не значит, что стадии не было, она
+ * просто пришла в другом формате. Ищется с конца вместе с процентом, чтобы
+ * пара «процент + стадия» всегда была из одной строки.
+ */
+internal fun torProgressStage(lines: List<DaemonEvent>): String? {
+    for (i in lines.indices.reversed()) {
+        val raw = lines[i].raw
+        val marker = "Bootstrapped "
+        val idx = raw.lastIndexOf(marker)
+        if (idx < 0) continue
+        val rest = raw.substring(idx + marker.length)
+        val digits = rest.takeWhile { it.isDigit() }
+        if (digits.isEmpty()) continue
+        val open = rest.indexOf('(', digits.length)
+        if (open < 0) continue
+        val close = rest.indexOf(')', open)
+        if (close < 0) continue
+        return rest.substring(open + 1, close).trim().ifEmpty { null }
+    }
+    return null
 }
 
 /**

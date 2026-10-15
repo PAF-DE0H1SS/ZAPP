@@ -45,10 +45,14 @@ import xyz.azraellab.zapp.core.log.causeChain
 import xyz.azraellab.zapp.core.log.errorEvent
 import xyz.azraellab.zapp.core.native.NativeBinaries
 import xyz.azraellab.zapp.core.net.ConfigImport
+import xyz.azraellab.zapp.core.net.ClashProbe
+import xyz.azraellab.zapp.core.net.ClashStats
 import xyz.azraellab.zapp.core.net.ClashTraffic
 import xyz.azraellab.zapp.core.net.LinkProbe
 import xyz.azraellab.zapp.core.net.LinkTarget
+import xyz.azraellab.zapp.core.net.fetchClashNodeProbe
 import xyz.azraellab.zapp.core.net.fetchClashProbe
+import xyz.azraellab.zapp.core.net.fetchClashRoster
 import xyz.azraellab.zapp.core.net.fetchClashTraffic
 import xyz.azraellab.zapp.core.net.httpGetText
 import xyz.azraellab.zapp.core.net.probeLink
@@ -140,6 +144,27 @@ class AppState(
          * вовсе, и раньше сторож на этом врал. Просто даём боксу время
          * разогреться перед единственной активной пробой.
          */
+        /** Как часто пробуем узел на реальном обмене, пока подключены (A3). */
+        const val NODE_EXCHANGE_TICK_MS: Long = 60_000L
+
+        /**
+         * Сколько узлов ростера замеряется за тик (A3).
+         *
+         * Группа -- сотни узлов, и все разом это шторм проб на минуту.
+         * Восемь по кругу: за тик -- восемь замеров, полный проход
+         * списка занимает время, а не кадр.
+         */
+        const val EXCHANGE_BATCH: Int = 8
+
+        /** Бюджет на чтение ростера: локальный запрос, ответ -- быстро. */
+        const val ROSTER_TIMEOUT_MS: Int = 5_000
+
+        /** Разница задержки, при которой замер считается изменившимся. */
+        const val HEALTH_TOLERANCE_MS: Int = 50
+
+        /** Свежим замер считается 10 минут; дальше пишем всегда. */
+        const val HEALTH_REFRESH_MS: Long = 600_000L
+
         const val TUNNEL_WATCHDOG_MS: Long = 15_000L
 
         /** Таймаут самой пробы: узел за границей на симке отвечает и за 4 с. */
@@ -290,6 +315,11 @@ class AppState(
     private var torSwitchJob: Job? = null
     private var watchdogJob: Job? = null
 
+    // Здоровье узла по реальному обмену (A3): те же правила, что у
+    // watchdogJob, -- объявлен до init, чтобы ранний старт не потерял
+    // ссылку на живую корутину.
+    private var nodeExchangeJob: Job? = null
+
     init {
         // Уведомления о подмене: движок сообщает только состояния, а что
         // именно сказать пользователю -- решает здесь общая подписка,
@@ -348,6 +378,7 @@ class AppState(
                         startPing()
                         startTorAutoSwitch()
                         startTunnelWatchdog()
+                        startNodeExchange()
                         // Опрос счётчиков нужен спарклайну: пока туннель
                         // поднят, держим его живым, чтобы история копилась
                         // без открытого окна мониторинга. Здесь, а не в
@@ -359,6 +390,7 @@ class AppState(
                         stopPing()
                         stopTorAutoSwitch()
                         stopTunnelWatchdog()
+                        stopNodeExchange()
                     }
                     LauncherIcon.setConnected(current == TunnelState.CONNECTED)
                 }.onFailure { e ->
@@ -520,7 +552,7 @@ class AppState(
             // Повтор обязателен: в первые секунды группа узлов могла не
             // успеть выбрать рабочий узел, и единственная проба читала бы
             // «туннель мёртв» на сети, которая через пять секунд ожила бы.
-            var result: Int? = null
+            var result: ClashProbe? = null
             var attempt = 0
             while (result == null && attempt < PROBE_ATTEMPTS) {
                 if (tunnel.state.value != TunnelState.CONNECTED) return@launch
@@ -533,8 +565,8 @@ class AppState(
                     delay(PROBE_RETRY_MS)
                 }
             }
-            val delayMs = result
-            if (delayMs == null) {
+            val probe = result
+            if (probe == null) {
                 AppLog.log("vpn", "watchdog: the probe through the node did not pass")
                 // Стоп раньше причины: `fail` -- это только строка и
                 // состояние, бокс он не гасит, и без остановки следующий
@@ -542,9 +574,117 @@ class AppState(
                 runCatching { tunnel.disconnect() }
                 tunnel.fail("the tunnel is up, but the probe through the node did not pass")
             } else {
-                AppLog.log("spd", "watchdog probe ok: ${delayMs}ms")
+                AppLog.log("spd", "watchdog probe ok: ${probe.delayMs}ms")
+                // Первая честная запись здоровья: замер шёл через этот узел,
+                // а не мимо него (A3).
+                recordNodeExchange(probe)
             }
         }
+    }
+
+    /**
+     * Здоровье узла из реального обмена через него (A3).
+     *
+     * `probeLink` меряет только достижимость адреса: до вчерашнего дня
+     * профиль висел `alive:true, latencyMs:55`, пока через узел не шло
+     * ничего. Проба сторожа идёт через сам узел (box гоняет запрос по
+     * `/proxies/<цель>/delay`), и её результат -- единственный замер,
+     * который честно говорит «этот узел сегодня пропустил трафик».
+     *
+     * Пишем не каждый тик: свежий замер с той же задержкой не стоит
+     * перезаписи списка (звук перерисовки и записи конфига), а устаревший
+     * обновляем всегда, каким бы он ни был.
+     *
+     * @param quiet не писать в журнал тег без профиля: пачка росписи
+     *   при чужом конфиге дала бы восемь одинаковых строк за тик, итог
+     *   там пишет вызывающий.
+     * @return true, если тег сопоставился с профилем (обновился он или нет).
+     */
+    private fun recordNodeExchange(probe: ClashProbe, quiet: Boolean = false): Boolean {
+        val id = VpnConnects.profileIdByNodeTag(config.vpn.profiles, probe.target)
+        if (id == null) {
+            // Тег чужого конфига (sing-box/xray как есть) или служебная
+            // запись: сопоставлять не с чем, здоровье не трогаем.
+            if (!quiet) AppLog.log("ping", "exchange: no profile for tag '${probe.target}'")
+            return false
+        }
+        val now = System.currentTimeMillis()
+        val old = config.vpn.profileById(id)?.health ?: LinkHealth()
+        val fresh = VpnConnects.exchangeHealth(
+            old = old,
+            delayMs = probe.delayMs,
+            nowMs = now,
+            toleranceMs = HEALTH_TOLERANCE_MS,
+            windowMs = HEALTH_REFRESH_MS
+        ) ?: return true
+        applyHealth(listOf(id to fresh))
+        AppLog.log("ping", "exchange: ${probe.target} -> ${probe.delayMs}ms (health updated)")
+        return true
+    }
+
+    /**
+     * Периодический обмен с узлами, пока туннель поднят (A3).
+     *
+     * Сторож проверяет туннель один раз при старте; здоровья он при этом
+     * почти не касался, и список продолжал показывать вчерашние значения.
+     *
+     * В group-режиме api не называет активный узел (`auto.now` пуст,
+     * `chains` = `["auto"]`), поэтому цель -- **ростер группы**: каждый
+     * тик читается список её участников и пачка из [EXCHANGE_BATCH] узлов
+     * идёт по кругу (`ClashStats.nextBatch`). Через полный проход каждый
+     * узел получает замер через самого себя ровно один раз.
+     *
+     * Если ростера нет (api не ответил, одиночный конфиг без группы) --
+     * прежний путь: проба через активный узел. Провал пробы здесь ничего
+     * не убивает: единичный промах на мобильной сети -- не смерть туннеля
+     * (её судит сторож), а здоровье в этот момент остаётся прежним.
+     */
+    private fun startNodeExchange() {
+        nodeExchangeJob?.cancel()
+        nodeExchangeJob = null
+        if (!config.vpn.clashApiEnabled) return
+        val port = config.vpn.clashApiPort
+        val secret = config.vpn.clashApiSecret
+        nodeExchangeJob = scope.launch {
+            var cursor = 0
+            while (isActive) {
+                delay(NODE_EXCHANGE_TICK_MS)
+                if (tunnel.state.value != TunnelState.CONNECTED) return@launch
+                val roster = runCatching {
+                    fetchClashRoster(port, secret, ROSTER_TIMEOUT_MS)
+                }.getOrNull()
+                if (roster.isNullOrEmpty()) {
+                    runCatching {
+                        fetchClashProbe(port, secret, WATCHDOG_PROBE_URL, TUNNEL_PROBE_TIMEOUT_MS)
+                    }.getOrNull()?.let { recordNodeExchange(it) }
+                    continue
+                }
+                val (batch, next) = ClashStats.nextBatch(roster, cursor, EXCHANGE_BATCH)
+                cursor = next
+                var measured = 0
+                var mapped = 0
+                for (tag in batch) {
+                    if (!isActive || tunnel.state.value != TunnelState.CONNECTED) break
+                    val probe = runCatching {
+                        fetchClashNodeProbe(port, secret, tag, WATCHDOG_PROBE_URL, TUNNEL_PROBE_TIMEOUT_MS)
+                    }.getOrNull() ?: continue
+                    measured++
+                    if (recordNodeExchange(probe, quiet = true)) mapped++
+                }
+                // Итог пачки одной строкой: и молчание api, и чужой конфиг
+                // (ни один тег не сопоставился) иначе не видно вовсе.
+                if (measured == 0) {
+                    AppLog.log("ping", "exchange: ${batch.size} nodes gave no measurements")
+                } else if (mapped == 0) {
+                    AppLog.log("ping", "exchange: ${measured} tags matched no profile")
+                }
+            }
+        }
+    }
+
+    private fun stopNodeExchange() {
+        nodeExchangeJob?.cancel()
+        nodeExchangeJob = null
     }
 
     private fun stopTunnelWatchdog() {

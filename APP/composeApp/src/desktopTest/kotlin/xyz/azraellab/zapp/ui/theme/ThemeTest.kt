@@ -7,21 +7,19 @@ class ThemeTest {
 
     @Test
     fun schemeIsDark() {
-        // Тема одна, тёмная: светлой схемы в приложении нет, и проверять
-        // «тёмная ли она» -- единственное, что здесь имеет смысл.
+        // Тёмная -- дефолт и исходный вид; светлая появилась в UX4 и обязана
+        // быть именно светлой, иначе переключатель в настройках врёт.
         assertTrue(AzraelDarkScheme.isDark())
+        assertTrue(!AzraelLightScheme.isDark())
     }
 
     @Test
     fun everySchemeSlotIsReadableOnItsOwnBackground() {
         // Регрессия на первые версии палитры: `primary = #16A34A` давал 3.0:1
         // с белым, `outline = #D4D4D8` -- 1.4:1. Проверяются все foreground-пары,
-        // которые реально рисует UI.
-        //
-        // `surface` в тёмной схеме прозрачный (5% белого), поэтому контраст
-        // считается по фактической подложке: `surface`, положенная на
-        // `background`, а не по самому прозрачному цвету.
-        AzraelDarkScheme.let { scheme ->
+        // которые реально рисует UI, на ОБЕИХ схемах: контраст -- свойство
+        // схемы, и светлая обязана держать те же пороги.
+        listOf("dark" to AzraelDarkScheme, "light" to AzraelLightScheme).forEach { (name, scheme) ->
             val pairs = listOf(
                 "onSurface/surface" to (scheme.onSurface to scheme.surface),
                 "onSurfaceVariant/surfaceVariant" to (scheme.onSurfaceVariant to scheme.surfaceVariant),
@@ -39,7 +37,7 @@ class ThemeTest {
                 val ratio = contrastOnScheme(pair.second, scheme.background, pair.first)
                 assertTrue(
                     ratio >= TEXT_CONTRAST_MIN,
-                    "$label = $ratio (нужно ≥ $TEXT_CONTRAST_MIN)"
+                    "[$name] $label = $ratio (нужно ≥ $TEXT_CONTRAST_MIN)"
                 )
             }
         }

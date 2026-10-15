@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import xyz.azraellab.zapp.core.ThemeMode
 import xyz.azraellab.zapp.core.PerfConfig
 import xyz.azraellab.zapp.ui.theme.AzraelCornerGlass
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
@@ -41,12 +42,18 @@ val AzraelTextDim = xyz.azraellab.zapp.ui.theme.AzraelTextDim
 /**
  * Точка входа темы приложения.
  *
- * Режима нет -- тема одна, тёмная, поэтому здесь нечего восстанавливать из
- * хранилища: корень только натягивает схему и отдаёт содержимое.
+ * Режим берётся из конфига ([AppConfig.themeMode], [AppConfig.dynamicColors]):
+ * тёмная -- дефолт и исходный вид, светлая и Material You включаются
+ * переключателем в настройках. Хранить состояние темы отдельно от конфига
+ * незачем -- настройка сохраняется целиком.
  */
 @Composable
-fun AppThemeRoot(content: @Composable () -> Unit) {
-    AzraelTheme(content = content)
+fun AppThemeRoot(
+    mode: ThemeMode = ThemeMode.DARK,
+    dynamicColors: Boolean = false,
+    content: @Composable () -> Unit
+) {
+    AzraelTheme(mode = mode, dynamicColors = dynamicColors, content = content)
 }
 
 @Composable

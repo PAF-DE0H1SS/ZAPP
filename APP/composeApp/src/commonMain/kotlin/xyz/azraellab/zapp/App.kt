@@ -38,7 +38,10 @@ fun App() {
         state.load()
     }
 
-    AppThemeRoot {
+    AppThemeRoot(
+        mode = state.config.themeMode,
+        dynamicColors = state.config.dynamicColors
+    ) {
         GlassBackground(perf = state.config.perf.sanitized()) {
             // До чтения конфига -- скелетон, а не «пусто»: первый кадр
             // стартует раньше load(), и без заглушки страницы успевали

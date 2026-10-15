@@ -221,6 +221,13 @@ enum class Str {
 
     /** Настройки. */
     SETTINGS_LANGUAGE,
+    SETTINGS_APPEARANCE,
+    SETTINGS_THEME,
+    SETTINGS_THEME_SYSTEM,
+    SETTINGS_THEME_DARK,
+    SETTINGS_THEME_LIGHT,
+    SETTINGS_DYNAMIC_COLORS,
+    SETTINGS_DYNAMIC_COLORS_HINT,
     SETTINGS_PRESETS,
     SETTINGS_PRESET_NAME,
     SETTINGS_ABOUT,
@@ -775,6 +782,18 @@ enum class Str {
         TRAFFIC_SMOOTH -> pick(lang, "Smooth graph", "Сглаживать график", "平滑曲线")
 
         SETTINGS_LANGUAGE -> pick(lang, "Language", "Язык", "语言")
+        SETTINGS_APPEARANCE -> pick(lang, "Appearance", "Оформление", "外观")
+        SETTINGS_THEME -> pick(lang, "Theme", "Тема", "主题")
+        SETTINGS_THEME_SYSTEM -> pick(lang, "Follow system", "Как в системе", "跟随系统")
+        SETTINGS_THEME_DARK -> pick(lang, "Dark", "Тёмная", "深色")
+        SETTINGS_THEME_LIGHT -> pick(lang, "Light", "Светлая", "浅色")
+        SETTINGS_DYNAMIC_COLORS -> pick(lang, "Material You colors", "Цвета Material You", "Material You 配色")
+        SETTINGS_DYNAMIC_COLORS_HINT -> pick(
+            lang,
+            "Palette from your wallpaper (Android 12+)",
+            "Палитра из обоев (Android 12+)",
+            "取自壁纸的配色（Android 12+）"
+        )
         SETTINGS_PRESETS -> pick(lang, "Presets", "Пресеты", "预设")
         SETTINGS_PRESET_NAME -> pick(lang, "Preset name", "Имя пресета", "预设名称")
         SETTINGS_ABOUT -> pick(lang, "About", "О программе", "关于")

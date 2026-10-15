@@ -52,6 +52,7 @@ import xyz.azraellab.zapp.core.update.UpdateDownload
 import xyz.azraellab.zapp.core.update.UpdateState
 import xyz.azraellab.zapp.core.update.ZappComponent
 import xyz.azraellab.zapp.core.update.cachedUpdateApk
+import xyz.azraellab.zapp.core.ThemeMode
 import xyz.azraellab.zapp.core.update.probeComponentVersion
 import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
@@ -301,6 +302,35 @@ private fun GeneralSection(state: AppState) {
                     AppLog.log("app", "region set to $code")
                 },
                 path = "settings.region"
+            )
+        }
+    }
+    // Оформление: режим темы и Material You (UX4/F30). Отдельная группа --
+    // настройка вида, а не поведения, и менять её должны, не читая инструкцию.
+    PageGroup(tr(Str.SETTINGS_APPEARANCE)) {
+        ZappCard {
+            ZappChoiceRow(
+                label = tr(Str.SETTINGS_THEME),
+                options = ThemeMode.entries.map { Choice(it.name, themeLabel(it)) },
+                selected = state.config.themeMode.name,
+                onSelect = { name ->
+                    val mode = ThemeMode.entries.firstOrNull { it.name == name }
+                        ?: ThemeMode.DARK
+                    state.mutate { it.copy(themeMode = mode) }
+                    AppLog.log("app", "theme mode -> $mode")
+                },
+                path = "settings.themeMode"
+            )
+            Spacer(modifier = Modifier.height(AzraelSpace.xs))
+            ZappSettingRow(
+                title = tr(Str.SETTINGS_DYNAMIC_COLORS),
+                subtitle = tr(Str.SETTINGS_DYNAMIC_COLORS_HINT),
+                checked = state.config.dynamicColors,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(dynamicColors = on) }
+                    AppLog.log("app", "dynamic colors -> $on")
+                },
+                path = "settings.dynamicColors"
             )
         }
     }
@@ -1514,6 +1544,14 @@ private fun labelOf(lang: AppLang): String = when (lang) {
     AppLang.EN -> "English"
     AppLang.RU -> "Русский"
     AppLang.ZH -> "中文"
+}
+
+/** Подпись режима темы (UX4). */
+@Composable
+private fun themeLabel(mode: ThemeMode): String = when (mode) {
+    ThemeMode.SYSTEM -> tr(Str.SETTINGS_THEME_SYSTEM)
+    ThemeMode.DARK -> tr(Str.SETTINGS_THEME_DARK)
+    ThemeMode.LIGHT -> tr(Str.SETTINGS_THEME_LIGHT)
 }
 
 /** Список методов desync: стабильный, вне композиции. */

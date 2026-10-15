@@ -15,9 +15,9 @@ import xyz.azraellab.zapp.ui.theme.isDark
  * сюда, компоненты только читают результат, а тест проверяет ту же функцию,
  * которую рисует экран.
  *
- * Тёмная тема -- единственная. Светлой схемы в приложении нет: тёмный фон с
- * полупрозрачными панелями и звёздами не имеет осмысленного светлого варианта,
- * а «светлая» версия выглядела как тёмное приложение с чёрным текстом.
+ * Цвета выбираются по схеме ([AzraelDarkScheme]/[AzraelLightScheme], UX4):
+ * тёмная -- дефолт, светлая -- по выбору пользователя, и обе обязаны держать
+ * контраст, поэтому ветвление живёт здесь, в чистой функции, а не в UI.
  */
 object ComponentColors {
 
@@ -38,18 +38,26 @@ object ComponentColors {
     }
 
     /**
-     * Цвет подписи состояния. Тёмная схема единственная, но функция всё равно
-     * принимает [ColorScheme]: так код не придётся переписывать, если схема
-     * вернётся, и проверка контраста останется по-настоящему.
+     * Цвет подписи состояния. Схема влияет: тёмная берёт светлые акценты,
+     * светлая -- тёмные, иначе `#22C55E` на белом даёт 2.28:1 (см. тест
+     * `theme-light/state-text-readable`).
      *
-     * ACTIVE берёт [AzraelSuccess] (6.41:1 на подложке баннера), а не
+     * ACTIVE в тёмной -- [AzraelSuccess] (6.41:1 на подложке баннера), а не
      * [AzraelStrong]: тот давал 4.47 -- на волос ниже порога 4.5, и подпись
-     * «работает» на грани читаемости.
+     * «работает» на грани читаемости. В светлой -- `#166534`: 7.13 на белом,
+     * 6.15 на контейнере.
      */
-    fun stateText(scheme: ColorScheme, state: State): Color = when (state) {
-        State.IDLE -> scheme.onSurfaceVariant
-        State.ACTIVE -> AzraelSuccess
-        State.DANGER -> Color(0xFFFB7185)
+    fun stateText(scheme: ColorScheme, state: State): Color {
+        if (!scheme.isDark()) return when (state) {
+            State.IDLE -> scheme.onSurfaceVariant
+            State.ACTIVE -> Color(0xFF166534)
+            State.DANGER -> Color(0xFF9F1239)
+        }
+        return when (state) {
+            State.IDLE -> scheme.onSurfaceVariant
+            State.ACTIVE -> AzraelSuccess
+            State.DANGER -> Color(0xFFFB7185)
+        }
     }
 
     /** Вариант кнопки. */

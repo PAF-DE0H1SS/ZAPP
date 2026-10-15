@@ -1,9 +1,11 @@
 package xyz.azraellab.zapp.core.dev
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import xyz.azraellab.zapp.ui.components.ComponentColors
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.theme.AzraelDarkScheme
+import xyz.azraellab.zapp.ui.theme.AzraelLightScheme
 import xyz.azraellab.zapp.ui.theme.AzraelPrimary
 import xyz.azraellab.zapp.ui.theme.AzraelSuccess
 import xyz.azraellab.zapp.ui.theme.NON_TEXT_CONTRAST_MIN
@@ -23,14 +25,22 @@ import xyz.azraellab.zapp.ui.theme.relativeLuminance
  * иначе проверка проверяла бы саму себя.
  *
  * Пороги WCAG: текст 4.5:1, нетекстовое (границы, иконки) 3:1.
+ *
+ * Прогоняется на обеих схемах (UX4): контраст пары -- свойство схемы, а не
+ * приложения, и светлая схема обязана держать те же пороги, что и тёмная.
  */
-private val scheme = AzraelDarkScheme
+internal fun themeTests(out: MutableList<DevTest>) {
+    schemeTests(out, AzraelDarkScheme, prefix = "theme", light = false)
+    schemeTests(out, AzraelLightScheme, prefix = "theme-light", light = true)
+    formulaTests(out)
+    paletteTests(out)
+}
 
-/** Фактическая подложка карточки: surface в тёмной схеме полупрозрачный. */
-private fun card(): Color =
+/** Фактическая подложка карточки: surface тёмной схемы полупрозрачный. */
+private fun card(scheme: ColorScheme): Color =
     if (scheme.surface.alpha < 1f) composite(scheme.surface, scheme.background) else scheme.surface
 
-private val SCHEME_PAIRS = listOf(
+private fun schemePairs(scheme: ColorScheme) = listOf(
     "onSurface/surface" to (scheme.onSurface to scheme.surface),
     "onSurfaceVariant/surfaceVariant" to (scheme.onSurfaceVariant to scheme.surfaceVariant),
     "onSurface/surfaceVariant" to (scheme.onSurface to scheme.surfaceVariant),
@@ -44,22 +54,32 @@ private val SCHEME_PAIRS = listOf(
     "onErrorContainer/errorContainer" to (scheme.onErrorContainer to scheme.errorContainer)
 )
 
-internal fun themeTests(out: MutableList<DevTest>) {
+/** Проверки одной схемы. [prefix] делает id уникальными между схемами. */
+private fun schemeTests(out: MutableList<DevTest>, scheme: ColorScheme, prefix: String, light: Boolean) {
+    val tag = if (light) " (светлая)" else ""
+    fun id(name: String) = "$prefix/$name"
 
-    out += DevTest("theme/scheme-is-dark", DevCategory.THEME, "Схема тёмная") {
-        checkTrue(scheme.isDark(), "AzraelDarkScheme должна быть тёмной")
+    out += DevTest(
+        id("scheme-brightness"),
+        DevCategory.THEME,
+        if (light) "Светлая схема не тёмная" else "Схема тёмная"
+    ) {
+        checkTrue(
+            scheme.isDark() != light,
+            if (light) "AzraelLightScheme должна быть светлой" else "AzraelDarkScheme должна быть тёмной"
+        )
     }
 
     // Каждая foreground-пара -- отдельный тест: после провала видно, какой
     // именно элемент стал нечитаемым. Порядок аргументов контрактный:
     // (фон, задник, текст) -- как в contrastOnScheme.
-    SCHEME_PAIRS.forEach { (label, pair) ->
+    schemePairs(scheme).forEach { (label, pair) ->
         val foreground = pair.first
         val background = pair.second
         out += DevTest(
-            "theme/pair-${label.lowercase().replace(Regex("[^a-z]+"), "-")}",
+            id("pair-${label.lowercase().replace(Regex("[^a-z]+"), "-")}"),
             DevCategory.THEME,
-            "Контраст $label >= $TEXT_CONTRAST_MIN"
+            "Контраст $label >= $TEXT_CONTRAST_MIN$tag"
         ) {
             val ratio = contrastOnScheme(background, scheme.background, foreground)
             checkTrue(
@@ -69,17 +89,106 @@ internal fun themeTests(out: MutableList<DevTest>) {
         }
     }
 
-    out += DevTest("theme/outline-visible", DevCategory.THEME, "Граница видима на фоне (>= 3:1)") {
+    out += DevTest(id("outline-visible"), DevCategory.THEME, "Граница видима на фоне (>= 3:1)$tag") {
         val ratio = contrastOver(scheme.outline, scheme.background)
         checkTrue(ratio >= NON_TEXT_CONTRAST_MIN, "outline на фоне = $ratio")
     }
 
-    out += DevTest("theme/outline-composited", DevCategory.THEME, "Полупрозрачная граница считается после наложения") {
+    out += DevTest(id("outline-composited"), DevCategory.THEME, "Полупрозрачная граница считается после наложения$tag") {
         val ratio = contrastOver(scheme.outlineVariant, scheme.background)
         checkTrue(ratio > 1.0, "рамка должна давать контраст на фоне, получили $ratio")
     }
 
-    // --- Формулы ---
+    out += DevTest(id("state-text-readable"), DevCategory.THEME, "Подписи состояний читаются на карточке$tag") {
+        val base = card(scheme)
+        ComponentColors.State.entries.forEach { state ->
+            val ratio = contrast(ComponentColors.stateText(scheme, state), base)
+            checkTrue(
+                ratio >= TEXT_CONTRAST_MIN,
+                "stateText($state) = $ratio (нужно >= $TEXT_CONTRAST_MIN)"
+            )
+        }
+    }
+
+    ComponentColors.State.entries.forEach { state ->
+        out += DevTest(
+            id("saturated-${state.name.lowercase()}"),
+            DevCategory.THEME,
+            "Насыщенный цвет $state виден на карточке (>= 1.3)$tag"
+        ) {
+            val ratio = contrast(ComponentColors.saturated(state), card(scheme))
+            checkTrue(ratio >= 1.3, "saturated($state) слишком тускл: $ratio")
+        }
+    }
+
+    ButtonRole.entries.forEach { role ->
+        out += DevTest(
+            id("button-${role.name.lowercase()}"),
+            DevCategory.THEME,
+            "Подпись кнопки $role читается (>= $TEXT_CONTRAST_MIN)$tag"
+        ) {
+            val (container, content) = ComponentColors.button(scheme, role)
+            val base = card(scheme)
+            val effective = if (container.alpha < 1f) base else container
+            val ratio = contrastOver(content, effective)
+            checkTrue(ratio >= TEXT_CONTRAST_MIN, "кнопка $role = $ratio")
+        }
+    }
+
+    out += DevTest(id("disabled-dimmer"), DevCategory.THEME, "Отключённая подпись заметно тусклее активной$tag") {
+        val base = card(scheme)
+        val enabled = contrast(scheme.onSurface, base)
+        val disabled = contrast(composite(ComponentColors.disabledText(scheme), base), base)
+        checkTrue(
+            disabled < enabled * 0.6,
+            "disabled=$disabled должна быть слабее enabled=$enabled"
+        )
+    }
+
+    out += DevTest(id("banner-readable"), DevCategory.THEME, "Текст баннера читается на его подложке$tag") {
+        val base = card(scheme)
+        val fill = ComponentColors.bannerFill(scheme)
+        val effective = if (fill.alpha < 1f) composite(fill, base) else fill
+        val body = contrastOver(scheme.onSurfaceVariant, effective)
+        checkTrue(body >= TEXT_CONTRAST_MIN, "тело баннера = $body")
+        ComponentColors.State.entries.forEach { state ->
+            val title = contrastOver(ComponentColors.stateText(scheme, state), effective)
+            checkTrue(
+                title >= TEXT_CONTRAST_MIN,
+                "заголовок баннера $state = $title"
+            )
+        }
+    }
+
+    out += DevTest(id("section-title-readable"), DevCategory.THEME, "Заголовок секции читается на карточке$tag") {
+        val ratio = contrast(ComponentColors.sectionTitle(scheme), card(scheme))
+        checkTrue(ratio >= TEXT_CONTRAST_MIN, "sectionTitle = $ratio")
+    }
+
+    out += DevTest(id("banner-fill-translucent"), DevCategory.THEME, "Подложка баннера полупрозрачная$tag") {
+        val fill = ComponentColors.bannerFill(scheme)
+        checkTrue(fill.alpha < 1f, "баннер должен быть полупрозрачным, alpha=${fill.alpha}")
+        checkTrue(fill.alpha > 0f, "баннер не должен быть полностью прозрачным")
+    }
+
+    out += DevTest(id("primary-with-on-primary"), DevCategory.THEME, "Основная пара primary/onPrimary >= 7:1$tag") {
+        val ratio = contrast(scheme.primary, scheme.onPrimary)
+        checkTrue(ratio >= 7.0, "primary/onPrimary = $ratio")
+    }
+
+    out += DevTest(id("danger-with-on-error"), DevCategory.THEME, "Опасный цвет читается со своим текстом$tag") {
+        val ratio = contrast(scheme.error, scheme.onError)
+        checkTrue(ratio >= TEXT_CONTRAST_MIN, "error/onError = $ratio")
+    }
+
+    out += DevTest(id("containers-pair"), DevCategory.THEME, "Контейнер primary читается со своим текстом$tag") {
+        val ratio = contrast(scheme.primaryContainer, scheme.onPrimaryContainer)
+        checkTrue(ratio >= TEXT_CONTRAST_MIN, "primaryContainer = $ratio")
+    }
+}
+
+/** Формулы контраста: от схемы не зависят, проверяются один раз. */
+private fun formulaTests(out: MutableList<DevTest>) {
 
     out += DevTest("theme/contrast-black-white-max", DevCategory.THEME, "Контраст чёрного к белому -- 21:1") {
         val ratio = contrast(Color.Black, Color.White)
@@ -121,89 +230,16 @@ internal fun themeTests(out: MutableList<DevTest>) {
         val faint = contrastOver(Color(0x33FFFFFF), Color(0xFF000000))
         checkTrue(faint < solid, "слабая альфа должна давать меньший контраст: $faint vs $solid")
     }
+}
 
-    // --- Компоненты ---
-
-    out += DevTest("theme/state-text-readable", DevCategory.THEME, "Подписи состояний читаются на карточке") {
-        val base = card()
-        ComponentColors.State.entries.forEach { state ->
-            val ratio = contrast(ComponentColors.stateText(scheme, state), base)
-            checkTrue(
-                ratio >= TEXT_CONTRAST_MIN,
-                "stateText($state) = $ratio (нужно >= $TEXT_CONTRAST_MIN)"
-            )
-        }
-    }
-
-    ComponentColors.State.entries.forEach { state ->
-        out += DevTest(
-            "theme/saturated-${state.name.lowercase()}",
-            DevCategory.THEME,
-            "Насыщенный цвет $state виден на карточке (>= 1.3)"
-        ) {
-            val ratio = contrast(ComponentColors.saturated(state), card())
-            checkTrue(ratio >= 1.3, "saturated($state) слишком тускл: $ratio")
-        }
-    }
-
-    ButtonRole.entries.forEach { role ->
-        out += DevTest(
-            "theme/button-${role.name.lowercase()}",
-            DevCategory.THEME,
-            "Подпись кнопки $role читается (>= $TEXT_CONTRAST_MIN)"
-        ) {
-            val (container, content) = ComponentColors.button(scheme, role)
-            val base = card()
-            val effective = if (container.alpha < 1f) base else container
-            val ratio = contrastOver(content, effective)
-            checkTrue(ratio >= TEXT_CONTRAST_MIN, "кнопка $role = $ratio")
-        }
-    }
-
-    out += DevTest("theme/disabled-dimmer", DevCategory.THEME, "Отключённая подпись заметно тусклее активной") {
-        val base = card()
-        val enabled = contrast(scheme.onSurface, base)
-        val disabled = contrast(composite(ComponentColors.disabledText(scheme), base), base)
-        checkTrue(
-            disabled < enabled * 0.6,
-            "disabled=$disabled должна быть слабее enabled=$enabled"
-        )
-    }
-
-    out += DevTest("theme/banner-readable", DevCategory.THEME, "Текст баннера читается на его подложке") {
-        val base = card()
-        val fill = ComponentColors.bannerFill(scheme)
-        val effective = if (fill.alpha < 1f) composite(fill, base) else fill
-        val body = contrastOver(scheme.onSurfaceVariant, effective)
-        checkTrue(body >= TEXT_CONTRAST_MIN, "тело баннера = $body")
-        ComponentColors.State.entries.forEach { state ->
-            val title = contrastOver(ComponentColors.stateText(scheme, state), effective)
-            checkTrue(
-                title >= TEXT_CONTRAST_MIN,
-                "заголовок баннера $state = $title"
-            )
-        }
-    }
-
-    out += DevTest("theme/section-title-readable", DevCategory.THEME, "Заголовок секции читается на карточке") {
-        val ratio = contrast(ComponentColors.sectionTitle(scheme), card())
-        checkTrue(ratio >= TEXT_CONTRAST_MIN, "sectionTitle = $ratio")
-    }
-
-    out += DevTest("theme/banner-fill-translucent", DevCategory.THEME, "Подложка баннера полупрозрачная") {
-        val fill = ComponentColors.bannerFill(scheme)
-        checkTrue(fill.alpha < 1f, "баннер должен быть полупрозрачным, alpha=${fill.alpha}")
-        checkTrue(fill.alpha > 0f, "баннер не должен быть полностью прозрачным")
-    }
-
-    // --- Палитра ---
-
+/** Токены тёмной палитры заперты: светлая схема свои токены не трогает. */
+private fun paletteTests(out: MutableList<DevTest>) {
     val palette = listOf(
         "primary" to (AzraelPrimary to Color(0xFF4ADE80)),
         "success" to (AzraelSuccess to Color(0xFF22C55E)),
-        "danger" to (scheme.error to Color(0xFFF43F5E)),
-        "warning" to (scheme.tertiary to Color(0xFFF59E0B)),
-        "background" to (scheme.background to Color(0xFF0A0A0A))
+        "danger" to (AzraelDarkScheme.error to Color(0xFFF43F5E)),
+        "warning" to (AzraelDarkScheme.tertiary to Color(0xFFF59E0B)),
+        "background" to (AzraelDarkScheme.background to Color(0xFF0A0A0A))
     )
     palette.forEach { (label, pair) ->
         out += DevTest(
@@ -213,20 +249,5 @@ internal fun themeTests(out: MutableList<DevTest>) {
         ) {
             checkEq(pair.second, pair.first, "$label")
         }
-    }
-
-    out += DevTest("theme/primary-with-on-primary", DevCategory.THEME, "Основная пара primary/onPrimary >= 7:1") {
-        val ratio = contrast(scheme.primary, scheme.onPrimary)
-        checkTrue(ratio >= 7.0, "primary/onPrimary = $ratio")
-    }
-
-    out += DevTest("theme/danger-with-on-error", DevCategory.THEME, "Опасный цвет читается со своим текстом") {
-        val ratio = contrast(scheme.error, scheme.onError)
-        checkTrue(ratio >= TEXT_CONTRAST_MIN, "error/onError = $ratio")
-    }
-
-    out += DevTest("theme/containers-pair", DevCategory.THEME, "Контейнер primary читается со своим текстом") {
-        val ratio = contrast(scheme.primaryContainer, scheme.onPrimaryContainer)
-        checkTrue(ratio >= TEXT_CONTRAST_MIN, "primaryContainer = $ratio")
     }
 }

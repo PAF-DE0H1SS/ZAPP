@@ -13,8 +13,8 @@ import xyz.azraellab.zapp.core.VpnProtocol
  * Автоопределение формата конфига по тексту.
  *
  * Пользователь не обязан знать, что он скопировал: wg-ini, .ovpn, sing-box
- * JSON, xray JSON, ссылка, список ссылок или адрес подписки. Формат
- * определяется по содержимому, в порядке «что более специфично», и
+ * JSON, xray JSON, clash YAML, ссылка, список ссылок или адрес подписки.
+ * Формат определяется по содержимому, в порядке «что более специфично», и
  * неузнанный текст возвращает как NONE -- без молчаливой угадаловки.
  */
 object ConfigImport {
@@ -34,11 +34,14 @@ object ConfigImport {
         /** Текст не распознан. */
         NONE,
 
-        /** Один конфиг: wg/awg, ovpn, sing-box, xray. */
+        /** Один конфиг: wg/awg, ovpn, sing-box, xray, clash. */
         PROFILE,
 
         /** Список ссылок -- из нескольких профилей. */
         LIST,
+
+        /** Один Clash-конфиг в YAML: узлы, группы, правила. */
+        CLASH,
 
         /** Адрес подписки: узлы придут при подключении. */
         SUBSCRIPTION
@@ -53,7 +56,11 @@ object ConfigImport {
         "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5"
     )
 
-    suspend fun import(text: String): Result {
+    /**
+     * Чистый разбор без сна: сеть уходит в отдельный путь подписки, так что
+     * функция вызывается и напрямую из тестов.
+     */
+    fun import(text: String): Result {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return Result.none
 
@@ -62,7 +69,13 @@ object ConfigImport {
             wgProfile(trimmed)?.let { return Result(Kind.PROFILE, listOf(it)) }
         }
 
-        // 2. OpenVPN: служебные ключи, которых нет ни в одном JSON.
+        // 2. Clash YAML: свои ключи верхнего уровня. Раньше OpenVPN --
+        // regex `client|dev|remote|proto` там ловит `client-fingerprint:`.
+        ClashConfig.parse(trimmed)?.let { clash ->
+            return Result(Kind.CLASH, listOf(clashProfile(clash, trimmed)))
+        }
+
+        // 3. OpenVPN: служебные ключи, которых нет ни в одном JSON.
         if (looksLikeOvpn(trimmed)) {
             return Result(
                 Kind.PROFILE,
@@ -75,7 +88,7 @@ object ConfigImport {
             )
         }
 
-        // 3. Tor: строки мостов -- ни JSON, ни ссылки.
+        // 4. Tor: строки мостов -- ни JSON, ни ссылки.
         if (looksLikeBridges(trimmed)) {
             return Result(
                 Kind.PROFILE,
@@ -89,12 +102,12 @@ object ConfigImport {
             )
         }
 
-        // 4. JSON: sing-box или xray.
+        // 5. JSON: sing-box или xray.
         if (trimmed.startsWith("{")) {
             jsonProfile(trimmed)?.let { return Result(Kind.PROFILE, listOf(it)) }
         }
 
-        // 5. Ссылка или список ссылок.
+        // 6. Ссылка или список ссылок.
         val uris = ProxyUri.parseAll(trimmed)
         if (uris.isNotEmpty()) {
             val profiles = uris.map(::fromProxy)
@@ -102,7 +115,7 @@ object ConfigImport {
             return Result(kind, profiles)
         }
 
-        // 6. Адрес подписки: ссылка, которую не разобрать как прокси.
+        // 7. Адрес подписки: ссылка, которую не разобрать как прокси.
         subscriptionUrl(trimmed)?.let { url ->
             return Result(
                 Kind.SUBSCRIPTION,
@@ -157,6 +170,23 @@ object ConfigImport {
     private fun looksLikeOvpn(text: String): Boolean {
         val head = text.lineSequence().take(30).joinToString("\n")
         return head.contains(Regex("(?m)^\\s*(client|dev\\s+|remote\\s+|proto\\s+)"))
+    }
+
+    /**
+     * Clash-конфиг в профиль: YAML целиком в rawConfig, а не по полям --
+     * разбор обратно в «точно тот же файл» точнее любого набора полей.
+     * Шлюзом берётся первый узел: по нему же проверяется живость.
+     */
+    private fun clashProfile(clash: ClashConfig, text: String): VpnProfile {
+        val first = clash.proxies.first()
+        val probe = first.server.isNotBlank() && first.port in 1..65535
+        return VpnProfile(
+            name = clash.name,
+            protocol = VpnProtocol.CLASH.code,
+            gateway = if (probe) first.server else "",
+            gatewayPort = if (probe) first.port else 0,
+            rawConfig = text
+        )
     }
 
     /** JSON-конфиг: sing-box (поле type) или xray (поле protocol). */

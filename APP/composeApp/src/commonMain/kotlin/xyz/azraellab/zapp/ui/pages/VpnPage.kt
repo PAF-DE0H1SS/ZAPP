@@ -334,7 +334,7 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
                     onValueChange = { importText = it },
                     singleLine = false,
                     minLines = 3,
-                    placeholder = "vless://... \ntrojan://... \n[Interface] ...",
+                    placeholder = "vless://... \ntrojan://... \n[Interface] ... \nproxies: ...",
                     path = "vpn.import_text"
                 )
                 ZappButton(

@@ -93,6 +93,7 @@ enum class VpnProtocol(val code: String, val ru: String, val en: String) {
     TUIC("tuic", "TUIC", "TUIC"),
     SINGBOX("singbox", "Sing-box", "Sing-box"),
     XRAY("xray", "Xray", "Xray"),
+    CLASH("clash", "Clash", "Clash"),
     TOR("tor", "Tor", "Tor"),
     SOCKS5("socks5", "SOCKS5", "SOCKS5"),
     HTTP("http", "HTTP", "HTTP"),
@@ -112,6 +113,7 @@ enum class VpnProtocol(val code: String, val ru: String, val en: String) {
             TUIC -> Str.PROTO_TUIC
             SINGBOX -> Str.PROTO_SINGBOX
             XRAY -> Str.PROTO_XRAY
+            CLASH -> Str.PROTO_CLASH
             TOR -> Str.PROTO_TOR
             SOCKS5 -> Str.PROTO_SOCKS5
             HTTP -> Str.PROTO_HTTP

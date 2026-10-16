@@ -69,6 +69,7 @@ object SingboxConfig {
                 check(outbounds.isNotEmpty()) { "xray config has no supported outbounds" }
                 return assemble(profile, vpn, outbounds, emptyList(), notes)
             }
+            VpnProtocol.CLASH -> return translateClash(profile, vpn, profile.rawConfig)
             else -> Unit
         }
 
@@ -257,7 +258,9 @@ object SingboxConfig {
         outbounds: List<JsonObject>,
         endpoints: List<JsonObject>,
         notes: List<String>,
-        finalTag: String? = null
+        finalTag: String? = null,
+        extraRules: List<JsonObject> = emptyList(),
+        autoGroup: Boolean = true
     ): Built {
         val cascade = applyCascade(vpn, outbounds, finalTag)
         val builtOutbounds = cascade.outbounds
@@ -270,7 +273,8 @@ object SingboxConfig {
         val dns = dnsSection(vpn, profile, final)
         val route = routeSection(
             vpn, final,
-            relayRules = builtOutbounds.any { tagOf(it) == DpiOverlay.RELAY_TAG }
+            relayRules = builtOutbounds.any { tagOf(it) == DpiOverlay.RELAY_TAG },
+            extraRules = extraRules
         )
         val extraNotes = notes + cascade.notes + buildList {
             // Замерено: цепочка iptables создаётся только когда есть su;
@@ -298,7 +302,7 @@ object SingboxConfig {
             })
             put("outbounds", buildJsonArray {
                 builtOutbounds.forEach { add(it) }
-                if (builtOutbounds.size > 1) add(urltestOf(builtOutbounds, vpn.urlTest))
+                if (autoGroup && builtOutbounds.size > 1) add(urltestOf(builtOutbounds, vpn.urlTest))
                 add(buildJsonObject {
                     put("type", "direct")
                     put("tag", DIRECT_TAG)
@@ -540,7 +544,12 @@ object SingboxConfig {
         }
     }
 
-    private fun routeSection(vpn: VpnConfig, finalTag: String, relayRules: Boolean = false): JsonObject {
+    private fun routeSection(
+        vpn: VpnConfig,
+        finalTag: String,
+        relayRules: Boolean = false,
+        extraRules: List<JsonObject> = emptyList()
+    ): JsonObject {
         val rules = buildJsonArray {
             // DNS на себя до маршрутизации: без этого запрос уходит в сеть
             // как обычный UDP и обходит и перехват, и fake-ip.
@@ -621,6 +630,11 @@ object SingboxConfig {
                         if (network != null) put("network", network)
                     })
                 }
+            // --- правила импортированного конфига ---
+            // Ниже секций (правило пользователя перебивает чужой конфиг)
+            // и выше механики обхода: quic/релей -- автоматика ZAPP,
+            // она не должна уезжать под чужие правила.
+            extraRules.forEach { add(it) }
             // --- userland-обход (сборки без root) ---
             // QUIC: десинхронизация udp из ядра недоступна, поэтому канал
             // закрывается целиком -- приложение уходит в TCP, а TCP сплитит
@@ -816,12 +830,12 @@ object SingboxConfig {
         ProxyScheme.SOCKS -> buildJsonObject {
             put("type", "socks")
             putCommon(p)
-            usersOf(p)?.let { put("users", it) }
+            putCredentials(p)
         }
         ProxyScheme.HTTP -> buildJsonObject {
             put("type", "http")
             putCommon(p)
-            usersOf(p)?.let { put("users", it) }
+            putCredentials(p)
             if (p.security == "tls") put("tls", tlsOf(p))
         }
         ProxyScheme.SSH -> buildJsonObject {
@@ -839,16 +853,14 @@ object SingboxConfig {
         put("server_port", p.port.coerceIn(1, 65535))
     }
 
-    private fun usersOf(p: ProxyConfig): JsonArray? {
-        if (p.auth.isBlank()) return null
-        val user = p.auth.substringBefore(':')
-        val pass = p.auth.substringAfter(':', "")
-        return buildJsonArray {
-            add(buildJsonObject {
-                put("username", user)
-                if (pass.isNotBlank()) put("password", pass)
-            })
-        }
+    /**
+     * Учетка socks/http: sing-box держит их плоскими полями на outbound'е.
+     * Массив `users` -- чужой формат, box падает на нем unknown field.
+     */
+    private fun JsonObjectBuilder.putCredentials(p: ProxyConfig) {
+        if (p.auth.isBlank()) return
+        put("username", p.auth.substringBefore(':'))
+        p.auth.substringAfter(':', "").takeIf { it.isNotBlank() }?.let { put("password", it) }
     }
 
     private fun transportOf(p: ProxyConfig): JsonObject? = when (p.transport.lowercase()) {
@@ -933,6 +945,498 @@ object SingboxConfig {
         outbound["tag"]?.jsonPrimitive?.contentOrNull() ?: "proxy"
 
     private fun tagOf(p: ProxyConfig): String = p.displayName()
+
+    // --- Clash -> sing-box ---
+
+    /** Поддерживаемая группа: имя, занятый тег и тип outbound'а sing-box. */
+    private class ClashGroupBuild(val group: ClashGroup, val tag: String, val kind: String)
+
+    /**
+     * Переводит Clash-конфиг в набор узлов, групп и правил маршрута.
+     *
+     * Чужой YAML не исполняется как есть (в отличие от sing-box выше):
+     * узлы идут через ProxyConfig и обычный outboundOf, группы становятся
+     * selector/urltest, а всё непереводимое уходит в заметки -- молча
+     * терять чужие правила нельзя, сеть от этого не заработает.
+     */
+    private fun translateClash(profile: VpnProfile, vpn: VpnConfig, text: String): Built {
+        check(text.isNotBlank()) { "clash profile has no config text" }
+        val root = ClashYaml.parse(text)
+            ?: throw IllegalArgumentException("clash config is not valid YAML")
+        val clash = ClashConfig.from(root)
+            ?: throw IllegalArgumentException("clash config has no proxies")
+
+        val notes = mutableListOf<String>()
+        if (clash.providers > 0) {
+            notes += "clash: ${clash.providers} provider(s) ignored (never fetched)"
+        }
+
+        // Дубликат тега роняет весь конфиг, поэтому служебные имена заняты
+        // заранее: узел clash под именем «auto» уедет в «auto (2)».
+        val used = mutableSetOf(DIRECT_TAG, URLTEST_TAG, TUN_TAG, ENDPOINT_TAG, DpiOverlay.RELAY_TAG)
+        val tags = LinkedHashMap<String, String>()
+
+        fun reserve(name: String): String {
+            var tag = name
+            var copy = 2
+            while (!used.add(tag)) {
+                tag = "$name ($copy)"
+                copy++
+            }
+            return tag
+        }
+
+        // --- узлы ---
+        val outbounds = ArrayList<JsonObject>()
+        val endpoints = ArrayList<JsonObject>()
+        val skipped = LinkedHashMap<String, Int>()
+        for (proxy in clash.proxies) {
+            val tag = reserve(proxy.name)
+            val endpoint = proxy.type.equals("wireguard", ignoreCase = true)
+            val node = if (endpoint) {
+                clashEndpointOf(proxy, tag)
+            } else {
+                clashProxyOf(proxy, tag)?.let { outboundOf(it) }
+            }
+            if (node == null) {
+                // Тег освобождаем: имя не занято узлом, которого не стало.
+                used.remove(tag)
+                val reason = clashSkipReason(proxy)
+                skipped[reason] = (skipped[reason] ?: 0) + 1
+                continue
+            }
+            if (tag != proxy.name) notes += "clash: tag '${proxy.name}' -> '$tag'"
+            tags[proxy.name] = tag
+            if (endpoint) endpoints += node else outbounds += node
+        }
+        check(outbounds.isNotEmpty() || endpoints.isNotEmpty()) { "clash config has no supported proxies" }
+        notes += "clash: translated ${outbounds.size + endpoints.size} of ${clash.proxies.size} proxies"
+        skipped.forEach { (reason, count) ->
+            notes += "clash: skipped " + if (count > 1) "$reason x$count" else reason
+        }
+
+        // --- группы ---
+        // Сначала все поддерживаемые группы получают теги: участники
+        // ссылаются на группы именами, порядок в файле ничего не гарантирует.
+        val candidates = ArrayList<ClashGroupBuild>()
+        for (group in clash.groups) {
+            val kind = group.type.lowercase()
+            val sing = when (kind) {
+                "select" -> "selector"
+                "url-test", "fallback" -> "urltest"
+                "load-balance" -> "selector"
+                else -> null
+            }
+            if (sing == null) {
+                notes += "clash: skipped group '${group.name}' (${group.type})"
+                continue
+            }
+            if (kind == "fallback") notes += "clash: group '${group.name}': fallback -> urltest"
+            if (kind == "load-balance") notes += "clash: group '${group.name}': load-balance -> selector"
+            val tag = reserve(group.name)
+            tags[group.name] = tag
+            candidates += ClashGroupBuild(group, tag, sing)
+        }
+
+        // Участники: ключевые слова, узлы и другие группы. Группа без
+        // единого живого участника не чем решать выбор: она уходит, и её
+        // перестают ссылаться остальные -- так ссылки не остаются висеть.
+        fun memberTags(group: ClashGroup, dead: Set<String>, note: Boolean): List<String> {
+            val out = LinkedHashSet<String>()
+            for (member in group.members) {
+                when {
+                    // Ключевые слова clash -- только заглавные: имя узла
+                    // «direct» -- обычное имя и не обязано быть встроенным.
+                    member == "DIRECT" -> out += DIRECT_TAG
+                    member == "REJECT" ->
+                        if (note) notes += "clash: group '${group.name}': REJECT member skipped"
+                    // PASS -- «продолжить»: как член группы он бессмыслен.
+                    member == "PASS" -> Unit
+                    else -> tags[member]?.takeIf { it !in dead }?.let { out += it }
+                }
+            }
+            return out.toList()
+        }
+
+        val dead = LinkedHashSet<String>()
+        var changed = true
+        while (changed) {
+            changed = false
+            for (candidate in candidates) {
+                if (candidate.tag !in dead && memberTags(candidate.group, dead, note = false).isEmpty()) {
+                    dead += candidate.tag
+                    changed = true
+                }
+            }
+        }
+        if (dead.isNotEmpty()) {
+            // Мёртвые теги убираем и из ссылок: правило на несуществующую
+            // группу должно упасть в заметку, а не остаться в JSON.
+            tags.filterValues { it in dead }.keys.toList().forEach { tags.remove(it) }
+            candidates.filter { it.tag in dead }.forEach {
+                notes += "clash: group '${it.group.name}' has no usable members"
+            }
+        }
+
+        for (candidate in candidates) {
+            if (candidate.tag in dead) continue
+            if (candidate.tag != candidate.group.name) {
+                notes += "clash: tag '${candidate.group.name}' -> '${candidate.tag}'"
+            }
+            val members = memberTags(candidate.group, dead, note = true)
+            val fields = candidate.group.fields
+            outbounds += if (candidate.kind == "selector") {
+                buildJsonObject {
+                    put("type", "selector")
+                    put("tag", candidate.tag)
+                    put("outbounds", buildJsonArray { members.forEach { add(JsonPrimitive(it)) } })
+                }
+            } else {
+                buildJsonObject {
+                    put("type", "urltest")
+                    put("tag", candidate.tag)
+                    put("outbounds", buildJsonArray { members.forEach { add(JsonPrimitive(it)) } })
+                    fields.str("url")?.takeIf { it.isNotBlank() }?.let { put("url", it) }
+                    clashDuration(fields.str("interval"))?.let { put("interval", it) }
+                    fields.int("tolerance")?.let { put("tolerance", it) }
+                    put("interrupt_exist_connections", true)
+                }
+            }
+        }
+        val hasGroups = candidates.any { it.tag !in dead }
+
+        // --- правила маршрута ---
+        val routeRules = ArrayList<JsonObject>()
+        var matchTarget: String? = null
+        var matchReject = false
+        for (line in clash.rules) {
+            // Логические правила начинаются со скобки: AND((DOMAIN..),..) --
+            // отрезать по запятой -- значит взять середину условия.
+            val head = line.takeWhile { it != ',' && it != '(' }.trim()
+            if (head.isEmpty()) continue
+            if (head in setOf("AND", "OR", "NOT", "XOR")) {
+                notes += "clash: skipped logical rule ($head)"
+                continue
+            }
+            val parts = line.split(',')
+            if (head.equals("MATCH", ignoreCase = true)) {
+                matchTarget = parts.getOrNull(1)?.trim().orEmpty()
+                continue
+            }
+            if (parts.size < 3) {
+                notes += "clash: skipped malformed rule ($head)"
+                continue
+            }
+            clashRuleOf(head, parts[1].trim(), parts[2].trim(), tags, notes)?.let { routeRules += it }
+        }
+
+        // Финал -- из последнего MATCH; без него первая группа, а без неё
+        // решает сборка: auto по узлам или единственный узел.
+        val matchTag = when {
+            matchTarget == null -> null
+            matchTarget == "DIRECT" -> DIRECT_TAG
+            matchTarget == "REJECT" -> {
+                matchReject = true
+                null
+            }
+            else -> tags[matchTarget] ?: run {
+                notes += "clash: MATCH target '$matchTarget' not found"
+                null
+            }
+        }
+        if (matchReject) {
+            // Финала-отказа в sing-box нет: безусловное правило в конце
+            // отклоняет всё несовпавшее, и финал ниже ему не мешает.
+            notes += "clash: MATCH,REJECT -- unmatched traffic rejected"
+            routeRules += buildJsonObject { put("action", "reject") }
+        }
+        val firstGroup = candidates.firstOrNull { it.tag !in dead }?.tag
+        val finalTag = when {
+            matchReject -> DIRECT_TAG
+            matchTag != null -> matchTag
+            firstGroup != null -> firstGroup
+            endpoints.isNotEmpty() -> tagOf(endpoints.first())
+            else -> null
+        }
+
+        return assemble(
+            profile, vpn, outbounds, endpoints, notes,
+            finalTag = finalTag,
+            extraRules = routeRules,
+            autoGroup = !hasGroups
+        )
+    }
+
+    /** Правило clash в правило sing-box; null -- ушло с заметкой. */
+    private fun clashRuleOf(
+        type: String,
+        value: String,
+        target: String,
+        tags: Map<String, String>,
+        notes: MutableList<String>
+    ): JsonObject? {
+        val kind = type.uppercase()
+        when (kind) {
+            // Geo-базы удалены из sing-box 1.12 -- FATAL на таком правиле.
+            "GEOIP", "GEOSITE" -> {
+                notes += "clash: skipped $kind rule (geo database removed in sing-box 1.12)"
+                return null
+            }
+            // Провайдеры rule-providers -- чужой формат payload, не качаем.
+            "RULE-SET" -> {
+                notes += "clash: skipped RULE-SET rule (providers are not converted)"
+                return null
+            }
+        }
+        val matcher: JsonObject = when (kind) {
+            "DOMAIN" -> clashMatcher("domain", value)
+            "DOMAIN-SUFFIX" -> clashMatcher("domain_suffix", value)
+            "DOMAIN-KEYWORD" -> clashMatcher("domain_keyword", value)
+            "DOMAIN-REGEX" -> clashMatcher("domain_regex", value)
+            // no-resolve -- не поле sing-box: флаг отбрасывается без заметки,
+            // правило отрабатывает то же самое.
+            "IP-CIDR", "IP-CIDR6" -> clashMatcher("ip_cidr", value)
+            "PROCESS-NAME" -> clashMatcher("process_name", value)
+            "NETWORK" -> {
+                val network = value.lowercase()
+                if (network !in setOf("tcp", "udp")) {
+                    notes += "clash: skipped NETWORK rule ($value)"
+                    return null
+                }
+                clashMatcher("network", network)
+            }
+            "DST-PORT" -> clashPortMatcher(value, notes) ?: return null
+            else -> {
+                notes += "clash: skipped unknown rule type ($type)"
+                return null
+            }
+        }
+        val rule = matcher.toMutableMap()
+        when {
+            target == "DIRECT" -> rule["outbound"] = JsonPrimitive(DIRECT_TAG)
+            target == "REJECT" -> rule["action"] = JsonPrimitive("reject")
+            // PASS -- «продолжить», то же, что и отсутствие правила.
+            target == "PASS" -> return null
+            else -> {
+                val tag = tags[target] ?: run {
+                    notes += "clash: skipped rule: target '$target' not found"
+                    return null
+                }
+                rule["outbound"] = JsonPrimitive(tag)
+            }
+        }
+        return JsonObject(rule)
+    }
+
+    /** Матчер одним значением-списком, как ждет схема sing-box. */
+    private fun clashMatcher(key: String, value: String): JsonObject = buildJsonObject {
+        put(key, buildJsonArray { add(JsonPrimitive(value)) })
+    }
+
+    /** `DST-PORT,443` -> port; `DST-PORT,8000-9000` -> port_range «a:b» (дефис -- чужой формат). */
+    private fun clashPortMatcher(value: String, notes: MutableList<String>): JsonObject? {
+        val range = Regex("^(\\d+)\\s*-\\s*(\\d+)$").find(value)
+        if (range != null) {
+            val low = range.groupValues[1].toIntOrNull()
+            val high = range.groupValues[2].toIntOrNull()
+            if (low == null || high == null || low !in 1..65535 || high !in 1..65535 || low >= high) {
+                notes += "clash: skipped DST-PORT rule ($value)"
+                return null
+            }
+            return buildJsonObject {
+                put("port_range", buildJsonArray { add(JsonPrimitive("$low:$high")) })
+            }
+        }
+        val port = value.toIntOrNull()?.takeIf { it in 1..65535 }
+        if (port == null) {
+            notes += "clash: skipped DST-PORT rule ($value)"
+            return null
+        }
+        return buildJsonObject {
+            put("port", buildJsonArray { add(JsonPrimitive(port)) })
+        }
+    }
+
+    /** Схема clash-типа в схему ссылки: дальше узел идёт обычным outboundOf. */
+    private fun clashScheme(type: String): ProxyScheme? = when (type.lowercase()) {
+        "ss", "shadowsocks" -> ProxyScheme.SHADOWSOCKS
+        "vmess" -> ProxyScheme.VMESS
+        "vless" -> ProxyScheme.VLESS
+        "trojan" -> ProxyScheme.TROJAN
+        "hysteria2", "hy2" -> ProxyScheme.HYSTERIA2
+        "tuic" -> ProxyScheme.TUIC
+        "socks", "socks5", "socks4" -> ProxyScheme.SOCKS
+        "http" -> ProxyScheme.HTTP
+        else -> null
+    }
+
+    private fun clashSupported(type: String): Boolean =
+        clashScheme(type) != null || type.equals("wireguard", ignoreCase = true)
+
+    /** Причина пропуска узла для заметки: тип не наш или полей не хватает. */
+    private fun clashSkipReason(proxy: ClashProxy): String = when {
+        !clashSupported(proxy.type) -> "${proxy.type} (unsupported type)"
+        proxy.type.equals("ss", ignoreCase = true) && proxy.fields.str("plugin") != null -> "ss (plugin)"
+        proxy.type.equals("vless", ignoreCase = true) &&
+            proxy.fields.str("flow")?.isNotBlank() == true &&
+            proxy.fields.str("flow") != "xtls-rprx-vision" -> "vless (unsupported flow)"
+        else -> "${proxy.type} (missing fields)"
+    }
+
+    /**
+     * Узел clash в [ProxyConfig]: те же поля, что и в ссылках, -- дальше
+     * их собирает обычный outboundOf, а не отдельный код на каждый тип.
+     */
+    private fun clashProxyOf(proxy: ClashProxy, tag: String): ProxyConfig? {
+        val scheme = clashScheme(proxy.type) ?: return null
+        val f = proxy.fields
+        val server = proxy.server
+        val port = proxy.port.takeIf { it in 1..65535 }
+        if (server.isEmpty() || port == null) return null
+
+        val auth = when (scheme) {
+            ProxyScheme.VLESS, ProxyScheme.VMESS -> f.str("uuid")
+            ProxyScheme.TROJAN, ProxyScheme.SHADOWSOCKS -> f.str("password")
+            ProxyScheme.HYSTERIA2 -> f.str("password") ?: f.str("auth-str")
+            ProxyScheme.TUIC -> f.str("token") ?: run {
+                val uuid = f.str("uuid")
+                val pass = f.str("password")
+                when {
+                    uuid.isNullOrBlank() -> null
+                    pass.isNullOrBlank() -> uuid
+                    else -> "$uuid:$pass"
+                }
+            }
+            ProxyScheme.SOCKS, ProxyScheme.HTTP -> {
+                val user = f.str("username") ?: f.str("user")
+                val pass = f.str("password")
+                when {
+                    user.isNullOrBlank() -> ""
+                    pass.isNullOrBlank() -> user
+                    else -> "$user:$pass"
+                }
+            }
+            ProxyScheme.SSH -> null
+        }
+        // Анонимный socks/http -- норма; остальным без учетной записи нечем ходить.
+        if (auth == null) return null
+        if (auth.isBlank() && scheme != ProxyScheme.SOCKS && scheme != ProxyScheme.HTTP) return null
+
+        val network = f.str("network")?.trim()?.lowercase().orEmpty().ifBlank { "tcp" }
+        val ws = f.obj("ws-opts")
+        val grpc = f.obj("grpc-opts")
+        val http = f.obj("http-opts") ?: f.obj("h2-opts")
+        val path = when (network) {
+            "ws", "websocket" -> ws?.str("path").orEmpty()
+            "grpc" -> grpc?.str("serviceName") ?: grpc?.str("service-name").orEmpty()
+            else -> http?.str("path").orEmpty()
+        }
+        val host = when (network) {
+            "ws", "websocket" ->
+                ws?.obj("headers")?.let { it.str("Host") ?: it.str("host") } ?: ws?.str("host").orEmpty()
+            else -> http?.textList("host")?.firstOrNull().orEmpty()
+        }
+
+        val reality = f.obj("reality-opts")
+        val realityKey = reality?.str("public-key")?.trim().orEmpty()
+        val security = when {
+            realityKey.isNotEmpty() -> "reality"
+            f.bool("tls") -> "tls"
+            else -> ""
+        }
+
+        val params = LinkedHashMap<String, String>()
+        if (f.bool("skip-cert-verify")) params["insecure"] = "1"
+        // alterId 0 -- режим AEAD по умолчанию, лишнее поле его только шумит.
+        f.int("alterId")?.takeIf { it > 0 }?.let { params["alterId"] = it.toString() }
+        if (security == "reality") {
+            // sing-box декодирует публичный ключ как raw base64url:
+            // паддинг и '+'/'/' из clash-конфига падают illegal base64
+            // при старте ядра (проверено box check).
+            params["pbk"] = realityKey
+                .replace('+', '-')
+                .replace('/', '_')
+                .trimEnd('=')
+            params["sid"] = reality?.str("short-id")?.trim().orEmpty()
+        }
+        f.str("plugin")?.takeIf { it.isNotBlank() }?.let { params["plugin"] = it }
+        if (scheme == ProxyScheme.HYSTERIA2) {
+            f.str("obfs")?.takeIf { it.isNotBlank() }?.let { params["obfs"] = it }
+            f.str("obfs-password")?.takeIf { it.isNotBlank() }?.let { params["obfs-password"] = it }
+            f.str("up")?.let { clashMbps(it) }?.let { params["up_mbps"] = it }
+            f.str("down")?.let { clashMbps(it) }?.let { params["down_mbps"] = it }
+        }
+        if (scheme == ProxyScheme.TUIC) {
+            f.str("congestion_control")?.takeIf { it.isNotBlank() }?.let { params["congestion_control"] = it }
+            f.str("udp_relay_mode")?.takeIf { it.isNotBlank() }?.let { params["udp_relay_mode"] = it }
+        }
+
+        return ProxyConfig(
+            raw = "",
+            scheme = scheme,
+            // Узел получает уже занятый уникальный тег: имя ссылки здесь
+            // работает только как тег outbound'а, показывают список узлов.
+            name = tag,
+            server = server,
+            port = port,
+            auth = auth,
+            cipher = when (scheme) {
+                ProxyScheme.SHADOWSOCKS, ProxyScheme.VMESS -> f.str("cipher")?.trim().orEmpty()
+                else -> ""
+            },
+            transport = network,
+            security = security,
+            sni = (f.str("sni") ?: f.str("servername"))?.trim().orEmpty(),
+            host = host,
+            path = path,
+            alpn = f.textList("alpn").joinToString(","),
+            fingerprint = (f.str("client-fingerprint") ?: f.str("fp") ?: f.str("fingerprint"))?.trim().orEmpty(),
+            flow = f.str("flow")?.trim().orEmpty(),
+            params = params
+        )
+    }
+
+    /** WireGuard-узел clash в endpoint sing-box; null -- приватного ключа или адреса нет. */
+    private fun clashEndpointOf(proxy: ClashProxy, tag: String): JsonObject? {
+        val f = proxy.fields
+        val server = proxy.server
+        val port = proxy.port.takeIf { it in 1..65535 } ?: return null
+        val private = f.str("private-key") ?: f.str("private_key")
+        val public = f.str("public-key") ?: f.str("public_key")
+        if (server.isEmpty() || private.isNullOrBlank() || public.isNullOrBlank()) return null
+        val address = (f.textList("ip") + f.textList("ips")).map { addr ->
+            if ('/' in addr) addr else "$addr/32"
+        }
+        if (address.isEmpty()) return null
+        val allowed = f.textList("allowed-ips").ifEmpty { listOf("0.0.0.0/0") }
+        return buildJsonObject {
+            put("type", "wireguard")
+            put("tag", tag)
+            put("private_key", private)
+            put("address", buildJsonArray { address.forEach { add(JsonPrimitive(it)) } })
+            f.int("mtu")?.takeIf { it in 576..9000 }?.let { put("mtu", it) }
+            put("peers", buildJsonArray {
+                add(buildJsonObject {
+                    put("address", server)
+                    put("port", port)
+                    put("public_key", public)
+                    put("allowed_ips", buildJsonArray { allowed.forEach { add(JsonPrimitive(it)) } })
+                })
+            })
+        }
+    }
+
+    /** `up: 50 Mbps` или `up: 50` -> число для up_mbps. */
+    private fun clashMbps(raw: String): String? =
+        Regex("\\d+").find(raw)?.value?.takeIf { it.toIntOrNull()?.let { n -> n > 0 } == true }
+
+    /** `interval` clash: секунды числом либо готовая длительность `300s`/`5m`. */
+    private fun clashDuration(raw: String?): String? {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return null
+        value.toIntOrNull()?.let { return "${it}s" }
+        return value.takeIf { it.matches(Regex("^\\d+[smhd]$")) }
+    }
 
     // --- Xray -> sing-box ---
 

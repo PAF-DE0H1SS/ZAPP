@@ -468,6 +468,7 @@ enum class Str {
     PROTO_TUIC,
     PROTO_SINGBOX,
     PROTO_XRAY,
+    PROTO_CLASH,
     PROTO_TOR,
     PROTO_SOCKS5,
     PROTO_HTTP,
@@ -1334,6 +1335,7 @@ enum class Str {
         PROTO_TUIC -> "TUIC"
         PROTO_SINGBOX -> pick(lang, "Sing-box", "Sing-box", "Sing-box")
         PROTO_XRAY -> "Xray"
+        PROTO_CLASH -> pick(lang, "Clash", "Clash", "Clash")
         PROTO_TOR -> "Tor"
         PROTO_SOCKS5 -> "SOCKS5"
         PROTO_HTTP -> "HTTP"

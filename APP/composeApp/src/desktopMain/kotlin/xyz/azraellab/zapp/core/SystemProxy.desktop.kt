@@ -46,7 +46,9 @@ actual object SystemProxyCtl {
 }
 
 /** Исход одной внешней команды. */
-internal data class CmdResult(val code: Int, val output: String)
+internal data class CmdResult(val code: Int, val output: String) {
+    val ok: Boolean get() = code == 0
+}
 
 /** Запуск внешней команды; подменяется тестами. */
 internal fun interface CmdRunner {

@@ -38,7 +38,6 @@ import xyz.azraellab.zapp.core.perApp.RouteMode
 import xyz.azraellab.zapp.core.perApp.installedApps
 import xyz.azraellab.zapp.core.root.RootShell
 import java.io.File
-import java.net.Inet6Address
 import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
@@ -107,7 +106,6 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     @Volatile
     private var lastBoxBuilt: SingboxConfig.Built? = null
 
-    private var killSwitchEndpoints: List<String> = emptyList()
     private var uidZeroBypassOn = false
 
     @Volatile
@@ -879,64 +877,15 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     // --- Kill switch ---
 
     private fun enableKillSwitch(endpoints: List<String>, vpn: VpnConfig) {
-        if (!RootShell.available()) {
-            // Noroot-сборка: эквивалент kill switch -- сама сессия
-            // VpnService: пока туннель поднят, весь трафик идёт в tun, а
-            // упавший бэкенд молча отбрасывает пакеты (чёрная дыра).
-            // iptables-цепочка здесь не нужна и не создаётся.
-            log("note: kill switch -- tun blackhole (session mode)")
-            return
-        }
-        killSwitchEndpoints = endpoints
-        val setup = RootShell.run(
-            """
-            iptables -N ZAPP_KS 2>/dev/null
-            iptables -F ZAPP_KS
-            """.trimIndent().replace("\n", "; "),
-            3000
-        )
-        if (!setup.ok) {
-            log("note: iptables unavailable; kill switch skipped")
-            return
-        }
-        val rules = mutableListOf(
-            "iptables -A ZAPP_KS -o lo -j RETURN",
-            "iptables -A ZAPP_KS -o tun+ -j RETURN",
-            "iptables -A ZAPP_KS -o utun+ -j RETURN",
-            "iptables -A ZAPP_KS -m state --state ESTABLISHED,RELATED -j RETURN"
-        )
-        for (endpoint in endpoints) {
-            rules += "iptables -A ZAPP_KS -d $endpoint/32 -j RETURN"
-        }
-        // Свои DNS при kill switch: без них мёртв не только трафик, но и
-        // резолвер -- переподключение по доменному имени не поднимется.
-        // Пропускаются только серверы самого конфига, не «любой DNS».
-        if (vpn.killSwitchDns) {
-            for (dns in vpn.dnsList()) {
-                val addr = runCatching { InetAddress.getByName(dns) }.getOrNull() ?: continue
-                val mask = if (addr is Inet6Address) 128 else 32
-                rules += "iptables -A ZAPP_KS -d $dns/$mask -j RETURN"
-            }
-        }
-        rules += "iptables -A ZAPP_KS -j REJECT --reject-with icmp-port-unreachable"
-        for (rule in rules) {
-            val r = RootShell.run(rule, 3000)
-            if (!r.ok) log("warning: kill switch: ${lastLine(r.output)}")
-        }
-        val jump = RootShell.run("iptables -C OUTPUT -j ZAPP_KS 2>/dev/null || iptables -I OUTPUT 1 -j ZAPP_KS", 3000)
-        if (jump.ok) log("kill switch: on")
-        else log("note: cannot attach kill switch chain")
+        // Свои DNS при kill switch -- только серверы самого конфига, не
+        // «любой DNS»: без них не резолвится переподключение по домену.
+        // Механизм и снятие блокировки -- у платформы (§73–75).
+        val dns = if (vpn.killSwitchDns) vpn.dnsList() else emptyList()
+        KillSwitchCtl.install(endpoints, dns) { log(it) }
     }
 
     private fun disableKillSwitch() {
-        if (killSwitchEndpoints.isEmpty()) return
-        killSwitchEndpoints = emptyList()
-        if (!RootShell.available()) return
-        RootShell.run(
-            "while iptables -D OUTPUT -j ZAPP_KS 2>/dev/null; do : done; iptables -F ZAPP_KS 2>/dev/null; iptables -X ZAPP_KS 2>/dev/null",
-            4000
-        )
-        log("kill switch: off")
+        KillSwitchCtl.remove { log(it) }
     }
 
     /** Выводит демоны root мимо туннеля; см. [UidZeroBypass]. */

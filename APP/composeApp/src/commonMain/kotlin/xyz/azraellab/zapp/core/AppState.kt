@@ -33,6 +33,7 @@ import xyz.azraellab.zapp.core.domains.AppDomains
 import xyz.azraellab.zapp.core.domains.DpiScope
 import xyz.azraellab.zapp.core.perApp.PerAppConfig
 import xyz.azraellab.zapp.core.perApp.installedApps
+import xyz.azraellab.zapp.core.engine.KillSwitchCtl
 import xyz.azraellab.zapp.core.engine.SessionKind
 import xyz.azraellab.zapp.core.engine.TunnelEngine
 import xyz.azraellab.zapp.core.engine.TunnelState
@@ -349,6 +350,10 @@ class AppState(
         // прокси был взят на себя, и системе показывают прежнее
         // состояние. Без снимка вызов -- дешёвый no-op.
         scope.launch { runCatching { SystemProxyCtl.restore() } }
+        // Kill switch после краша (§72): цепочки/правила убитого туннеля
+        // продолжают блокировать сеть, пока о них не вспомнят. Если
+        // блокировка не ставилась -- вызов дешёвый no-op.
+        scope.launch { runCatching { KillSwitchCtl.remove { AppLog.log("killswitch", it) } } }
         scope.launch {
             var previous = gpsEngine.state.value
             gpsEngine.state.collect { current ->

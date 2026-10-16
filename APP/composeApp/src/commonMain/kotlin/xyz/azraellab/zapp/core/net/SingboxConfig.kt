@@ -47,6 +47,14 @@ object SingboxConfig {
     private const val TUN_TAG = "tun-in"
     private const val SOCKS_IN_TAG = "socks-in"
     private const val HTTP_IN_TAG = "http-in"
+
+    /**
+     * Локальные адреса tun: пакеты, уходящие в туннель, несут именно их
+     * (подсети /30 и /126). Мимо туннеля -- физический адрес, и по этим
+     * значениям их различает брандмауэр Windows.
+     */
+    const val TUN_LOCAL_V4 = "172.19.0.1"
+    const val TUN_LOCAL_V6 = "fdfe:dcba:9876::1"
     private const val DIRECT_TAG = "direct"
     private const val URLTEST_TAG = "auto"
     private const val ENDPOINT_TAG = "wg-ep"
@@ -360,8 +368,8 @@ object SingboxConfig {
         put("type", "tun")
         put("tag", TUN_TAG)
         put("address", buildJsonArray {
-            add(JsonPrimitive("172.19.0.1/30"))
-            if (vpn.ipv6) add(JsonPrimitive("fdfe:dcba:9876::1/126"))
+            add(JsonPrimitive("$TUN_LOCAL_V4/30"))
+            if (vpn.ipv6) add(JsonPrimitive("$TUN_LOCAL_V6/126"))
         })
         put("auto_route", true)
         // system-стек держит TCP-слушателя на адресе tun, а ответ ядра на его

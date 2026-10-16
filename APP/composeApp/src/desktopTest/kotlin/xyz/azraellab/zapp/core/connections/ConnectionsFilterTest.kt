@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 
-/** Фильтр (§31): процесс и адрес -- подстрокой, порт -- номером. */
+/** Фильтр: процесс и адрес -- подстрокой, порт -- номером. */
 class ConnectionsFilterTest {
 
     private val rows = listOf(

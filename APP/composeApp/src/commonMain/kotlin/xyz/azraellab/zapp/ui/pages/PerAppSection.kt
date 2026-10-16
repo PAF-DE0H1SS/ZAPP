@@ -249,7 +249,7 @@ fun PerAppPicker(state: AppState, scope: PerAppScope) {
         if (catalog == null) {
             // Каталог в сотни пакетов грузится заметно: раньше список
             // молча пустел, и непонятно -- нет приложений или ещё не
-            // успели. Скелетон даёт видимость работы (UX2).
+            // успели. Скелетон даёт видимость работы.
             Spacer(modifier = Modifier.height(AzraelSpace.xs))
             ZappSkeletonList(rows = 4)
         }

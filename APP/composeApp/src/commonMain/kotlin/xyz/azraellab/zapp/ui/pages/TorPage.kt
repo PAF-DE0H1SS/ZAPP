@@ -187,7 +187,7 @@ private fun BridgesExpandable(state: AppState, checkProgress: AppState.CheckProg
     // "" -- пользователь ещё не выбирал: активным считается то, чем
     // подключены (activeProfileId). Выбор держится в конфиге, а не в
     // памяти страницы: он должен пережить рестарт и повторный онбординг,
-    // где activeProfileId пересобирается заново (C5).
+    // где activeProfileId пересобирается заново.
     val selectedId = config.torBridgeSourceId
 
     val sources = remember(config.profiles) { VpnConnects.torBridges(config.profiles) }
@@ -254,7 +254,7 @@ private fun BridgesExpandable(state: AppState, checkProgress: AppState.CheckProg
                 path = "tor.check_all"
             )
             // Прогресс той же полосой, что и на VPN: одна проверка --
-            // одно поведение, а не два разных вида (UX3).
+            // одно поведение, а не два разных вида.
             CheckProgressLine(progress = checkProgress)
         }
 

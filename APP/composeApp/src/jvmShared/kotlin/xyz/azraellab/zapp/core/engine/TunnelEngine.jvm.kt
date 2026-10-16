@@ -804,7 +804,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
             }
             // Процент пишется десятками, стадия -- при каждой смене: между
             // «requesting_descriptors» и «loading_descriptors» процент один,
-            // а для моста это разные минуты ожидания (B1).
+            // а для моста это разные минуты ожидания.
             val stage = torProgressStage(daemon.log.value)
             if (pct in 0..99 && (pct / 10 > lastPct / 10 || stage != lastStage)) {
                 lastPct = pct
@@ -879,7 +879,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     private fun enableKillSwitch(endpoints: List<String>, vpn: VpnConfig) {
         // Свои DNS при kill switch -- только серверы самого конфига, не
         // «любой DNS»: без них не резолвится переподключение по домену.
-        // Механизм и снятие блокировки -- у платформы (§73–75).
+        // Механизм и снятие блокировки -- у платформы.
         val dns = if (vpn.killSwitchDns) vpn.dnsList() else emptyList()
         KillSwitchCtl.install(endpoints, dns) { log(it) }
     }

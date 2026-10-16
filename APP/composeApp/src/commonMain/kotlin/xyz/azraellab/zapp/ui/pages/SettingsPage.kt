@@ -305,7 +305,7 @@ private fun GeneralSection(state: AppState) {
             )
         }
     }
-    // Оформление: режим темы и Material You (UX4/F30). Отдельная группа --
+    // Оформление: режим темы и Material You. Отдельная группа --
     // настройка вида, а не поведения, и менять её должны, не читая инструкцию.
     PageGroup(tr(Str.SETTINGS_APPEARANCE)) {
         ZappCard {
@@ -348,9 +348,9 @@ private fun GeneralSection(state: AppState) {
         }
     }
 
-    // Старт после перезагрузки (§137): отдельная группа -- настройка
+    // Старт после перезагрузки: отдельная группа -- настройка
     // поведения системы, а не оформления или языка. На десктопе это
-    // настоящая регистрация в системе (§76–78): Run-ключ, файл
+    // настоящая регистрация в системе: Run-ключ, файл
     // автозапуска, Login Items, -- и тумблер читает её напрямую;
     // на Android остаётся флагом для BroadcastReceiver.
     PageGroup(tr(Str.AUTOSTART_BOOT)) {
@@ -376,7 +376,7 @@ private fun GeneralSection(state: AppState) {
         }
     }
 
-    // Системный прокси (§69): тумблер есть только там, где есть что
+    // Системный прокси: тумблер есть только там, где есть что
     // включать, -- раздел на платформах без поддержки не показывается.
     if (state.caps.systemProxySupported) {
         PageGroup(tr(Str.SETTINGS_SYSTEM_PROXY)) {
@@ -459,7 +459,7 @@ private fun PerfSection(state: AppState) {
 private fun PermissionsSection(state: AppState) {
     val statuses by state.permissions.statuses.collectAsState()
 
-    // Перечитываем при каждом входе на экран (B9): мок-локацию выдают мимо
+    // Перечитываем при каждом входе на экран: мок-локацию выдают мимо
     // приложения (`appops set` в шелле или экран настроек разработчика),
     // и без этого опроса здесь висело бы «Не дано» до самого force-stop.
     // Возврат из системных настроек ловит resume-слушатель Activity,
@@ -494,7 +494,7 @@ private fun DeviceSection(state: AppState) {
             InfoRow(tr(Str.PROBE_API), probe?.apiLevel?.takeIf { it > 0 }?.toString().orDash())
             // Строки Root и Magisk -- только в рут-сборке. В норуте их
             // не должно быть вообще, а не «Нет»: норут обязан не
-            // упоминать root ни в одном месте экрана (E1, E2).
+            // упоминать root ни в одном месте экрана.
             if (BuildMode.rootAllowed) {
                 InfoRow(tr(Str.PROBE_ROOT), tr((probe?.root
                     ?: xyz.azraellab.zapp.core.probe.Probe.UNKNOWN).label))
@@ -503,7 +503,7 @@ private fun DeviceSection(state: AppState) {
             }
             InfoRow(tr(Str.PROBE_VPN), tr((probe?.vpnTunnel
                 ?: xyz.azraellab.zapp.core.probe.Probe.UNKNOWN).label))
-            // Повторная проверка (B2): политику Magisk выдают вне
+            // Повторная проверка: политику Magisk выдают вне
             // приложения, и без сброса кэша «Root: Нет» висело бы на
             // экране до самого перезапуска -- без единой подсказки.
             ZappButton(
@@ -703,7 +703,7 @@ private fun PresetsSection(state: AppState) {
                 }
             }
 
-            // Галочка выключена по умолчанию (B5): без неё файл пресета
+            // Галочка выключена по умолчанию: без неё файл пресета
             // несёт настройки, а не ключи тысячи узлов. Подпись показывает,
             // сколько именно коннектов уйдёт внутрь, если включить.
             ZappSettingRow(
@@ -751,7 +751,7 @@ private fun PresetsSection(state: AppState) {
 
     // Сброс одним тапом стирал регион, приветственный тур, все профили,
     // домены, kill switch, правила по приложениям и статистику -- разом и
-    // без единого слова (B4). Теперь сначала перечисление того, что
+    // без единого слова. Теперь сначала перечисление того, что
     // исчезнет, и только потом необратимое действие.
     if (confirmReset) {
         ZappDialog(
@@ -783,7 +783,7 @@ private fun PresetsSection(state: AppState) {
 /**
  * Поведение туннеля: kill switch, DNS при kill switch, автозапуск.
  *
- * Строки жили в редакторе профиля (C3), где ими пользовались разве что
+ * Строки жили в редакторе профиля, где ими пользовались разве что
  * наткнувшись на них среди полей узла: переключатели-то свойства всего
  * туннеля, а не конкретного коннекта. Крышка не трогается во время
  * сессии -- смена kill switch на ходу означала бы мгновенный сброс
@@ -1445,7 +1445,7 @@ private fun AboutSection(state: AppState) {
             InfoRow(tr(Str.ABOUT_VERSION), state.appVersion)
             InfoRow(tr(Str.ABOUT_PLATFORM), platformName(state))
             // Метка root-сборки рисуется только когда BuildMode.rootAllowed:
-            // норут обязан не упоминать root ни одной видимой строкой (E5).
+            // норут обязан не упоминать root ни одной видимой строкой.
             InfoRow(
                 tr(Str.ABOUT_BUILD),
                 tr(if (BuildMode.rootAllowed) Str.ABOUT_BUILD_ROOT else Str.ABOUT_BUILD_PLAIN)
@@ -1591,7 +1591,7 @@ private fun labelOf(lang: AppLang): String = when (lang) {
     AppLang.ZH -> "中文"
 }
 
-/** Подпись режима темы (UX4). */
+/** Подпись режима темы. */
 @Composable
 private fun themeLabel(mode: ThemeMode): String = when (mode) {
     ThemeMode.SYSTEM -> tr(Str.SETTINGS_THEME_SYSTEM)

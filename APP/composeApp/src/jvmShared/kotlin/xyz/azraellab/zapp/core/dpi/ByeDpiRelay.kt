@@ -7,7 +7,7 @@ import xyz.azraellab.zapp.core.native.BinaryResolver
 import java.util.concurrent.TimeUnit
 
 /**
- * Боевой экземпляр byedpi: свой SOCKS5-прокси обхода DPI без прав (§130).
+ * Боевой экземпляр byedpi: свой SOCKS5-прокси обхода DPI без прав.
  *
  * byedpi не трогает ядро -- он рвёт запросы на уровне данных, как и
  * встроенный [SplitRelay], но арсенал шире: disorder, fake, tlsrec,

@@ -129,7 +129,7 @@ fun VpnPage(state: AppState) {
                 // Скорость туннеля, пинг и активные режимы: живут, пока
                 // подключены, обновляются фоновыми опросами. Режимы --
                 // только работающие: неактивные в строку не попадают.
-                // На подъёме вместо них -- процент сборки Tor (B1).
+                // На подъёме вместо них -- процент сборки Tor.
                 BootstrapLine(tunnelLog, ownState)
                 SpeedLine(state, ownState)
                 // Причина сбоя -- под статусом, не только в журнале внизу.
@@ -233,7 +233,7 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
             append(a.name.ifBlank { tr(VpnProtocol.of(a.protocol).strKey) })
             // Имя повторяется у десятков узлов (все «Sweden»), и по
             // субтитру не отличить выбранный: протокол добавляет
-            // различимость без лишнего текста (C10).
+            // различимость без лишнего текста.
             append(" · ")
             append(VpnProtocol.of(a.protocol).label(lang))
         }
@@ -316,7 +316,7 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
             )
         }
         // Прогресс проверки виден полосой, а не только цифрой в подписи
-        // кнопки: N/M у строки есть, у заполнения -- не было (UX3).
+        // кнопки: N/M у строки есть, у заполнения -- не было.
         CheckProgressLine(progress = checkProgress)
         ZappButton(
             text = tr(Str.VPN_ADD_PROFILE),
@@ -486,7 +486,7 @@ internal fun SourcesExpandable(
         ZappButtonRow {
             // Веса по длине подписи, а не поровну: «Добавить источник»
             // (17 знаков) в половине карточки упирался в минимальный кегль
-            // и обрезался до «Добавить ис…» (D2), тогда как короткое
+            // и обрезался до «Добавить ис…», тогда как короткое
             // «Обновить» отдавало половину ширины впустую.
             val addWeight = tr(Str.VPN_SOURCE_ADD).length.toFloat().coerceAtLeast(1f)
             val refreshWeight = tr(Str.VPN_SOURCE_REFRESH).length.toFloat().coerceAtLeast(1f)
@@ -548,7 +548,7 @@ internal fun SourcesExpandable(
         if (sources.isEmpty()) {
             // Пусто -- не молчим: раньше здесь вообще не рисовалось ничего,
             // кроме бейджа «0» и кнопок. Иллюстрация + подпись объясняют,
-            // что делать (UX2).
+            // что делать.
             ZappEmptyCard(
                 title = tr(Str.SOURCES_EMPTY_TITLE),
                 body = tr(Str.SOURCES_EMPTY_BODY)
@@ -587,7 +587,7 @@ internal fun SourcesExpandable(
 }
 
 /**
- * Полоса прогресса проверки коннектов (UX3).
+ * Полоса прогресса проверки коннектов.
  *
  * Цифры `done/total` были только в подписи кнопки -- маленький текст,
  * который легко не заметить. Полоса под строкой кнопок показывает заполнение
@@ -676,7 +676,7 @@ internal fun JournalExpandable(tunnelLog: List<String>, path: String = "log.expa
     ) {
         if (tunnelLog.isEmpty()) {
             // Пусто -- не голая строка: иллюстрация объясняет, что
-            // журнал ещё не заполнен (UX2).
+            // журнал ещё не заполнен.
             ZappEmptyCard(title = tr(Str.ENGINE_LOG_EMPTY))
         } else {
             tunnelLog.takeLast(12).forEach { line ->
@@ -719,7 +719,7 @@ internal fun TunnelState.labelKey(): Str = when (this) {
 }
 
 /**
- * Прогресс сборки Tor под статусом (B1).
+ * Прогресс сборки Tor под статусом.
  *
  * Пока туннель поднимается, статус «Подключение...» висит минутами без
  * изменений, а в журнале уже идут проценты и стадии -- они просто никем не
@@ -756,7 +756,7 @@ internal fun SpeedLine(state: AppState, tunnelState: TunnelState) {
     val history by state.trafficHistory.collectAsState()
     val summary by state.trafficSummaryFlow.collectAsState()
     val connected = tunnelState == TunnelState.CONNECTED
-    // Плавный счётчик (UX3): опрос даёт новое значение раз в секунду, и
+    // Плавный счётчик: опрос даёт новое значение раз в секунду, и
     // без сглаживания цифры прыгали скачком. Значение доезжает до цели
     // за base (220 мс) -- глаз видит изменение, а не подмену. Считаем
     // в байтах/с (Float достаточно: речь о сотнях килобайт), форматирование

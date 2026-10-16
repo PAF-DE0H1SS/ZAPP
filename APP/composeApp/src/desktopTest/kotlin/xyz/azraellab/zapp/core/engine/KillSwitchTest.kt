@@ -13,7 +13,7 @@ import xyz.azraellab.zapp.core.ProxySnapshot
 import xyz.azraellab.zapp.core.SnapshotStore
 
 /**
- * Механика kill switch на десктопе (§73–75).
+ * Механика kill switch на десктопе.
  *
  * Все внешние вызовы подменены: тесты проверяют состав и порядок команд,
  * снимок «до» изменений и цикл возврата, но не трогают реальные
@@ -82,7 +82,7 @@ class KillSwitchTest {
         else -> CmdResult(0, "")
     }
 
-    // --- Linux (§74) ---
+    // --- Linux ---
 
     @Test
     fun linuxInstallBuildsFullRuleSet() {
@@ -167,7 +167,7 @@ class KillSwitchTest {
         assertContains(logged(), "kill switch: off")
     }
 
-    // --- Windows (§73, §75) ---
+    // --- Windows ---
 
     @Test
     fun windowsInstallCapturesThenApplies() {
@@ -191,7 +191,7 @@ class KillSwitchTest {
         assertContains(all, "-RemoteAddress '2001:db8::10'")
         assertContains(all, "-RemoteAddress '8.8.8.8'")
 
-        // Системный DNS уходит внутрь туннеля (§75).
+        // Системный DNS уходит внутрь туннеля.
         assertContains(all, "Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses @('172.19.0.1')")
         assertContains(all, "Set-DnsClientServerAddress -InterfaceAlias 'Wi-Fi' -ServerAddresses @('172.19.0.1')")
 

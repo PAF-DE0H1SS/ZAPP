@@ -123,7 +123,7 @@ fun WelcomeScreen(state: AppState) {
 @Composable
 private fun WelcomeStep(onNext: () -> Unit) {
     // Иллюстрация сверху: первый шаг -- единственное место, где приложение
-    // представляет себя; без картинки это два текста в пустоте (UX2).
+    // представляет себя; без картинки это два текста в пустоте.
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
@@ -164,7 +164,7 @@ private fun WelcomeStep(onNext: () -> Unit) {
 private fun PermissionsStep(state: AppState, onNext: () -> Unit, onBack: () -> Unit) {
     val statuses by state.permissions.statuses.collectAsState()
 
-    // Тот же переспрос при входе (B9): шаг можно открыть повторно уже
+    // Тот же переспрос при входе: шаг можно открыть повторно уже
     // после того, как разрешение выдали мимо приложения.
     LaunchedEffect(Unit) { state.permissions.refresh() }
 
@@ -227,7 +227,7 @@ private enum class AutoStep { PENDING, RUNNING, DONE, FAILED }
  * [reason] -- ключ переведённой строки, [detail] -- сырой текст ошибки
  * (то, что реально ответила сеть: «http 404», «fetch»): его переводить
  * нечего, и именно он объясняет случай. Раньше шаг падал с ✗ и молчал:
- * было видно, что не вышло, но не почему (B8).
+ * было видно, что не вышло, но не почему.
  */
 private data class AutoStepState(
     val step: AutoStep = AutoStep.PENDING,
@@ -599,7 +599,7 @@ private fun AutoRow(title: String, state: AutoStepState) {
             )
             // Причина -- прямо под строкой: ✗ без объяснения заставляет
             // гадать, что именно сломалось, и в трёх проходах «падало»
-            // разное (B8). detail -- сырой ответ источника.
+            // разное. detail -- сырой ответ источника.
             if (step == AutoStep.FAILED && (state.reason != null || state.detail.isNotBlank())) {
                 Text(
                     text = listOf(state.reason?.let { tr(it) }.orEmpty(), state.detail)

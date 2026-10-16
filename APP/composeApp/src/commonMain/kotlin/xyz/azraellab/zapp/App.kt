@@ -45,7 +45,7 @@ fun App() {
         GlassBackground(perf = state.config.perf.sanitized()) {
             // До чтения конфига -- скелетон, а не «пусто»: первый кадр
             // стартует раньше load(), и без заглушки страницы успевали
-            // показать «нет коннектов» как настоящий ответ (UX2).
+            // показать «нет коннектов» как настоящий ответ.
             if (!booted) {
                 BootSkeleton()
                 return@GlassBackground

@@ -202,7 +202,7 @@ private class JvmDaemonEngine(
             runCatching {
                 process.inputStream.bufferedReader().forEachLine { line ->
                     if (line.isEmpty()) return@forEachLine
-                    // Чистка двойного `using` (C11) здесь, на входе: одна
+                    // Чистка двойного `using` здесь, на входе: одна
                     // точка обслуживает и ленту демона, и zapp-errors.log.
                     runCatching { log(DaemonEvent(raw = tidyDaemonLine(line))) }
                 }

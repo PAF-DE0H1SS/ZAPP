@@ -7,7 +7,7 @@ class ThemeTest {
 
     @Test
     fun schemeIsDark() {
-        // Тёмная -- дефолт и исходный вид; светлая появилась в UX4 и обязана
+        // Тёмная -- дефолт и исходный вид; светлая появилась позже и обязана
         // быть именно светлой, иначе переключатель в настройках врёт.
         assertTrue(AzraelDarkScheme.isDark())
         assertTrue(!AzraelLightScheme.isDark())

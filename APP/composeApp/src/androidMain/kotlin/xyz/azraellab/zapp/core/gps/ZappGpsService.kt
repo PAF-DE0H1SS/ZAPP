@@ -17,7 +17,7 @@ import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.Str
 
 /**
- * Foreground-сервис подмены координат (§166, §173).
+ * Foreground-сервис подмены координат.
  *
  * Цикл подмены живёт в движке, но без foreground-службы система убьёт
  * процесс, как только приложение уйдёт в фон: подмена молча закончится,

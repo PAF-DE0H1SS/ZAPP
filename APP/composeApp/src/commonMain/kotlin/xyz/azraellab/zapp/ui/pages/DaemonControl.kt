@@ -132,7 +132,7 @@ fun DaemonLogCard(engine: DaemonEngine, path: String = "daemon.log.expand") {
     ) {
         if (lines.isEmpty()) {
             // Пусто -- не голая строка: иллюстрация объясняет, что
-            // журнал ещё не заполнен (UX2).
+            // журнал ещё не заполнен.
             ZappEmptyCard(title = tr(Str.ENGINE_LOG_EMPTY))
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(AzraelSpace.xs)) {

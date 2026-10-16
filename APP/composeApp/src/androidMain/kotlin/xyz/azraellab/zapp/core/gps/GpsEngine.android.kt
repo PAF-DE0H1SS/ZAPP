@@ -226,7 +226,7 @@ private class AndroidGpsEngine : BaseGpsEngine() {
         }
         var baseLatitude = (target as? ResolvedTarget.Fixed)?.latitude
         var baseLongitude = (target as? ResolvedTarget.Fixed)?.longitude
-        // Джойстик: своя стартовая точка, которая едет по курсу (§168).
+        // Джойстик: своя стартовая точка, которая едет по курсу.
         var joyLatitude = (target as? ResolvedTarget.Joystick)?.latitude
         var joyLongitude = (target as? ResolvedTarget.Joystick)?.longitude
 
@@ -277,7 +277,7 @@ private class AndroidGpsEngine : BaseGpsEngine() {
                 return
             }
             setFix(fix)
-            // Строка в шторке: координаты и скорость -- §173. Обновление
+            // Строка в шторке: координаты и скорость. Обновление
             // раз в секунду, тот же id, без дублей в шторке.
             serviceUpdate(fixLine(fix, cfg))
             delay(TICK_MS)

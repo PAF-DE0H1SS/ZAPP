@@ -7,7 +7,7 @@ import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.createConfigStore
 
 /**
- * Старт из перезагрузки устройства (§137).
+ * Старт из перезагрузки устройства.
  *
  * Тот же headless-путь, которым пользуются плитки шторки уведомлений:
  * процесс поднимается сам, [AppState.load] читает конфиг и запускает те

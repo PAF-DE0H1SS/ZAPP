@@ -14,7 +14,7 @@ import xyz.azraellab.zapp.core.root.RootShell
 import xyz.azraellab.zapp.core.zappConfigRoot
 
 /**
- * Реализация на десктопе (§73–75).
+ * Реализация на десктопе.
  *
  * Linux: цепочки iptables/ip6tables в OUTPUT (ядро ходит к узлам по
  * адресам-исключениям; пометка fwmark не нужна -- маршрутизация и так
@@ -50,7 +50,7 @@ actual object KillSwitchCtl {
  * (iptables / PowerShell), хранилище снимка, имя ОС -- всё подменяется
  * тестами, вся механика считается без реальной системы.
  *
- * Снимок (§72) пишется ДО изменений: политика брандмауэра и системный
+ * Снимок пишется ДО изменений: политика брандмауэра и системный
  * DNS Windows. Файл чистится только после успешного возврата; остатки
  * после краша убирает первый же запуск приложения.
  */
@@ -82,7 +82,7 @@ internal class KillSwitchEngine(
         }
     }
 
-    // --- Linux (§74) ---
+    // --- Linux ---
 
     private fun linuxInstall(endpoints: List<String>, dns: List<String>, log: (String) -> Unit): Boolean {
         val setup = root("iptables -N ZAPP_KS 2>/dev/null; iptables -F ZAPP_KS", 3000)
@@ -174,7 +174,7 @@ internal class KillSwitchEngine(
         if (was) log("kill switch: off")
     }
 
-    // --- Windows (§73, §75) ---
+    // --- Windows ---
 
     private fun windowsInstall(endpoints: List<String>, dns: List<String>, log: (String) -> Unit): Boolean {
         val snapshot = store.read() ?: captureWindows()?.also { store.write(it) }

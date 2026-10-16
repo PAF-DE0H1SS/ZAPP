@@ -33,9 +33,9 @@ private fun ByeDpiStrategy.byeStrategyLabel(): String =
     if (AppLangState.current == AppLang.RU) ru else en
 
 /**
- * Подпись самостоятельности режима обхода (E4/Q4).
+ * Подпись самостоятельности режима обхода.
  *
- * Текст выбирается по сборке, а не по устройству (E9): в норуте о root
+ * Текст выбирается по сборке, а не по устройству: в норуте о root
  * не говорят ни слова, в рут-сборке пакеты действительно режутся в ядре,
  * и подпись про пассивный туннель там была бы враньём. Одна карточка на
  * обеих страницах: режим обхода один.
@@ -82,7 +82,7 @@ fun ZapretPage(state: AppState) {
         val byedpi = !BuildMode.rootAllowed &&
             DpiBackend.of(state.config.dpiBackend) == DpiBackend.BYEDPI
 
-        // --- Механизм обхода: релей или byedpi (§130) ---
+        // --- Механизм обхода: релей или byedpi ---
         if (!BuildMode.rootAllowed) {
             ZappCard {
                 ZappChoiceRow(

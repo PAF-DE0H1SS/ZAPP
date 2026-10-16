@@ -7,7 +7,7 @@ import xyz.azraellab.zapp.core.dpi.SplitRelay
 import xyz.azraellab.zapp.core.probe.socks5Ready
 
 /**
- * Обход DPI без root: не процесс с NFQUEUE, а userland-механизм (§130).
+ * Обход DPI без root: не процесс с NFQUEUE, а userland-механизм.
  *
  * nfqws и goodbyedpi живут только с правами (netlink и NFQUEUE --
  * запрещены untrusted_app'у), поэтому в noroot-сборке тот же DaemonSpec
@@ -136,7 +136,7 @@ internal class UserlandDpiEngine(
                 setState(DaemonState.RUNNING)
                 // Подпись области -- честная: раньше пустые порты
                 // подписывались «all tcp», хотя через релей в таком
-                // случае не шло ни байта (C7).
+                // случае не шло ни байта.
                 log(DaemonEvent(raw = when (backend) {
                     DpiBackend.RELAY -> "relay running (split clienthello on ${DpiOverlay.scopeLabel()})"
                     DpiBackend.BYEDPI -> "byedpi running (${ByeDpiRelay.argsLine()} on ${DpiOverlay.scopeLabel()})"

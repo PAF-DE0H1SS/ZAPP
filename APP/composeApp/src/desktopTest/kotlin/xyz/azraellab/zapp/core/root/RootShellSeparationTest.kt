@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 /**
- * Гарант разделения root / noroot на уровне прав (E7).
+ * Гарант разделения root / noroot на уровне прав.
  *
  * Смысла у проверки столько, на сколько устройство теста вообще умеет
  * повышать права: здесь `su` есть, и без гварда `mode()` вернул бы не
@@ -15,7 +15,7 @@ import kotlin.test.assertFalse
  *
  * Вторая половина -- [RootShell.forget]: без сброса «Root: Нет» на
  * экране остаётся от предыдущей сессии, пока политика Magisk меняется
- * вне приложения (B2).
+ * вне приложения.
  */
 class RootShellSeparationTest {
 

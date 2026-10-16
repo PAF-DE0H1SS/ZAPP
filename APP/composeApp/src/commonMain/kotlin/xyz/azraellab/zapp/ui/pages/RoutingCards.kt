@@ -2,13 +2,20 @@ package xyz.azraellab.zapp.ui.pages
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.routing.ProxyCascade
+import xyz.azraellab.zapp.core.routing.RouteDetector
 import xyz.azraellab.zapp.core.routing.RouteSection
+import xyz.azraellab.zapp.core.routing.RouteTrace
 import xyz.azraellab.zapp.core.routing.SectionAction
 import xyz.azraellab.zapp.core.routing.SectionPresets
+import xyz.azraellab.zapp.core.routing.TraceAction
 import xyz.azraellab.zapp.core.routing.UrlTestFilter
 import xyz.azraellab.zapp.core.routing.durationSeconds
 import xyz.azraellab.zapp.core.routing.durationString
@@ -87,6 +94,72 @@ fun RouteSectionsCard(state: AppState) {
                 modifier = Modifier.weight(1f),
                 path = "routing.preset.$index"
             )
+        }
+    }
+}
+
+// --- Детектор правила ---
+
+@Composable
+fun RouteDetectorCard(state: AppState) {
+    var address by remember { mutableStateOf("") }
+    var port by remember { mutableStateOf("") }
+    var trace by remember { mutableStateOf<RouteTrace?>(null) }
+
+    ZappCard {
+        ZappListRow(title = tr(Str.ROUTE_DETECTOR), subtitle = tr(Str.ROUTE_DETECTOR_HINT))
+        ZappTextField(
+            label = tr(Str.ROUTE_DETECTOR_ADDRESS),
+            value = address,
+            onValueChange = { address = it },
+            placeholder = "example.com",
+            path = "routing.detector.address"
+        )
+        ZappTextField(
+            label = tr(Str.ROUTE_DETECTOR_PORT),
+            value = port,
+            onValueChange = { v -> port = v.filter { it.isDigit() }.take(5) },
+            placeholder = "443",
+            path = "routing.detector.port"
+        )
+        ZappButton(
+            text = tr(Str.ROUTE_DETECTOR_RUN),
+            role = ButtonRole.PRIMARY,
+            onClick = {
+                trace = RouteDetector.trace(
+                    vpn = state.config.vpn,
+                    query = address,
+                    port = port.toIntOrNull()?.takeIf { it in 1..65535 }
+                )
+            },
+            path = "routing.detector.run"
+        )
+
+        val result = trace ?: return@ZappCard
+        val actionLabel = when (result.action) {
+            TraceAction.TUNNEL -> tr(Str.ROUTE_DETECTOR_TUNNEL)
+            TraceAction.DIRECT -> tr(Str.ROUTE_DETECTOR_DIRECT)
+            TraceAction.BLOCK -> tr(Str.ROUTE_DETECTOR_BLOCK)
+        }
+        val winner = if (result.by == RouteDetector.RULE_DEFAULT) tr(Str.ROUTE_DETECTOR_DEFAULT) else result.by
+        ZappListRow(
+            title = "$actionLabel · $winner",
+            subtitle = result.reason.ifBlank { null }
+        )
+        result.steps.forEach { step ->
+            val mark = when {
+                step.matched -> "✓"
+                !step.verified -> "~"
+                else -> "✗"
+            }
+            val name = when (step.rule) {
+                RouteDetector.RULE_PRIVATE -> tr(Str.ROUTE_DETECTOR_PRIVATE)
+                RouteDetector.RULE_MULTICAST -> tr(Str.ROUTE_DETECTOR_MULTICAST)
+                RouteDetector.RULE_V6 -> tr(Str.ROUTE_DETECTOR_V6_OFF)
+                RouteDetector.RULE_QUIC -> tr(Str.ROUTE_DETECTOR_QUIC)
+                else -> step.rule
+            }
+            ZappListRow(title = "$mark $name", subtitle = step.detail, path = "routing.detector.step")
         }
     }
 }

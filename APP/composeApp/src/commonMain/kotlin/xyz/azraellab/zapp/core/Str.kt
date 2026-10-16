@@ -548,6 +548,19 @@ enum class Str {
     ROUTING_IPS,
     ROUTING_PORTS,
     ROUTING_SECTION_ALL_TRAFFIC,
+    ROUTE_DETECTOR,
+    ROUTE_DETECTOR_HINT,
+    ROUTE_DETECTOR_ADDRESS,
+    ROUTE_DETECTOR_PORT,
+    ROUTE_DETECTOR_RUN,
+    ROUTE_DETECTOR_TUNNEL,
+    ROUTE_DETECTOR_DIRECT,
+    ROUTE_DETECTOR_BLOCK,
+    ROUTE_DETECTOR_DEFAULT,
+    ROUTE_DETECTOR_PRIVATE,
+    ROUTE_DETECTOR_MULTICAST,
+    ROUTE_DETECTOR_V6_OFF,
+    ROUTE_DETECTOR_QUIC,
     ROUTING_DNS_TYPE,
     ROUTING_DNS_SERVER,
     ROUTING_DNS_STRATEGY,
@@ -1470,6 +1483,24 @@ enum class Str {
             "Без условий секция ловит весь трафик",
             "无条件：分段匹配全部流量"
         )
+        ROUTE_DETECTOR -> pick(lang, "Rule detector", "Детектор правила", "规则检测器")
+        ROUTE_DETECTOR_HINT -> pick(
+            lang,
+            "Enter a domain or IP: the card shows which rule catches it",
+            "Введите домен или IP -- карточка покажет, какое правило сработает",
+            "输入域名或 IP -- 卡片显示命中哪条规则"
+        )
+        ROUTE_DETECTOR_ADDRESS -> pick(lang, "Address", "Адрес", "地址")
+        ROUTE_DETECTOR_PORT -> pick(lang, "Port (optional)", "Порт (необязательно)", "端口（可选）")
+        ROUTE_DETECTOR_RUN -> pick(lang, "Check", "Проверить", "检测")
+        ROUTE_DETECTOR_TUNNEL -> pick(lang, "via tunnel", "через туннель", "经隧道")
+        ROUTE_DETECTOR_DIRECT -> pick(lang, "direct", "напрямую", "直连")
+        ROUTE_DETECTOR_BLOCK -> pick(lang, "blocked", "отклонён", "阻断")
+        ROUTE_DETECTOR_DEFAULT -> pick(lang, "default", "по умолчанию", "默认")
+        ROUTE_DETECTOR_PRIVATE -> pick(lang, "Private networks", "Частные сети", "私有网络")
+        ROUTE_DETECTOR_MULTICAST -> pick(lang, "Multicast", "Мультикаст", "组播")
+        ROUTE_DETECTOR_V6_OFF -> pick(lang, "IPv6 disabled", "IPv6 отключён", "IPv6 已禁用")
+        ROUTE_DETECTOR_QUIC -> pick(lang, "QUIC blocked", "QUIC закрыт", "QUIC 已阻断")
         ROUTING_DNS_TYPE -> pick(lang, "DNS type", "Тип DNS", "DNS 类型")
         ROUTING_DNS_SERVER -> pick(lang, "DNS server", "DNS-сервер", "DNS 服务器")
         ROUTING_DNS_STRATEGY -> pick(lang, "Address family", "Семейство адресов", "地址族")

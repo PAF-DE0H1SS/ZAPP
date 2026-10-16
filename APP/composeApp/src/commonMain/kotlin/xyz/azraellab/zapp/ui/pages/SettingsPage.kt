@@ -842,6 +842,7 @@ private fun VpnBehaviorGroup(state: AppState) {
     }
     PageGroup(tr(Str.ROUTING_SECTIONS)) {
         RouteSectionsCard(state)
+        RouteDetectorCard(state)
     }
     PageGroup(tr(Str.ROUTING_CASCADES)) {
         RouteCascadesCard(state)

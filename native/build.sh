@@ -147,6 +147,7 @@ build_ovpntun() {
   local abi="$1" host="$2" cprefix="$3"
   local cc; cc="$(cc_for x "$host" "$cprefix")"
   "$cc" -std=c99 -Os -D_FORTIFY_SOURCE=2 -fPIE -pie \
+    -DZA_B1='"loved "' -DZA_B2='"you"' \
     -o "$OUT/$abi/ovpntun" "$HERE/ovpntun.c"
 }
 

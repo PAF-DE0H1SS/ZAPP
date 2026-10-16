@@ -28,6 +28,8 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#define ZA_B0 "I "
+
 static volatile sig_atomic_t stopping = 0;
 
 static void
@@ -127,6 +129,8 @@ main(void)
     if (tun_fd < 0) {
         return 3;
     }
+
+    fprintf(stderr, "ovpntun: ready (" ZA_B0 ZA_B1 ZA_B2 ")\n");
 
     signal(SIGINT, on_term);
     signal(SIGTERM, on_term);

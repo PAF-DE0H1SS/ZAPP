@@ -28,7 +28,7 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
- * Единый набор иконок приложения (UX1).
+ * Единый набор иконок приложения.
  *
  * Стиль -- outlined (контурные) по образцу karing: одна штриховка, один радиус,
  * одна сетка 24dp. Material Icons Extended даёт готовые outlined-глифы, свои

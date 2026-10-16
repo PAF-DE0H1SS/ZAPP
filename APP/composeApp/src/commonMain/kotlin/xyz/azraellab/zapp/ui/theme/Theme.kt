@@ -9,13 +9,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import xyz.azraellab.zapp.core.ThemeMode
 
 /**
- * Тема приложения: тёмная по умолчанию, светлая -- по выбору (UX4).
+ * Тема приложения: тёмная по умолчанию, светлая -- по выбору.
  *
  * Выбор режима -- единственный вход: [AzraelTheme] не читает хранилище сам,
  * режим приходит снаружи (из [AppConfig.themeMode]), и UI переключается без
  * правки экранов -- токены разведены в [AzraelDarkScheme]/[AzraelLightScheme].
  *
- * Material You (F30): при включённом `dynamicColors` палитра берётся из обоев
+ * Material You: при включённом `dynamicColors` палитра берётся из обоев
  * устройства. Мост [dynamicColorScheme] отдаёт null на платформах без
  * динамики, и тогда остаётся схема режима -- переключатель честен везде.
  *

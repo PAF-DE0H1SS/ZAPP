@@ -55,7 +55,7 @@ fun RegionDropdown(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            // Очистка выбора (B7): после того как страна поставлена,
+            // Очистка выбора: после того как страна поставлена,
             // пути обратно к «везде» не было вовсе. Первым пунктом и
             // с тем же текстом, что и строка в пустом состоянии, --
             // набор сходится, а не приходится угадывать.
@@ -79,7 +79,7 @@ fun RegionDropdown(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             // Порядок -- по текущему языку: по-русски список должен
-            // читаться по-русски, а не по английскому имени (B7).
+            // читаться по-русски, а не по английскому имени.
             RegionRegistry.allSorted(lang).forEach { region ->
                 DropdownMenuItem(
                     text = { Text(RegionRegistry.localized(region.code, lang)) },

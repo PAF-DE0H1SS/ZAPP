@@ -24,6 +24,14 @@ interface PlatformCaps {
      * открытия страницы релиза.
      */
     val apkUpdatesSupported: Boolean
+
+    /**
+     * Есть ли у системы прокси-настройки, которые приложение может
+     * временно взять на себя (§69–72): реестр Windows, gsettings/env
+     * на Linux, networksetup на macOS. На Android прокси управляется
+     * только через VPN-сессию, поэтому тумблер там не показывается.
+     */
+    val systemProxySupported: Boolean
 }
 
 expect fun platformCaps(): PlatformCaps

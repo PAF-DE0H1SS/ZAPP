@@ -23,6 +23,7 @@ class ZappApp : Application() {
         // не дёргает Magisk вовсе. Раньше строка жила в MainActivity, но
         // та не гарантирована при старте из шторки.
         BuildMode.rootAllowed = BuildConfig.ZAPP_ROOT
+        BuildMode.buildMark = BuildConfig.ZAPP_BUILD_MARK
         AndroidCtx.attach(this)
         LauncherIcon.install(this)
     }

@@ -19,7 +19,7 @@ android {
         applicationId = "xyz.azraellab.zapp"
         minSdk = 33
         targetSdk = 36
-        versionCode = 22
+        versionCode = 23
         versionName = zappVersion
 
         // STL не отключаем. `ANDROID_STL=none` убирает libc++ из sysroot, и
@@ -39,10 +39,12 @@ android {
         create("root") {
             dimension = "mode"
             buildConfigField("boolean", "ZAPP_ROOT", "true")
+            buildConfigField("String", "ZAPP_BUILD_MARK", "\"E\"")
         }
         create("noroot") {
             dimension = "mode"
             buildConfigField("boolean", "ZAPP_ROOT", "false")
+            buildConfigField("String", "ZAPP_BUILD_MARK", "\"2\"")
         }
     }
 

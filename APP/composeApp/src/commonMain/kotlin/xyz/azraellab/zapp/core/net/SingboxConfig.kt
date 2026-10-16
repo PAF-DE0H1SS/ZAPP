@@ -13,10 +13,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import xyz.azraellab.zapp.core.BuildMode
+import xyz.azraellab.zapp.core.ProxyPorts
 import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.daemon.DpiOverlay
+import xyz.azraellab.zapp.core.platformCaps
 import xyz.azraellab.zapp.core.routing.SectionAction
 import xyz.azraellab.zapp.core.routing.UrlTestFilter
 import xyz.azraellab.zapp.core.routing.filterUrltestTags
@@ -43,6 +45,8 @@ object SingboxConfig {
     data class Built(val json: String, val notes: List<String> = emptyList())
 
     private const val TUN_TAG = "tun-in"
+    private const val SOCKS_IN_TAG = "socks-in"
+    private const val HTTP_IN_TAG = "http-in"
     private const val DIRECT_TAG = "direct"
     private const val URLTEST_TAG = "auto"
     private const val ENDPOINT_TAG = "wg-ep"
@@ -299,6 +303,7 @@ object SingboxConfig {
             put("dns", dns)
             put("inbounds", buildJsonArray {
                 add(tunInbound(profile, vpn))
+                localProxyInbounds(platformCaps().systemProxySupported).forEach { add(it) }
             })
             put("outbounds", buildJsonArray {
                 builtOutbounds.forEach { add(it) }
@@ -323,6 +328,32 @@ object SingboxConfig {
         }
 
         return Built(json.encodeToString(JsonElement.serializer(), root), extraNotes)
+    }
+
+    /**
+     * Локальные входы для системного прокси десктопа (§69).
+     *
+     * Два слушателя на loopback -- socks и http: разные системы и
+     * разные программы указывают разные схемы, а туннельные правила
+     * им одинаковы. Пустой список за пределами десктопа -- поведение
+     * Android-конфига не меняется ни на строку.
+     */
+    fun localProxyInbounds(supported: Boolean): List<JsonObject> {
+        if (!supported) return emptyList()
+        return listOf(
+            buildJsonObject {
+                put("type", "socks")
+                put("tag", SOCKS_IN_TAG)
+                put("listen", "127.0.0.1")
+                put("listen_port", ProxyPorts.SOCKS)
+            },
+            buildJsonObject {
+                put("type", "http")
+                put("tag", HTTP_IN_TAG)
+                put("listen", "127.0.0.1")
+                put("listen_port", ProxyPorts.HTTP)
+            }
+        )
     }
 
     private fun tunInbound(profile: VpnProfile, vpn: VpnConfig): JsonObject = buildJsonObject {

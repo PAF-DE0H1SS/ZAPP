@@ -14,8 +14,23 @@ import kotlinx.coroutines.withContext
  */
 actual fun createConfigStore(): ConfigStore = FileConfigStore()
 
+/**
+ * Общий корень файлов приложения на десктопе.
+ *
+ * Уважает XDG_CONFIG_HOME, иначе -- `~/.config`. Отдельная функция, а не
+ * приватная механика хранилища: рядом с config.json лежат и другие
+ * служебные файлы (снимок системного прокси), и все они обязаны жить в
+ * одном каталоге.
+ */
+internal fun zappConfigRoot(): File {
+    val configHome = System.getenv("XDG_CONFIG_HOME")
+    val base = configHome?.takeIf { it.isNotBlank() }
+        ?: (System.getProperty("user.home") ?: ".") + "/.config"
+    return File(base, "zapp")
+}
+
 private class FileConfigStore(
-    private val root: File = defaultRoot()
+    private val root: File = zappConfigRoot()
 ) : ConfigStore {
 
     init {
@@ -76,16 +91,6 @@ private class FileConfigStore(
     private fun safeName(raw: String): String {
         val cleaned = raw.trim().ifEmpty { "preset" }.replace(Regex("[^A-Za-z0-9._-]+"), "_")
         return cleaned.take(64)
-    }
-
-    private companion object {
-        /** Уважаем XDG, иначе берём домашний каталог. */
-        fun defaultRoot(): File {
-            val configHome = System.getenv("XDG_CONFIG_HOME")
-            val base = configHome?.takeIf { it.isNotBlank() }
-                ?: (System.getProperty("user.home") ?: ".") + "/.config"
-            return File(base, "zapp")
-        }
     }
 }
 

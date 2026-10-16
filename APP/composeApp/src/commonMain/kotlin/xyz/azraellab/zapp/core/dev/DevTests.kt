@@ -92,6 +92,7 @@ object DevTestRegistry {
             probeTests(this)
             parserTests(this)
             clashTests(this)
+            systemProxyTests(this)
             dnsFailoverTests(this)
             vpnTests(this)
             sessionTests(this)

@@ -602,6 +602,10 @@ enum class Str {
     AUTOSTART_BOOT,
     AUTOSTART_BOOT_HINT,
 
+    /** Системный прокси десктопа (§69–72). */
+    SETTINGS_SYSTEM_PROXY,
+    SETTINGS_SYSTEM_PROXY_HINT,
+
     /** Системные уведомления: текст отдаётся в нотификацию целиком. */
     NOTIFY_GPS_ON,
     NOTIFY_GPS_OFF,
@@ -1527,6 +1531,18 @@ enum class Str {
             "После перезагрузки приложение поднимает те же сервисы, что и при обычном запуске: " +
                 "туннель, обход и подмену геолокации. Нужен хотя бы один включённый автозапуск.",
             "重启后应用会拉起与启动时相同的服务：隧道、绕过与位置模拟。需至少启用一项自动启动。"
+        )
+        SETTINGS_SYSTEM_PROXY -> pick(lang, "System proxy", "Системный прокси", "系统代理")
+        SETTINGS_SYSTEM_PROXY_HINT -> pick(
+            lang,
+            "While the tunnel is up, browsers and other programs that follow this machine's " +
+                "system proxy go through it (Windows, GNOME, KDE, macOS). The previous " +
+                "settings come back on stop.",
+            "Пока туннель поднят, браузеры и другие программы, следующие системному прокси " +
+                "машины, идут через него (Windows, GNOME, KDE, macOS). После остановки " +
+                "прежние настройки возвращаются.",
+            "隧道运行时，跟随本机系统代理的浏览器与其他程序经由它访问网络" +
+                "（Windows、GNOME、KDE、macOS）。停止后恢复原有设置。"
         )
 
         SETTINGS_DEV -> pick(lang, "For developers", "Для разработчиков", "开发者选项")

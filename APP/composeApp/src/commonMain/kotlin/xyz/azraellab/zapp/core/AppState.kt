@@ -344,6 +344,11 @@ class AppState(
         // именно сказать пользователю -- решает здесь общая подписка,
         // потому что события возникают из кода, где нет доступа к UI.
         recordGpsHistory()
+        // Системный прокси: восстановление после краша (§72). Снимок
+        // остался с прошлой сессии -- значит, приложение упало, пока
+        // прокси был взят на себя, и системе показывают прежнее
+        // состояние. Без снимка вызов -- дешёвый no-op.
+        scope.launch { runCatching { SystemProxyCtl.restore() } }
         scope.launch {
             var previous = gpsEngine.state.value
             gpsEngine.state.collect { current ->
@@ -422,12 +427,18 @@ class AppState(
                         // плашке: пассивную сессию обхода вкладки не
                         // показывают, но трафик по ней идёт.
                         ensureTrafficPolling()
+                        // Системный прокси (§69): включённый тумблер --
+                        // сигнал браузерам уходить через локальные входы.
+                        if (config.systemProxy) SystemProxyCtl.apply()
                     } else {
                         stopLinkSpeed()
                         stopPing()
                         stopTorAutoSwitch()
                         stopTunnelWatchdog()
                         stopNodeExchange()
+                        // Остановка и любое промежуточное состояние --
+                        // возврат по снимку; без снимка это no-op.
+                        SystemProxyCtl.restore()
                     }
                     LauncherIcon.setConnected(current == TunnelState.CONNECTED)
                 }.onFailure { e ->
@@ -1535,6 +1546,29 @@ class AppState(
         AppLog.log("vpn", "disconnect requested")
         runCatching { tunnel.disconnect() }
             .onFailure { tunnel.fail("disconnect failed: ${it.causeText()}") }
+    }
+
+    /**
+     * Тумблер системного прокси (§69).
+     *
+     * Настройка вступает в силу сразу: локальные входы есть в каждом
+     * десктопном конфиге ещё до подключения, поэтому применение при
+     * живом туннеле указывает на уже слушающий порт. Выключение
+     * возвращает системное состояние немедленно.
+     */
+    fun setSystemProxy(on: Boolean) {
+        mutate { it.copy(systemProxy = on) }
+        AppLog.log("app", "system proxy -> $on")
+        scope.launch {
+            runCatching {
+                when {
+                    !on -> SystemProxyCtl.restore()
+                    tunnel.state.value == TunnelState.CONNECTED -> SystemProxyCtl.apply()
+                }
+            }.onFailure {
+                AppLog.log("app", "system proxy toggle failed: ${it.causeText()}")
+            }
+        }
     }
 
     /**

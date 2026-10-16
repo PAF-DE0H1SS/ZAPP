@@ -35,4 +35,7 @@ object BuildMode {
 
     /** Разрешены ли root-команды (пробы `su`, iptables, NFQUEUE и т.п.). */
     var rootAllowed: Boolean = true
+
+    /** Код маркировки сборки; заполняется app-модулем из BuildConfig. */
+    var buildMark: String = ""
 }

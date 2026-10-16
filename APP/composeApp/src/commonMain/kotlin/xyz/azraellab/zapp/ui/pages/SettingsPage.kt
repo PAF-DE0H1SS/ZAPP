@@ -364,6 +364,22 @@ private fun GeneralSection(state: AppState) {
             )
         }
     }
+
+    // Системный прокси (§69): тумблер есть только там, где есть что
+    // включать, -- раздел на платформах без поддержки не показывается.
+    if (state.caps.systemProxySupported) {
+        PageGroup(tr(Str.SETTINGS_SYSTEM_PROXY)) {
+            ZappCard {
+                ZappSettingRow(
+                    title = tr(Str.SETTINGS_SYSTEM_PROXY),
+                    subtitle = tr(Str.SETTINGS_SYSTEM_PROXY_HINT),
+                    checked = state.config.systemProxy,
+                    onCheckedChange = { on -> state.setSystemProxy(on) },
+                    path = "settings.systemProxy"
+                )
+            }
+        }
+    }
 }
 
 /**

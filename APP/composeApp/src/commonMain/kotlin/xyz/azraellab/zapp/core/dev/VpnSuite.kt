@@ -649,7 +649,7 @@ internal fun vpnTests(out: MutableList<DevTest>) {
         checkEq(LifecyclePhase.INACTIVE, GpsState.ERROR.phase, "подмена упала -- покой")
     }
 
-    // --- Здоровье узла по реальному обмену (A3) ---
+    // --- Здоровье узла по реальному обмену ---
 
     val link = "vless://00000000-0000-0000-0000-000000000000@node.example:443#Sweden"
 

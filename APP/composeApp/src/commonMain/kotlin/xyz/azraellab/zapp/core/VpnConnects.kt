@@ -162,7 +162,7 @@ object VpnConnects {
     fun sourcesByKind(sources: List<VpnSource>, kind: String): List<VpnSource> =
         sources.filter { it.kind == kind }
 
-    // --- Тег узла в clash_api (A3: здоровье по реальному обмену) ---
+    // --- Тег узла в clash_api ---
 
     /**
      * Тег, под которым sing-box видит коннект в clash_api; null -- тег

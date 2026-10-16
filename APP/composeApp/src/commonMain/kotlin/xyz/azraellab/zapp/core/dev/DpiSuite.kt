@@ -160,7 +160,7 @@ internal fun dpiTests(out: MutableList<DevTest>) {
         checkEq(null, config.fakeSeq, "seq не задан")
     }
 
-    // --- byedpi: пресеты, аргументы, выбор механизма (§130) ---
+    // --- byedpi: пресеты, аргументы, выбор механизма ---
 
     out += DevTest("dpi/byedpi-strategies", DevCategory.DPI, "Пресеты byedpi: коды и аргументы") {
         val codes = ByeDpiStrategy.entries.map { it.code }
@@ -201,7 +201,7 @@ internal fun dpiTests(out: MutableList<DevTest>) {
         )
     }
 
-    out += DevTest("dpi/byedpi-hosts", DevCategory.DPI, "Список доменов уходит inline (§133)") {
+    out += DevTest("dpi/byedpi-hosts", DevCategory.DPI, "Список доменов уходит inline") {
         val args = ByeDpiConfig().toArgs(listOf("a.com", "b.com"))
         val at = args.indexOf("-H")
         checkTrue(at >= 0, "-H есть")

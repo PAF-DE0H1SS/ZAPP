@@ -2,7 +2,7 @@ package xyz.azraellab.zapp.core
 
 import kotlinx.serialization.Serializable
 
-/** Как выбирается тема приложения (UX4). */
+/** Как выбирается тема приложения. */
 @Serializable
 enum class ThemeMode {
     /** За системной темой устройства. */

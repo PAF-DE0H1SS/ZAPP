@@ -423,7 +423,7 @@ internal fun configTests(out: MutableList<DevTest>) {
         checkTrue(cfg.vpn.killSwitch, "killSwitch")
     }
 
-    // --- Старт из перезагрузки (§137): мастер-тумблер + реальный флаг ---
+    // --- Старт из перезагрузки: мастер-тумблер + реальный флаг ---
 
     out += DevTest("config/boot-autostart-gate", DevCategory.CONFIG, "Старт из загрузки требует и тумблер, и флаг") {
         checkFalse(AppConfig().autostartOnBoot(), "дефолт: ничего не поднимается")

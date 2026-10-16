@@ -12,7 +12,7 @@ import xyz.azraellab.zapp.core.net.FlexibleBase64
 import xyz.azraellab.zapp.core.net.SingboxConfig
 
 /**
- * Системный прокси (§69–72), общая часть: флаг настроек и локальные
+ * Системный прокси, общая часть: флаг настроек и локальные
  * входы в конфиге ядра.
  *
  * Механика ОС (реестр, gsettings, networksetup) живёт на десктопе и

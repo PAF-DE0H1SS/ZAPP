@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 import xyz.azraellab.zapp.core.daemon.DpiOverlay
 
 /**
- * Механизм обхода DPI в норут-сборке (§130).
+ * Механизм обхода DPI в норут-сборке.
  *
  * Оба варианта слушают один и тот же порт [DpiOverlay.RELAY_PORT], на
  * который box отдаёт целевые порты, -- конфиг туннеля от выбора не
@@ -105,7 +105,7 @@ data class ByeDpiConfig(
      * Слушатель -- тот же порт, что у релея, и только loopback: бэкенды
      * подменяют друг друга на месте, и конфиг туннеля не меняется.
      * Список доменов уходит inline через двоеточие (`-H :a b c`) -- файл
-     * для него не нужен (§133).
+     * для него не нужен.
      */
     fun toArgs(hosts: List<String> = emptyList()): List<String> = buildList {
         add("-i")

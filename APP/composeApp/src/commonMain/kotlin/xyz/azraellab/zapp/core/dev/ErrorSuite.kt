@@ -235,7 +235,7 @@ internal fun errorTextTests(out: MutableList<DevTest>) {
         checkEq("", tidyDaemonLine(""), "пустая остаётся пустой")
     }
 
-    // --- Прогресс сборки Tor (B1) ---
+    // --- Прогресс сборки Tor ---
 
     out += DevTest("log/bootstrap-progress-parse", DevCategory.UI, "Процент и стадия сборки Tor из журнала") {
         val log = listOf(

@@ -165,7 +165,7 @@ enum class Str {
     GPS_UNSUPPORTED_DESC,
     GPS_VPN_HINT,
 
-    /** Поиск места и построение маршрута (F1, §161). */
+    /** Поиск места и построение маршрута. */
     GPS_PLACE_SEARCH,
     GPS_PLACE_ERROR,
     GPS_TRANSPORT,
@@ -174,7 +174,7 @@ enum class Str {
     GPS_ROUTE_FAILED,
     GPS_ROUTE_SUMMARY,
 
-    /** Избранное, история подмены и джойстик (F1, §168–169). */
+    /** Избранное, история подмены и джойстик. */
     GPS_FAVORITES,
     GPS_FAVORITES_EMPTY,
     GPS_ADD_FAVORITE,
@@ -311,7 +311,7 @@ enum class Str {
     WELCOME_AUTO_UPDATES,
     WELCOME_AUTO_PERF,
 
-    /** Причины неудач шагов автонастройки (B8): ✗ без объяснения ничего не объясняет. */
+    /** Причины неудач шагов автонастройки: ✗ без объяснения ничего не объясняет. */
     WELCOME_FAIL_NO_SOURCES,
     WELCOME_FAIL_SOURCES,
     WELCOME_FAIL_PINGS,
@@ -380,7 +380,7 @@ enum class Str {
     ERR_PRESET_FAILED,
     ERR_PRESET_EMPTY,
 
-    /** Сброс настроек: подтверждение с перечислением (B4). */
+    /** Сброс настроек: подтверждение с перечислением. */
     PRESET_RESET_TITLE,
     PRESET_RESET_KEEP,
     PRESET_RESET_REGION,
@@ -605,7 +605,7 @@ enum class Str {
     DPI_STANDALONE_ROOT,
     DPI_STANDALONE_NOROOT,
 
-    /** Механизм обхода без root: релей или byedpi (§130). */
+    /** Механизм обхода без root: релей или byedpi. */
     DPI_BACKEND,
     DPI_BACKEND_HINT,
 
@@ -615,11 +615,11 @@ enum class Str {
     COMPONENTS_ABSENT,
     DAEMON_AUTOSTART,
 
-    /** Старт автосервисов после перезагрузки устройства (§137). */
+    /** Старт автосервисов после перезагрузки устройства. */
     AUTOSTART_BOOT,
     AUTOSTART_BOOT_HINT,
 
-    /** Системный прокси десктопа (§69–72). */
+    /** Системный прокси десктопа. */
     SETTINGS_SYSTEM_PROXY,
     SETTINGS_SYSTEM_PROXY_HINT,
 

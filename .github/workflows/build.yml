@@ -12,119 +12,6 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # Проект лежит в APP/, потому что в корне репозитория ещё лежат docs/ и
-  # служебные файлы. Все gradle-задачи отсюда.
-  PROJECT_DIR: APP
-
-  # Правила игнора. Файлы .gitignore в git НЕ входят: локально они существуют
-  # и игнорируют сами себя, а каноническая копия живёт здесь. Шаг
-  # "Restore ignore rules" пишет её сразу после checkout, поэтому любой клон,
-  # запустивший CI, получает полный набор правил (сборка, IDE, секреты,
-  # бинари нативных демонов).
-  IGNORE_RULES: |
-    # --- Сборка Gradle / Android ---
-    build/
-    **/build/
-    .gradle/
-    .kotlin/
-    captures/
-    .externalNativeBuild/
-    .cxx/
-    **/.cxx/
-    local.properties
-    local.defaults.properties
-    *.local
-    *.local.md
-
-    # --- Релизные артефакты и бинари ---
-    # Тестовый APK >100 МБ и продакшн-сборки: GitHub такие файлы не принимает,
-    # а хранить бинари в истории нельзя. Образы раздаёт CI, не репозиторий.
-    *.apk
-    *.aab
-    *.ap_
-    *.dex
-    output.json
-    zapp-test.apk
-
-    # --- Нативные бинари и сырьё: клоны upstream, тарболлы, сборка ---
-    native/out/
-    native/src/
-    APP/app/src/main/jniLibs/
-
-    # --- Секреты и подписи ---
-    signing/
-    *.jks
-    *.keystore
-    *.p12
-    *.pfx
-    *.pem
-    *.key
-    keystore.properties
-    key.properties
-    signing.properties
-    signingConfigs.*
-    google-services.json
-    FirebaseService-Account.json
-    *service-account*.json
-    secrets.properties
-    secrets.xml
-    .netrc
-    .npmrc
-    .env
-    .env.*
-    !.env.example
-    !.env.template
-
-    # --- IDE / ось ---
-    .idea/
-    **/.idea/
-    .vscode/
-    *.iml
-    *.ipr
-    *.iws
-    *.code-workspace
-    .DS_Store
-    Thumbs.db
-    desktop.ini
-
-    # --- Логи и временные ---
-    *.log
-    **/logs/
-    *.tmp
-    *.bak
-    *~
-    \#*\#
-    .\#*
-    *.hprof
-    *.jfr
-
-    # --- Служебное окружение разработчика ---
-    ldpath
-    ZAPP
-
-    # --- Локальные документы и артефакты тестирования: только локально ---
-    AGENTS.md
-    AGENTS.md.bak-*
-    JOURNAL.md
-    TODO.md
-    scripts/
-    .devtest/
-    PLAN.md
-    TESTLOG.md
-    TESTREPORT.md
-    /*.ui-tree
-    /*.ui.txt
-    /test-out/
-    /test-artifacts/
-    *.capture.pcap
-    *.adb.log
-
-    # --- Сами файлы правил ---
-    .gitignore
-    APP/.gitignore
-    APP/app/.gitignore
-
 jobs:
   android:
     name: Android APK (debug + release)
@@ -132,15 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # Файлы .gitignore в git не входят: правила восстанавливаются из
-      # env.IGNORE_RULES (см. шапку workflow). Локально файлы существуют
-      # и игнорируют сами себя.
-      - name: Restore ignore rules
-        shell: bash
-        run: printf '%s' "$IGNORE_RULES" > .gitignore
-
       # JDK 21: его требует gradle-daemon-jvm.properties, и в нём же есть
-      # jpackage, который нужен десктопным джобам ниже.
+      # jpackage для десктопных дистрибутивов.
       - name: Set up JDK 21
         uses: actions/setup-java@v6.0.1
         with:
@@ -226,13 +106,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # Файлы .gitignore в git не входят: правила восстанавливаются из
-      # env.IGNORE_RULES (см. шапку workflow). Локально файлы существуют
-      # и игнорируют сами себя.
-      - name: Restore ignore rules
-        shell: bash
-        run: printf '%s' "$IGNORE_RULES" > .gitignore
-
       - name: Set up JDK 21
         uses: actions/setup-java@v6.0.1
         with:
@@ -257,13 +130,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-
-      # Файлы .gitignore в git не входят: правила восстанавливаются из
-      # env.IGNORE_RULES (см. шапку workflow). Локально файлы существуют
-      # и игнорируют сами себя.
-      - name: Restore ignore rules
-        shell: bash
-        run: printf '%s' "$IGNORE_RULES" > .gitignore
 
       - name: Set up JDK 21
         uses: actions/setup-java@v6.0.1
@@ -335,10 +201,6 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-
-      - name: Install gh
-        run: |
-          command -v gh || (sudo apt-get update && sudo apt-get install -y gh)
 
       - name: Create Release
         env:

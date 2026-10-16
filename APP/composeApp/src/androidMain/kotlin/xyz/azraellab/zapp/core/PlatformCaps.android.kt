@@ -13,4 +13,5 @@ actual fun platformCaps(): PlatformCaps = object : PlatformCaps {
     override val gpsSpoofingSupported: Boolean = Build.VERSION.SDK_INT >= 23
     override val apkUpdatesSupported: Boolean = true
     override val systemProxySupported: Boolean = false
+    override val autostartSupported: Boolean = false
 }

@@ -263,6 +263,16 @@ class AppState(
     private val _probe = MutableStateFlow<DeviceProbe?>(null)
     val probe: StateFlow<DeviceProbe?> = _probe.asStateFlow()
 
+    /**
+     * Зарегистрировано ли приложение на вход в систему (десктоп).
+     *
+     * Правда живёт в самой системе (Run-ключ, файл автозапуска, Login
+     * Items), поэтому здесь -- результат последнего чтения, а не
+     * конфиг: Android этот тумблер ведёт через bootAutostart.
+     */
+    private val _autostartOn = MutableStateFlow(false)
+    val autostartOn: StateFlow<Boolean> = _autostartOn.asStateFlow()
+
     /** Итог проверки обновлений и последний найденный релиз. */
     private val _updateState = MutableStateFlow(UpdateState.UNKNOWN)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
@@ -354,6 +364,12 @@ class AppState(
         // продолжают блокировать сеть, пока о них не вспомнят. Если
         // блокировка не ставилась -- вызов дешёвый no-op.
         scope.launch { runCatching { KillSwitchCtl.remove { AppLog.log("killswitch", it) } } }
+        // Автозапуск: статус читается из системы при старте, тумблер
+        // показывает реальную запись, а не былый клик. Платформы без
+        // поддержки (Android) идут через bootAutostart, здесь нечего читать.
+        if (AutostartCtl.supported) {
+            scope.launch { _autostartOn.value = runCatching { AutostartCtl.status() }.getOrDefault(false) }
+        }
         scope.launch {
             var previous = gpsEngine.state.value
             gpsEngine.state.collect { current ->
@@ -1573,6 +1589,26 @@ class AppState(
             }.onFailure {
                 AppLog.log("app", "system proxy toggle failed: ${it.causeText()}")
             }
+        }
+    }
+
+    /**
+     * Тумблер автозапуска на десктопе (§76–78).
+     *
+     * Запись в систему -- это и есть применение настройки; после неё
+     * статус читается обратно, чтобы тумблер не врал, когда записать
+     * не удалось. Состояние не сохраняется в конфиге: оно и так лежит
+     * в реестре/файле/Keychain и переживает переустановку.
+     */
+    fun setAutostart(on: Boolean) {
+        AppLog.log("app", "autostart -> $on")
+        scope.launch {
+            runCatching {
+                if (on) AutostartCtl.enable() else AutostartCtl.disable()
+            }.onFailure {
+                AppLog.log("app", "autostart apply failed: ${it.causeText()}")
+            }
+            _autostartOn.value = runCatching { AutostartCtl.status() }.getOrDefault(false)
         }
     }
 

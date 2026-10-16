@@ -32,6 +32,14 @@ interface PlatformCaps {
      * только через VPN-сессию, поэтому тумблер там не показывается.
      */
     val systemProxySupported: Boolean
+
+    /**
+     * Можно ли зарегистрировать приложение на вход в систему (§76–78):
+     * Run-ключ Windows, автостарт XDG на Linux, Login Items на macOS.
+     * На Android тумблер остаётся флагом конфига для BroadcastReceiver,
+     * и тут показывается как есть, без регистрации в системе.
+     */
+    val autostartSupported: Boolean
 }
 
 expect fun platformCaps(): PlatformCaps

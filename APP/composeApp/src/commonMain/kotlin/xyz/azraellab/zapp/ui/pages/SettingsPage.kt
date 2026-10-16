@@ -349,16 +349,27 @@ private fun GeneralSection(state: AppState) {
     }
 
     // Старт после перезагрузки (§137): отдельная группа -- настройка
-    // поведения системы, а не оформления или языка.
+    // поведения системы, а не оформления или языка. На десктопе это
+    // настоящая регистрация в системе (§76–78): Run-ключ, файл
+    // автозапуска, Login Items, -- и тумблер читает её напрямую;
+    // на Android остаётся флагом для BroadcastReceiver.
     PageGroup(tr(Str.AUTOSTART_BOOT)) {
         ZappCard {
             ZappSettingRow(
                 title = tr(Str.AUTOSTART_BOOT),
                 subtitle = tr(Str.AUTOSTART_BOOT_HINT),
-                checked = state.config.bootAutostart,
+                checked = if (state.caps.autostartSupported) {
+                    state.autostartOn.collectAsState().value
+                } else {
+                    state.config.bootAutostart
+                },
                 onCheckedChange = { on ->
-                    state.mutate { it.copy(bootAutostart = on) }
-                    AppLog.log("app", "boot autostart -> $on")
+                    if (state.caps.autostartSupported) {
+                        state.setAutostart(on)
+                    } else {
+                        state.mutate { it.copy(bootAutostart = on) }
+                        AppLog.log("app", "boot autostart -> $on")
+                    }
                 },
                 path = "settings.bootAutostart"
             )

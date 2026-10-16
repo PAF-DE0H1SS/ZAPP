@@ -85,7 +85,7 @@ Source sets in `composeApp/src`:
 | `androidMain` | `actual` implementations for Android (SharedPreferences) |
 | `desktopMain` | `actual` implementations for desktop (file system) |
 | `jvmShared` | shared JVM part, 21 files; `androidMain` and `desktopMain` depend on it |
-| `desktopTest` | the whole test suite: 1303 cases, 18 files |
+| `desktopTest` | the whole test suite: 1654 cases, 31 files |
 
 `jvmShared` exists because part of the code is the same for Android and
 desktop, but cannot live in `commonMain`: it is process, socket and file work
@@ -279,7 +279,7 @@ apksigner verify --print-certs app/build/outputs/apk/root/release/ZAPP-ROOT-<ver
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-1303 cases: WCAG contrast for components and the palette, locale parsing,
+1654 cases: WCAG contrast for components and the palette, locale parsing,
 config codecs, protocol link parsing, sing-box config generation, bridge
 selection, sparkline math, DNS resolver probing.
 
@@ -288,7 +288,7 @@ selection, sparkline math, DNS resolver probing.
 
 Test directories:
 
-The whole suite lives in `composeApp/src/desktopTest/` — 18 files. The main
+The whole suite lives in `composeApp/src/desktopTest/` — 31 files. The main
 ones:
 
 | File | What it checks |
@@ -354,7 +354,7 @@ builds through.
    `gradle.properties`, see section 5.
 
 3. **Run the tests.** `./gradlew :composeApp:desktopTest --offline
-   --rerun-tasks`, wait for 1303/1303.
+   --rerun-tasks`, wait for 1654/1654.
 
 4. **Check on a clean install.** Remove the old APK, install the new one:
 
@@ -1216,7 +1216,7 @@ Namespace — это идентичность библиотеки в Android (�
 | `androidMain` | `actual`-реализации под Android (SharedPreferences) |
 | `desktopMain` | `actual`-реализации под десктоп (файловая система) |
 | `jvmShared` | общая JVM-часть, 21 файл; `androidMain` и `desktopMain` зависят от неё |
-| `desktopTest` | весь тестовый набор: 1303 кейса, 18 файлов |
+| `desktopTest` | весь тестовый набор: 1654 кейса, 31 файле |
 
 `jvmShared` появился потому, что часть кода одинакова для Android и десктопа,
 но не может лежать в `commonMain`: это работа с процессами, сокетами и
@@ -1408,7 +1408,7 @@ apksigner verify --print-certs app/build/outputs/apk/root/release/ZAPP-ROOT-<ver
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-1303 кейса: контраст WCAG для компонентов и палитры, разбор локали, кодеки
+1654 кейса: контраст WCAG для компонентов и палитры, разбор локали, кодеки
 конфигов, разбор ссылок протоколов, генерация конфига sing-box, выбор мостов,
 математика спарклайна, проба DNS-резолверов.
 
@@ -1417,7 +1417,7 @@ apksigner verify --print-certs app/build/outputs/apk/root/release/ZAPP-ROOT-<ver
 
 Каталоги тестов:
 
-Весь набор лежит в `composeApp/src/desktopTest/` — 18 файлов. Основные:
+Весь набор лежит в `composeApp/src/desktopTest/` — 31 файле. Основные:
 
 | Файл | Что проверяет |
 |---|---|
@@ -1480,7 +1480,7 @@ find artifacts -type f -name 'ZAPP-*.apk' ! -name '*-debug*' ! -name '*unsigned*
    `gradle.properties`, см. раздел 5.
 
 3. **Прогнать тесты.** `./gradlew :composeApp:desktopTest --offline
-   --rerun-tasks`, дождаться 1303/1303.
+   --rerun-tasks`, дождаться 1654/1654.
 
 4. **Проверить на чистой установке.** Старый APK снять, новый поставить:
 
@@ -2337,7 +2337,7 @@ Kotlin 包。清单 merger 禁止 namespace 重名，但 Kotlin 包可以重名�
 | `androidMain` | Android 的 `actual` 实现（SharedPreferences） |
 | `desktopMain` | 桌面的 `actual` 实现（文件系统） |
 | `jvmShared` | 公共 JVM 部分，21 个文件；`androidMain` 和 `desktopMain` 依赖它 |
-| `desktopTest` | 全部测试：1303 个用例，18 个文件 |
+| `desktopTest` | 全部测试：1654 个用例，18 个文件 |
 
 `jvmShared` 之所以存在，是因为一部分代码在 Android 和桌面上相同，却不能放进
 `commonMain`：那是进程、套接字和文件操作，只有 JVM 上才可用。它在
@@ -2520,7 +2520,7 @@ apksigner verify --print-certs app/build/outputs/apk/root/release/ZAPP-ROOT-<ver
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-1303 个用例：组件与调色板的 WCAG 对比度、区域设置解析、配置编解码、协议链接解析、
+1654 个用例：组件与调色板的 WCAG 对比度、区域设置解析、配置编解码、协议链接解析、
 sing-box 配置生成、桥接选择、sparkline 计算、DNS 解析器探测。
 
 必须加 `--rerun-tasks`：否则未变更的任务会返回 `UP-TO-DATE`，测试计数不会重新统计。
@@ -2588,7 +2588,7 @@ find artifacts -type f -name 'ZAPP-*.apk' ! -name '*-debug*' ! -name '*unsigned*
    见第 5 节。
 
 3. **跑测试。** `./gradlew :composeApp:desktopTest --offline
-   --rerun-tasks`，等到 1303/1303。
+   --rerun-tasks`，等到 1654/1654。
 
 4. **验证全新安装。** 卸掉旧 APK，装新的：
 

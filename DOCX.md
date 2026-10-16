@@ -800,7 +800,7 @@ is not a signing error — the tool simply cannot do it.
 
 ## 11. Tests
 
-The suite lives in `composeApp/src/desktopTest` — 18 files, **1303 cases**.
+The suite lives in `composeApp/src/desktopTest` — 31 files, **1654 cases**.
 
 | File | What it checks |
 |---|---|
@@ -820,7 +820,7 @@ The suite lives in `composeApp/src/desktopTest` — 18 files, **1303 cases**.
 | `core/engine/TorBootstrapPercentTest` | Tor bootstrap percent |
 | `core/VpnConnectsTest` | connect list |
 
-Out of 1303 cases, 1165 come from the parameterized run
+Out of 1654 cases, 1165 come from the parameterized run
 `DevTestsParameterized` — that is all `core/dev/*Suite.kt` (24 suites); the
 other 138 are in the direct tests above.
 
@@ -960,8 +960,8 @@ ZAPP/
     │       │                              TrafficSource (JNI), PlatformCaps
     │       ├── desktopMain/.../core/      ConfigStore (files), TrafficSource (/proc)
     │       ├── jvmShared/.../core/        shared JVM half: net, daemon, engine,
-    │       │                              probe, dpi, root, geo, update (21 files)
-    │       └── desktopTest/.../           1303 cases, 18 files
+    │       │                              probe, dpi, root, geo, update (22 files)
+    │       └── desktopTest/.../           1654 cases, 31 files
     └── desktopApp/                   desktop application
         └── build.gradle.kts         mainClass, packaging formats
 ```
@@ -1005,7 +1005,7 @@ launch.
 ## 15. What is left
 
 Done: the shared code builds for both platforms, the design system is
-complete, tests are green (1303 cases). Working: connections —
+complete, tests are green (1654 cases). Working: connections —
 WireGuard/AmneziaWG, OpenVPN, sing-box (vless, vmess, trojan, ss, hysteria2,
 tuic), Tor over bridges, kill-switch; DPI bypass — zapret and goodbyedpi on one
 NFQUEUE chain with automatic strategy selection; traffic monitoring with a
@@ -1796,7 +1796,7 @@ apksigner verify --print-certs app/build/outputs/apk/root/release/ZAPP-ROOT-<в�
 
 ## 11. Тесты
 
-Набор лежит в `composeApp/src/desktopTest` — 18 файлов, **1303 кейса**.
+Набор лежит в `composeApp/src/desktopTest` — 31 файле, **1654 кейса**.
 
 | Файл | Что проверяет |
 |---|---|
@@ -1816,7 +1816,7 @@ apksigner verify --print-certs app/build/outputs/apk/root/release/ZAPP-ROOT-<в�
 | `core/engine/TorBootstrapPercentTest` | процент загрузки Tor |
 | `core/VpnConnectsTest` | список коннектов |
 
-Из 1303 кейсов 1165 даёт параметризованный прогон `DevTestsParameterized` —
+Из 1654 кейсов 1165 даёт параметризованный прогон `DevTestsParameterized` —
 это все `core/dev/*Suite.kt` (24 суиты), остальные 138 — в прямых тестах
 выше.
 
@@ -1956,7 +1956,7 @@ ZAPP/
     │       ├── desktopMain/.../core/      ConfigStore (файлы), TrafficSource (/proc)
     │       ├── jvmShared/.../core/        общая JVM-часть: net, daemon, engine,
     │       │                              probe, dpi, root, geo, update (21 файл)
-    │       └── desktopTest/.../           1303 кейса, 18 файлов
+    │       └── desktopTest/.../           1654 кейса, 31 файле
     └── desktopApp/                   десктоп-приложение
         └── build.gradle.kts         mainClass, форматы упаковки
 ```
@@ -2000,7 +2000,7 @@ adb logcat -d | grep -iE "FATAL|AndroidRuntime"
 ## 15. Что ещё предстоит
 
 Сделано: общий код собирается под обе платформы, дизайн-система закончена,
-тесты зелёные (1303 кейса). Работает подключение — WireGuard/AmneziaWG,
+тесты зелёные (1654 кейса). Работает подключение — WireGuard/AmneziaWG,
 OpenVPN, sing-box (vless, vmess, trojan, ss, hysteria2, tuic), Tor через
 мосты, kill-switch; обход DPI — zapret и goodbyedpi на одной NFQUEUE-цепочке
 с автоподбором стратегии; мониторинг трафика со спарклайном и счётчиком
@@ -2736,7 +2736,7 @@ apksigner verify --print-certs app/build/outputs/apk/root/release/ZAPP-ROOT-<版
 
 ## 11. 测试
 
-测试集在 `composeApp/src/desktopTest` —— 18 个文件，**1303 个用例**。
+测试集在 `composeApp/src/desktopTest` —— 18 个文件，**1654 个用例**。
 
 | 文件 | 检查什么 |
 |---|---|
@@ -2756,7 +2756,7 @@ apksigner verify --print-certs app/build/outputs/apk/root/release/ZAPP-ROOT-<版
 | `core/engine/TorBootstrapPercentTest` | Tor 下载百分比 |
 | `core/VpnConnectsTest` | 连接列表 |
 
-1303 个用例中 1165 个来自 `DevTestsParameterized` 的参数化运行 ——
+1654 个用例中 1165 个来自 `DevTestsParameterized` 的参数化运行 ——
 即全部 `core/dev/*Suite.kt`（24 个 suite），其余 138 个在上面的直接测试里。
 
 这里最有价值的不是数量，而是测试不会让人悄悄通过：
@@ -2885,7 +2885,7 @@ ZAPP/
     │       ├── desktopMain/.../core/      ConfigStore（文件）、TrafficSource（/proc）
     │       ├── jvmShared/.../core/        共享 JVM 部分：net、daemon、engine、
     │       │                              probe、dpi、root、geo、update（21 个文件）
-    │       └── desktopTest/.../           1303 个用例，18 个文件
+    │       └── desktopTest/.../           1654 个用例，18 个文件
     └── desktopApp/                   桌面应用
         └── build.gradle.kts         mainClass、打包格式
 ```
@@ -2927,7 +2927,7 @@ adb logcat -d | grep -iE "FATAL|AndroidRuntime"
 
 ## 15. 还有哪些要做
 
-已完成：公共代码能在两个平台构建，设计系统完成，测试全绿（1303 个用例）。可用的连接 —— WireGuard/AmneziaWG、
+已完成：公共代码能在两个平台构建，设计系统完成，测试全绿（1654 个用例）。可用的连接 —— WireGuard/AmneziaWG、
 OpenVPN、sing-box（vless、vmess、trojan、ss、hysteria2、tuic）、
 经桥的 Tor、kill-switch；DPI 绕过 —— zapret 和 goodbyedpi 在同一条 NFQUEUE 链上，
 策略自动选择；带迷你曲线和会话计数的流量监控；隧道启动前自动替换 DNS。

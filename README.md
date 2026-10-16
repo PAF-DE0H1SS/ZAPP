@@ -15,9 +15,9 @@
 </div>
 
 > [!IMPORTANT]
-> **Status: released v2.7.3, signed.** The project builds for Android and desktop, the
+> **Status: released v2.7.19, signed.** The project builds for Android and desktop, the
 > release carries five APKs per variant (four CPU architectures plus a universal one),
-> an MSI and an AppImage. 1303 tests are green. See the Roadmap for what comes next.
+> an MSI and an AppImage. 1654 tests are green. See the Roadmap for what comes next.
 
 ZAPP is a network toolkit written in Kotlin with **Compose Multiplatform**: one shared UI
 for the native Android build and for desktop. The shared code lives in `APP/composeApp`, the
@@ -92,7 +92,7 @@ your CPU, and the split you install really is the smaller one.
 | 📖 **In-app docs** | 7 sections, 11 items, EN / RU / ZH |
 | 📶 **Traffic monitor** | system counters, speed graph, session summary; native C++ reader on Android with a Kotlin fallback, opens as a separate window |
 | 📦 **Packaging** | local APK / MSI / `.deb` / AppImage; APK split by ABI (four architectures plus a universal); GitHub Actions builds the same on push to `main` and on `v*` tags and publishes a signed release |
-| 🧪 **Tests** | 1303 cases in `desktopTest`: WCAG contrast, locale resolution, config codecs, link parsing, sing-box config, bridge selection, sparkline math, DNS autoselect |
+| 🧪 **Tests** | 1654 cases in `desktopTest`: WCAG contrast, locale resolution, config codecs, link parsing, sing-box config, bridge selection, sparkline math, DNS autoselect |
 
 ### 🧭 Architecture
 
@@ -103,8 +103,8 @@ ZAPP/
 │   │   ├── commonMain/      UI, design system, models, ViewModels, core logic
 │   │   ├── androidMain/     actual implementations (SharedPreferences)
 │   │   ├── desktopMain/     actual implementations (filesystem)
-│   │   ├── jvmShared/       JVM code shared by Android and desktop (21 files)
-│   │   └── desktopTest/     test suite (1303 cases)
+│   │   ├── jvmShared/       JVM code shared by Android and desktop (22 files)
+│   │   └── desktopTest/     test suite (1654 cases)
 │   ├── app/                 Android application: manifest, MainActivity, resources
 │   ├── desktopApp/          desktop launcher, jpackage packaging
 │   └── build-all.sh         release | dev | linux
@@ -210,7 +210,7 @@ take the desktop packages from CI, which builds them on `ubuntu` and `windows`.
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-1303 test cases across 18 files, all green: WCAG contrast for component and palette
+1654 test cases across 31 files, all green: WCAG contrast for component and palette
 colour pairs, system locale mapping (including the country part of a locale tag),
 config codecs (`AppConfig`, `VpnConfig`), proxy link parsing, sing-box config
 generation, WireGuard ini parsing, bridge selection, traffic sampling, sparkline
@@ -338,7 +338,7 @@ compliance with the laws that apply to you.
 | 📖 **Справка в приложении** | 7 разделов, 11 пунктов, EN / RU / ZH |
 | 📶 **Монитор трафика** | системные счётчики, график скорости, итог сессии; нативный C++-ридер на Android с Kotlin-запаской, открывается отдельным окном |
 | 📦 **Упаковка** | локальные APK / MSI / `.deb` / AppImage; сплит APK по ABI (четыре архитектуры плюс универсал); GitHub Actions собирает то же самое на пуш в `main` и на теги `v*` и публикует подписанный релиз |
-| 🧪 **Тесты** | 1303 кейса в `desktopTest`: контраст WCAG, разбор локали, кодеки конфигов, разбор ссылок, конфиг sing-box, выбор мостов, математика спарклайна, автоподбор DNS |
+| 🧪 **Тесты** | 1654 кейса в `desktopTest`: контраст WCAG, разбор локали, кодеки конфигов, разбор ссылок, конфиг sing-box, выбор мостов, математика спарклайна, автоподбор DNS |
 
 ### 🧭 Архитектура
 
@@ -350,7 +350,7 @@ ZAPP/
 │   │   ├── androidMain/     actual-реализации (SharedPreferences)
 │   │   ├── desktopMain/     actual-реализации (файловая система)
 │   │   ├── jvmShared/       общая для Android и десктопа JVM-часть (21 файл)
-│   │   └── desktopTest/     тестовый набор (1303 кейса)
+│   │   └── desktopTest/     тестовый набор (1654 кейса)
 │   ├── app/                 Android-приложение: манифест, MainActivity, ресурсы
 │   ├── desktopApp/          десктопная точка входа, упаковка jpackage
 │   └── build-all.sh         release | dev | linux
@@ -459,7 +459,7 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-1303 тестовых кейса в 18 файлах, все зелёные: контраст пар цветов компонентов и
+1654 тестовых кейса в 31 файле, все зелёные: контраст пар цветов компонентов и
 палитры по WCAG, сопоставление системной локали (включая страну в теге локали),
 кодеки конфигов (`AppConfig`, `VpnConfig`), разбор ссылок протоколов, генерация
 конфига sing-box, разбор WireGuard ini, выбор мостов, счёт трафика, математика
@@ -585,7 +585,7 @@ Android 会自动选中与你 CPU 匹配的包，装上的拆分包确实更小�
 | 📖 **应用内文档** | 7 个章节、11 个条目，EN / RU / ZH |
 | 📶 **流量监视器** | 系统计数器、速度曲线、会话汇总；Android 上用原生 C++ 读取器，Kotlin 为后备，独立窗口打开 |
 | 📦 **打包** | 本地 APK / MSI / `.deb` / AppImage；APK 按 ABI 拆分（四种架构加通用包）；GitHub Actions 在推送 `main` 和 `v*` 标签时构建同样的产物并发布签名版本 |
-| 🧪 **测试** | `desktopTest` 共 1303 个用例：WCAG 对比度、语言环境解析、配置编解码、链接解析、sing-box 配置生成、桥接选择、迷你图数学、DNS 自动选择 |
+| 🧪 **测试** | `desktopTest` 共 1654 个用例：WCAG 对比度、语言环境解析、配置编解码、链接解析、sing-box 配置生成、桥接选择、迷你图数学、DNS 自动选择 |
 
 ### 🧭 架构
 
@@ -597,7 +597,7 @@ ZAPP/
 │   │   ├── androidMain/     actual 实现（SharedPreferences）
 │   │   ├── desktopMain/     actual 实现（文件系统）
 │   │   ├── jvmShared/       Android 与桌面共用的 JVM 代码（21 个文件）
-│   │   └── desktopTest/     测试集（1303 个用例）
+│   │   └── desktopTest/     测试集（1654 个用例）
 │   ├── app/                 Android 应用：manifest、MainActivity、资源
 │   ├── desktopApp/          桌面启动器、jpackage 打包
 │   └── build-all.sh         release | dev | linux
@@ -698,7 +698,7 @@ export PATH=/nix/store/*binutils-*/bin:$PATH
 ./gradlew :composeApp:desktopTest --offline --rerun-tasks
 ```
 
-18 个文件中的 1303 个测试用例，全部通过：组件与调色板配色的 WCAG 对比度、
+18 个文件中的 1654 个测试用例，全部通过：组件与调色板配色的 WCAG 对比度、
 系统语言环境映射（含区域标签中的国家部分）、配置编解码（`AppConfig`、
 `VpnConfig`）、代理链接解析、sing-box 配置生成、WireGuard ini 解析、桥接
 选择、流量采样、迷你图数学、路线进度、版本比较与 DNS 自动选择探测。

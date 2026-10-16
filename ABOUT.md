@@ -212,7 +212,7 @@ and Tor via bridges; DPI bypass — zapret and goodbyedpi sharing one NFQUEUE
 chain with automatic strategy selection; traffic monitoring with a speed
 sparkline and a session counter; automatic DNS replacement before the tunnel
 starts. The shared code builds for both platforms, the design system is
-finished, and all 1303 tests pass.
+finished, and all 1654 tests pass.
 
 There are six sections — Tor, VPN, Zapret, GoodbyeDPI, GPS and Settings. The
 bar packs them into four slots, because full names do not fit: Tor sits next to
@@ -410,7 +410,7 @@ The work is staged, and each stage ends with a green build and green tests.
 через мосты; обход DPI — zapret и goodbyedpi на одной NFQUEUE-цепочке с
 автоподбором стратегии; мониторинг трафика со спарклайном скорости и счётчиком
 трафика за сеанс; автозамена DNS-сервера перед стартом туннеля. Общий код
-собирается под обе платформы, дизайн-система закончена, все 1303 теста
+собирается под обе платформы, дизайн-система закончена, все 1654 теста
 зелёные. Разделов шесть — Tor, VPN, Zapret, GoodbyeDPI, GPS и Настройки, но
 панель собирает их в четыре слота, полные названия не помещаются: Tor делит
 слот с VPN, Zapret с GoodbyeDPI. Монитор трафика открывается отдельным окном,
@@ -576,7 +576,7 @@ The work is staged, and each stage ends with a green build and green tests.
 主要功能都能用：WireGuard/AmneziaWG、OpenVPN、sing-box 和经桥接的 Tor 连接；
 DPI 解绕 —— zapret 与 goodbyedpi 共用一条 NFQUEUE 链并自动选择策略；带速度
 迷你图和会话计数器的流量监控；隧道启动前自动替换 DNS。共享代码在两个平台上
-都能构建，设计系统完成，1303 个测试全部通过。
+都能构建，设计系统完成，1654 个测试全部通过。
 
 共有六个分区 —— Tor、VPN、Zapret、GoodbyeDPI、GPS 和设置，但底部栏把它们收进
 四个槽位，完整名字放不下：Tor 与 VPN 同槽，Zapret 与 GoodbyeDPI 同槽。流量

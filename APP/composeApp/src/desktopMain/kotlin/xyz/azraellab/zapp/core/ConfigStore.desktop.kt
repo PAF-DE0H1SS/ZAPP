@@ -134,6 +134,29 @@ private class AwtPresetFileGateway : PresetFileGateway {
         }.getOrDefault(false)
     }
 
+    override suspend fun readBytes(): ByteArray? {
+        val file = choose(
+            title = "Open backup",
+            save = false,
+            extension = "zip"
+        ) ?: return null
+        return runCatching { file.readBytes() }.getOrNull()
+    }
+
+    override suspend fun writeBytes(content: ByteArray, suggestedName: String): Boolean {
+        val file = choose(
+            title = "Save backup",
+            save = true,
+            extension = "zip",
+            suggestedName = suggestedName
+        ) ?: return false
+        return runCatching {
+            file.parentFile?.mkdirs()
+            file.writeBytes(content)
+            true
+        }.getOrDefault(false)
+    }
+
     /**
      * Показывает системный диалог и ждёт выбора.
      *

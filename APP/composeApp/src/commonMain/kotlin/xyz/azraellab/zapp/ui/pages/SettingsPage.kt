@@ -32,6 +32,7 @@ import xyz.azraellab.zapp.core.Docs
 import xyz.azraellab.zapp.core.GoodbyeDpiMode
 import xyz.azraellab.zapp.core.RegionTuner
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.backup.RestoreMode
 import xyz.azraellab.zapp.core.ZapretFamily
 import xyz.azraellab.zapp.core.ZapretMode
 import xyz.azraellab.zapp.core.ZapretStrategy
@@ -133,6 +134,7 @@ fun SettingsPage(state: AppState) {
 
         "presets" -> SubPage(Str.SETTINGS_PRESETS, back = { section = null }) {
             PresetsSection(state)
+            BackupSection(state)
         }
 
         "perf" -> SubPage(Str.SETTINGS_PERF, back = { section = null }) {
@@ -777,6 +779,105 @@ private fun PresetsSection(state: AppState) {
             },
             onDismiss = { confirmReset = false }
         )
+    }
+}
+
+/** Бэкап: экспорт, импорт с превью, выбор режима восстановления. */
+@Composable
+private fun BackupSection(state: AppState) {
+    val scope = rememberCoroutineScope()
+    val message = remember { mutableStateOf<Str?>(null) }
+    var failure by rememberSaveable { mutableStateOf(false) }
+    var mode by rememberSaveable { mutableStateOf(RestoreMode.FULL.name) }
+    val pending = state.pendingBackup
+
+    PageGroup(tr(Str.SETTINGS_BACKUP)) {
+        message.value?.let { text ->
+            ZappBanner(
+                title = tr(text),
+                state = if (failure) ComponentColors.State.DANGER else ComponentColors.State.ACTIVE
+            )
+        }
+        ZappCard {
+            Text(
+                text = tr(Str.SETTINGS_BACKUP_HINT),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            ZappButtonRow(modifier = Modifier.fillMaxWidth()) {
+                ZappButton(
+                    text = tr(Str.SETTINGS_BACKUP_EXPORT),
+                    role = ButtonRole.SECONDARY,
+                    onClick = {
+                        scope.launch {
+                            val result = state.exportBackup()
+                            message.value = result.key()
+                            failure = !result.ok
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                ZappButton(
+                    text = tr(Str.SETTINGS_BACKUP_IMPORT),
+                    role = ButtonRole.SECONDARY,
+                    onClick = {
+                        scope.launch {
+                            val result = state.importBackupPreview()
+                            message.value = result.key()
+                            failure = !result.ok
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        if (pending != null) {
+            ZappCard {
+                Text(
+                    text = tr(Str.SETTINGS_BACKUP_PREVIEW),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                val manifest = pending.manifest
+                Text(
+                    text = "${manifest.appVersion} · ${manifest.profileNames.size} · ${manifest.presetNames.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                ZappChoiceRow(
+                    label = tr(Str.SETTINGS_BACKUP_MODE),
+                    options = listOf(
+                        Choice(RestoreMode.FULL, tr(Str.SETTINGS_BACKUP_MODE_FULL)),
+                        Choice(RestoreMode.CONFIG, tr(Str.SETTINGS_BACKUP_MODE_CONFIG)),
+                        Choice(RestoreMode.PRESETS, tr(Str.SETTINGS_BACKUP_MODE_PRESETS))
+                    ),
+                    selected = RestoreMode.valueOf(mode),
+                    onSelect = { mode = it.name },
+                    path = "settings.backup.mode"
+                )
+                ZappButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    ZappButton(
+                        text = tr(Str.SETTINGS_BACKUP_APPLY),
+                        role = ButtonRole.PRIMARY,
+                        onClick = {
+                            state.applyBackup(RestoreMode.valueOf(mode))
+                            message.value = Str.ERR_PRESET_APPLIED
+                            failure = false
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ZappButton(
+                        text = tr(Str.SETTINGS_BACKUP_CANCEL),
+                        role = ButtonRole.GHOST,
+                        onClick = { state.cancelBackup() },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
     }
 }
 

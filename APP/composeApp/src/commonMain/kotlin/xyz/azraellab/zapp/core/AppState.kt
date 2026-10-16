@@ -20,6 +20,10 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 import kotlin.math.abs
 import xyz.azraellab.zapp.core.daemon.DaemonEvent
+import xyz.azraellab.zapp.core.backup.BackupContents
+import xyz.azraellab.zapp.core.backup.BackupManifest
+import xyz.azraellab.zapp.core.backup.BackupService
+import xyz.azraellab.zapp.core.backup.RestoreMode
 import xyz.azraellab.zapp.core.daemon.DaemonId
 import xyz.azraellab.zapp.core.geo.photonReverse
 import xyz.azraellab.zapp.core.daemon.DaemonSpec
@@ -1160,6 +1164,68 @@ class AppState(
         }
         applyPreset(preset)
         return lastMessage ?: PresetMessage.applied(preset.name)
+    }
+
+    // --- Бэкап ---
+
+    /** Разобранный архив, ждущий подтверждения. */
+    var pendingBackup: BackupContents? by mutableStateOf(null)
+        private set
+
+    val backupPreview: BackupManifest?
+        get() = pendingBackup?.manifest
+
+    /** Собирает бэкап и сохраняет в файл. */
+    suspend fun exportBackup(): PresetMessage {
+        if (!gateway.available) {
+            lastMessage = PresetMessage.unavailable
+            return PresetMessage.unavailable
+        }
+        val bytes = BackupService.build(config, presets, appVersion, System.currentTimeMillis())
+        val name = "zapp-backup"
+        val ok = runCatching { gateway.writeBytes(bytes, "$name.zip") }.getOrDefault(false)
+        lastMessage = if (ok) PresetMessage.exported(name) else PresetMessage.failed(name)
+        return lastMessage!!
+    }
+
+    /** Читает архив и готовит превью; ничего не применяет. */
+    suspend fun importBackupPreview(): PresetMessage {
+        if (!gateway.available) {
+            lastMessage = PresetMessage.unavailable
+            return PresetMessage.unavailable
+        }
+        val bytes = runCatching { gateway.readBytes() }.getOrNull()
+        if (bytes == null || bytes.isEmpty()) {
+            lastMessage = PresetMessage.emptyFile
+            return PresetMessage.emptyFile
+        }
+        val contents = BackupService.parse(bytes)
+        if (contents == null) {
+            lastMessage = PresetMessage.badFile
+            return PresetMessage.badFile
+        }
+        pendingBackup = contents
+        lastMessage = PresetMessage.imported(contents.manifest.profileNames.firstOrNull() ?: "backup")
+        return lastMessage!!
+    }
+
+    /** Применяет подготовленный бэкап. */
+    fun applyBackup(mode: RestoreMode) {
+        val contents = pendingBackup ?: return
+        val newConfig = BackupService.configOf(contents, mode)
+        val newPresets = BackupService.presetsOf(contents, mode)
+        if (newConfig != null) mutate { newConfig }
+        if (newPresets != null) {
+            newPresets.forEach { runCatching { store.writePreset(it) } }
+            presets = runCatching { store.readPresets() }.getOrDefault(presets)
+        }
+        pendingBackup = null
+        lastMessage = PresetMessage.applied(contents.manifest.profileNames.firstOrNull() ?: "backup")
+    }
+
+    /** Отменяет бэкап, ничего не применяя. */
+    fun cancelBackup() {
+        pendingBackup = null
     }
 
     // --- Мониторинг трафика ---
@@ -2675,6 +2741,7 @@ data class PresetMessage(
         fun saved(name: String) = PresetMessage(Kind.SAVED, name)
         fun applied(name: String) = PresetMessage(Kind.APPLIED, name)
         fun exported(name: String) = PresetMessage(Kind.EXPORTED, name)
+        fun imported(name: String) = PresetMessage(Kind.IMPORTED, name)
         fun failed(name: String) = PresetMessage(Kind.FAILED, name, ok = false)
         fun invalid(problems: List<String>) = PresetMessage(Kind.INVALID, "", problems, ok = false)
         val unavailable = PresetMessage(Kind.UNAVAILABLE, ok = false)

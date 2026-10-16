@@ -1,4 +1,4 @@
-name: ZAPP auto-build (Android + Windows/Linux desktop)
+name: ZAPP Build & Release
 
 on:
   push:
@@ -14,41 +14,31 @@ concurrency:
 
 jobs:
   android:
-    name: Android APK (debug + release)
+    name: Android Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      # JDK 21: его требует gradle-daemon-jvm.properties, и в нём же есть
-      # jpackage для десктопных дистрибутивов.
-      - name: Set up JDK 21
-        uses: actions/setup-java@v6.0.1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6.3.0
-
-      - name: Unit tests
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :composeApp:desktopTest
         working-directory: APP
-        run: ./gradlew :composeApp:desktopTest
 
-      # Отчёты о тестах -- при падении: лог раннера обрезан по размеру, а
-      # в XML лежит полное исключение каждого упавшего теста.
-      - name: Upload test report
-        if: failure()
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: desktop-test-report
-          path: |
-            APP/composeApp/build/test-results/desktopTest/*.xml
-            APP/composeApp/build/reports/tests/desktopTest/**
-          if-no-files-found: ignore
+      # Нативные демоны (wg/box/openvpn/tor/…) в git не входят (~300 МБ):
+      # лежат отдельным релизом native-bins. Без них APK собирается,
+      # но без VPN/Zapret/Tor.
+      - name: Fetch native daemons
+        run: |
+          url="https://github.com/${{ github.repository }}/releases/download/native-bins/native-jniLibs.tar.gz"
+          if curl -fsSL --retry 3 "$url" -o /tmp/native-jniLibs.tar.gz; then
+            mkdir -p APP/app/src/main/jniLibs
+            tar -xzf /tmp/native-jniLibs.tar.gz -C APP/app/src/main/jniLibs
+          fi
 
-      # Подпись release-APK. Секреты задаются владельцем репозитория
-      # (gh secret set); без них сборка идёт без signingConfigs и выдаёт
-      # app-release-unsigned.apk -- такой в релиз не публикуется.
+      # Подпись release-APK секретами репозитория; без них сборка уходит
+      # неподписанной, и такой APK в релиз не попадает.
       - name: Prepare release keystore
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
@@ -56,192 +46,84 @@ jobs:
           KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -z "$KS_B64" ]; then
-            echo "Секреты keystore не заданы -- release-сборка будет неподписанной"
-            exit 0
-          fi
-          mkdir -p APP/signing
-          echo "$KS_B64" | base64 -d > APP/signing/zapp.keystore
-          printf 'storeFile=signing/zapp.keystore\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
-            "$KS_PASS" "$KS_ALIAS" "$KEY_PASS" > APP/signing/keystore.properties
-          echo "keystore раскладан, release будет подписан"
-
-      # Нативные демоны (wg/box/openvpn/tor/lyrebird/nfqws/goodbyedpi) в git
-      # не входят: ~300 МБ против лимита GitHub в 100 МБ. Они лежат отдельным
-      # релизом native-bins; без них APK собирается, но без VPN/Zapret/Tor
-      # и в релиз не публикуется (проверка libbox.so в release-job).
-      - name: Fetch native daemons
-        run: |
-          url="https://github.com/${{ github.repository }}/releases/download/native-bins/native-jniLibs.tar.gz"
-          if curl -fsSL --retry 3 "$url" -o /tmp/native-jniLibs.tar.gz; then
-            mkdir -p APP/app/src/main/jniLibs
-            tar -xzf /tmp/native-jniLibs.tar.gz -C APP/app/src/main/jniLibs
-            echo "распаковано .so: $(find APP/app/src/main/jniLibs -name '*.so' | wc -l)"
-          else
-            echo "релиз native-bins не найден -- собираем без нативных демонов"
+          if [ -n "$KS_B64" ]; then
+            mkdir -p APP/signing
+            echo "$KS_B64" | base64 -d > APP/signing/zapp.keystore
+            printf 'storeFile=signing/zapp.keystore\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+              "$KS_PASS" "$KS_ALIAS" "$KEY_PASS" > APP/signing/keystore.properties
           fi
 
-      - name: Build Android
+      - run: ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace
         working-directory: APP
-        # --stacktrace обязателен: падение package<Variant> в CI не
-        # оставляло ни причины, ни следа, кроме «Run with --stacktrace».
-        # df/free -- чтобы была видна нехватка диска: на раннере 14 ГБ,
-        # а четыре варианта со сплитами пишут около 20 APK и по нескольку
-        # копий нативных библиотек в intermediates.
-        run: |
-          df -h /
-          free -h
-          ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace
-
-      - name: Upload APKs
-        uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v4
         with:
           name: zapp-android-apks
-          path: |
-            APP/app/build/outputs/apk/**/*.apk
+          path: APP/app/build/outputs/apk/**/*.apk
 
   windows:
-    name: Windows 10/11 MSI installer
+    name: Windows Build
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v6.0.1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6.3.0
-
-      - name: Build Windows MSI
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :desktopApp:packageMsi
         working-directory: APP
-        run: ./gradlew :desktopApp:packageMsi
-
-      - name: Upload MSI
-        uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v4
         with:
           name: zapp-windows-msi
           path: APP/desktopApp/build/compose/binaries/main/msi/*.msi
 
   linux:
-    name: Linux AppImage
+    name: Linux Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v6.0.1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6.3.0
-
-      # Сырой jpackage .deb в CI не собирается вообще: без scripts/finish-deb.sh
-      # в нём нет Depends, симлинка, .desktop и иконки, а публиковать его в таком
-      # виде нельзя. .deb остаётся для локальной сборки (build-all.sh).
-      - name: Build AppImage package
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :desktopApp:packageAppImage
         working-directory: APP
-        run: ./gradlew :desktopApp:packageAppImage
-
-      - name: Package real AppImage (appimagetool)
-        run: |
-          set -euxo pipefail
-          curl -fsSL https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -o /tmp/appimagetool
-          chmod +x /tmp/appimagetool
-
-          APP_DIR=APP/desktopApp/build/compose/binaries/main/app
-          SRC=$APP_DIR/zapp
-          AD=/tmp/zapp-appdir
-          rm -rf "$AD"
-          mkdir -p "$AD"
-          cp -r "$SRC/bin" "$AD/bin"
-          cp -r "$SRC/lib" "$AD/lib"
-          cp "$SRC/lib/zapp.png" "$AD/zapp.png"
-          cat > "$AD/zapp.desktop" <<'EOF'
-          [Desktop Entry]
-          Name=ZAPP
-          Comment=Local network toolkit (Compose Multiplatform)
-          Exec=zapp
-          Icon=zapp
-          Type=Application
-          Categories=Network;
-          Terminal=false
-          EOF
-          cat > "$AD/AppRun" <<'EOF'
-          #!/bin/sh
-          HERE="$(dirname "$(readlink -f "${0}")")"
-          exec "$HERE/bin/zapp" "$@"
-          EOF
-          chmod +x "$AD/AppRun" "$AD/bin/zapp"
-          APP_VERSION=$(sed -n 's/.*<app-version>\([^<]*\)<\/app-version>.*/\1/p' "$SRC/lib/app/.jpackage.xml")
-          export ARCH=x86_64
-          /tmp/appimagetool --appimage-extract-and-run "$AD" "$APP_DIR/zapp-$APP_VERSION.AppImage"
-          ls -la "$APP_DIR"
-
-      - name: Upload Linux packages
-        uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v4
         with:
-          name: zapp-linux-packages
-          path: APP/desktopApp/build/compose/binaries/main/app/*.AppImage
+          name: zapp-linux-appimage
+          path: APP/desktopApp/build/compose/binaries/main/appimage/*.AppImage
 
   release:
-    name: GitHub Release (tags v*)
+    name: GitHub Release
     runs-on: ubuntu-latest
     needs: [android, windows, linux]
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Create Release
+      # В релиз идут production-артефакты: подписанные APK (не debug и не
+      # unsigned), MSI и AppImage. Пустой набор -- релиз не создаём.
+      - name: Publish Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # APK сюда попадает подписанным: джоб android на шаге
-          # "Prepare release keystore" раскладывает секреты репозитория в
-          # APP/signing/ и подписывает build type release. Если секретов нет,
-          # сборка неподписанная, и фильтр *unsigned* её отсекает.
-          # Debug в релиз не идёт.
-          mapfile -d '' files < <(find artifacts -type f \( -name '*.msi' -o -name '*.AppImage' \) -print0)
+          mapfile -t files < <(find artifacts -type f \( \
+            -name '*.msi' -o -name '*.AppImage' -o \
+            \( -name 'ZAPP-*.apk' ! -name '*-debug*' ! -name '*unsigned*' \) \))
           if [ "${#files[@]}" -eq 0 ]; then
-            echo "Нет ни одного production-артефакта - релиз не создаём" >&2
+            echo "Нет production-артефактов - релиз не создаём" >&2
             exit 1
-          fi
-          # Подписанный production APK идёт к релизу вместе с десктопными
-          # образами. upload-artifact сохраняет структуру каталогов,
-          # поэтому ищем рекурсивно. Имена заданы в app/build.gradle.kts:
-          # ZAPP-ROOT-<version>[-<abi>].apk и ZAPP-<version>[-<abi>].apk
-          # (оба флейвора, универсал без суффикса, сплиты -- с ним).
-          # APK публикуется, только если в нём есть нативные демоны (признак
-          # полной сборки -- libbox.so) и он не debug.
-          #
-          # '*-debug*' обязательно со звёздочкой с обеих сторон: у сплитов
-          # имя заканчивается на архитектуру (ZAPP-2.7.0-debug-x86.apk), и
-          # фильтр '*-debug.apk' их пропускал -- в релиз утекали восемь
-          # debug-APK, а универсальные при этом отсекались.
-          while IFS= read -r apk; do
-            [ -n "$apk" ] || continue
-            unzip -l "$apk" | grep -q 'libbox\.so' || continue
-            base=$(basename "$apk")
-            cp "$apk" "$base"
-            files+=("$base")
-          done < <(find artifacts -type f -name 'ZAPP-*.apk' ! -name '*-debug*' ! -name '*unsigned*' -print)
-          if ! printf '%s\n' "${files[@]}" | grep -q '^ZAPP-.*\.apk$'; then
-            echo "CI-APK без нативных демонов -- в релиз не добавляем"
           fi
           gh release create "$TAG_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --title "ZAPP $TAG_NAME" \
-            --notes "Autogenerated by CI. Desktop artifacts: Windows MSI, Linux AppImage. Android APK прикладывается отдельно - подписанная production-сборка." \
+            --notes "Android APK, Windows MSI, Linux AppImage." \
             "${files[@]}"

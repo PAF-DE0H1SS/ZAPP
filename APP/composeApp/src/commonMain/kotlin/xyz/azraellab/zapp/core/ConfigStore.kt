@@ -126,6 +126,12 @@ interface PresetFileGateway {
     /** Открывает выбор файла и записывает содержимое; false, если отказали или запись не вышла. */
     suspend fun write(content: String, suggestedName: String): Boolean
 
+    /** То же чтение, но байтами: zip-бэкап через строку потерял бы бинарь. */
+    suspend fun readBytes(): ByteArray?
+
+    /** То же запись, но байтами. */
+    suspend fun writeBytes(content: ByteArray, suggestedName: String): Boolean
+
     /** Доступен ли файловый обмен на этой платформе прямо сейчас. */
     val available: Boolean
 }

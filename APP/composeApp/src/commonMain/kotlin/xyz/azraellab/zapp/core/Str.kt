@@ -248,6 +248,17 @@ enum class Str {
     SETTINGS_DYNAMIC_COLORS_HINT,
     SETTINGS_PRESETS,
     SETTINGS_PRESET_NAME,
+    SETTINGS_BACKUP,
+    SETTINGS_BACKUP_HINT,
+    SETTINGS_BACKUP_EXPORT,
+    SETTINGS_BACKUP_IMPORT,
+    SETTINGS_BACKUP_PREVIEW,
+    SETTINGS_BACKUP_MODE,
+    SETTINGS_BACKUP_MODE_FULL,
+    SETTINGS_BACKUP_MODE_CONFIG,
+    SETTINGS_BACKUP_MODE_PRESETS,
+    SETTINGS_BACKUP_APPLY,
+    SETTINGS_BACKUP_CANCEL,
     SETTINGS_ABOUT,
     SETTINGS_SYSTEM,
     SETTINGS_APPLY_LIVE,
@@ -864,6 +875,20 @@ enum class Str {
         )
         SETTINGS_PRESETS -> pick(lang, "Presets", "Пресеты", "预设")
         SETTINGS_PRESET_NAME -> pick(lang, "Preset name", "Имя пресета", "预设名称")
+        SETTINGS_BACKUP -> pick(lang, "Backup", "Бэкап", "备份")
+        SETTINGS_BACKUP_HINT -> pick(
+            lang, "Settings and presets, no keys",
+            "Настройки и пресеты, без ключей", "设置和预设，不含密钥"
+        )
+        SETTINGS_BACKUP_EXPORT -> pick(lang, "Create backup", "Создать бэкап", "创建备份")
+        SETTINGS_BACKUP_IMPORT -> pick(lang, "Restore from file", "Восстановить из файла", "从文件恢复")
+        SETTINGS_BACKUP_PREVIEW -> pick(lang, "Archive contents", "Содержимое архива", "归档内容")
+        SETTINGS_BACKUP_MODE -> pick(lang, "Restore", "Восстановить", "恢复")
+        SETTINGS_BACKUP_MODE_FULL -> pick(lang, "Everything", "Всё", "全部")
+        SETTINGS_BACKUP_MODE_CONFIG -> pick(lang, "Settings only", "Только настройки", "仅设置")
+        SETTINGS_BACKUP_MODE_PRESETS -> pick(lang, "Presets only", "Только пресеты", "仅预设")
+        SETTINGS_BACKUP_APPLY -> pick(lang, "Apply", "Применить", "应用")
+        SETTINGS_BACKUP_CANCEL -> pick(lang, "Cancel", "Отмена", "取消")
         SETTINGS_ABOUT -> pick(lang, "About", "О программе", "关于")
         SETTINGS_LOG -> pick(lang, "Log", "Журнал", "日志")
         SETTINGS_DOCS -> pick(lang, "Documentation", "Документация", "文档")

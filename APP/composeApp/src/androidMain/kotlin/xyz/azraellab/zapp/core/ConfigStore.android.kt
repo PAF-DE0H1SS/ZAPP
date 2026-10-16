@@ -127,6 +127,24 @@ private object SafPresetBridge : PresetFileGateway {
         }.getOrDefault(false)
     }
 
+    override suspend fun readBytes(): ByteArray? {
+        val resolver = context ?: return null
+        val launcher = pickRead ?: return null
+        val uri = awaitUri(launcher) ?: return null
+        return runCatching {
+            resolver.contentResolver.openInputStream(uri)?.readBytes()
+        }.getOrNull()
+    }
+
+    override suspend fun writeBytes(content: ByteArray, suggestedName: String): Boolean {
+        val resolver = context ?: return false
+        val launcher = pickWrite ?: return false
+        val uri = awaitUriNamed(launcher, suggestedName) ?: return false
+        return runCatching {
+            resolver.contentResolver.openOutputStream(uri, "wt")?.write(content) != null
+        }.getOrDefault(false)
+    }
+
     /**
      * Ждёт URI от Activity.
      *

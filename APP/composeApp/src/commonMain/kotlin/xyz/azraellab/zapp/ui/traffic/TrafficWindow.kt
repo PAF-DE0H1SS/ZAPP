@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -22,6 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -29,6 +35,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.Str
@@ -36,11 +43,14 @@ import xyz.azraellab.zapp.core.TrafficConfig
 import xyz.azraellab.zapp.core.TrafficFormat
 import xyz.azraellab.zapp.core.TrafficPoint
 import xyz.azraellab.zapp.core.TrafficSummary
+import xyz.azraellab.zapp.core.connections.ConnectionsFilter
+import xyz.azraellab.zapp.core.connections.ConnNote
 import xyz.azraellab.zapp.ui.theme.AppIcons
 import xyz.azraellab.zapp.ui.theme.AzraelInfo
 import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.theme.monoData
 import xyz.azraellab.zapp.ui.components.debugPath
+import xyz.azraellab.zapp.ui.components.ZappTextField
 import xyz.azraellab.zapp.ui.tr
 
 /**
@@ -81,11 +91,13 @@ fun TrafficWindow(state: AppState, onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = AzraelSpace.screenPadding)
-                .padding(bottom = AzraelSpace.xxl),
+                .padding(bottom = AzraelSpace.xxl)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(AzraelSpace.cardGap)
         ) {
             SpeedCard(history = history)
             SummaryCard(summary = summary, config = config)
+            ConnectionsCard(state = state)
         }
     }
 }
@@ -201,3 +213,87 @@ private fun TrafficChart(history: List<TrafficPoint>) {
         drawPath(linePath { it.rxBitsPerSecond }, primary, style = Stroke(2.5f, cap = StrokeCap.Round))
     }
 }
+
+/**
+ * Живая таблица соединений (§30–31): кто к чему подключён.
+ *
+ * Строки -- снимок платформы, обновляется своим циклом в AppState.
+ * Колонки процесс/порт/адрес: байты по сокету платформенные таблицы
+ * не считают, а точные счётчики живут только у ядра туннеля. Фильтр
+ * ложится на снимок локально -- опрос из-за ввода не ускоряется.
+ */
+@Composable
+private fun ConnectionsCard(state: AppState) {
+    val sample by state.connections.collectAsState()
+    var query by rememberSaveable { mutableStateOf("") }
+    val filtered = remember(sample.rows, query) { ConnectionsFilter.apply(sample.rows, query) }
+
+    LaunchedEffect(Unit) { state.startConnectionsPolling() }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AzraelSpace.lg),
+            verticalArrangement = Arrangement.spacedBy(AzraelSpace.sm)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = tr(Str.TRAFFIC_CONNECTIONS),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "${filtered.size}",
+                    style = monoData(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            sample.note?.let { note ->
+                Text(
+                    text = tr(
+                        when (note) {
+                            ConnNote.NO_PROC -> Str.TRAFFIC_CONN_NO_PROC
+                            ConnNote.NO_TOOL -> Str.TRAFFIC_CONN_NO_TOOL
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            ZappTextField(
+                label = tr(Str.TRAFFIC_CONN_FILTER),
+                value = query,
+                onValueChange = { query = it },
+                path = "traffic.connections.filter"
+            )
+            if (filtered.isEmpty()) {
+                Text(
+                    text = tr(Str.COMMON_NOTHING_FOUND),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            filtered.take(CONNECTION_ROWS_VISIBLE).forEach { row ->
+                Text(
+                    text = "${row.owner} · ${row.proto}:${row.localPort} → ${row.remote}",
+                    style = monoData(),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+/** Строк в списке: снимок живой, экран -- нет; длинный хвост прячется, счётчик честный. */
+private const val CONNECTION_ROWS_VISIBLE = 50

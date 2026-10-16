@@ -83,6 +83,9 @@ import xyz.azraellab.zapp.core.update.fetchLatestRelease
 import xyz.azraellab.zapp.core.update.installUpdateApk
 import xyz.azraellab.zapp.core.update.localDayEndMs
 import xyz.azraellab.zapp.core.update.updateAvailable
+import xyz.azraellab.zapp.core.connections.ConnectionsSample
+import xyz.azraellab.zapp.core.connections.ConnectionsSource
+import xyz.azraellab.zapp.core.connections.createConnectionsSource
 
 /**
  * Состояние приложения.
@@ -123,6 +126,9 @@ class AppState(
 
         /** Как часто опрашивать счётчики трафика при включённом мониторинге */
         const val POLL_FLOOR_MS: Int = 200
+
+        /** Период живой таблицы соединений: диагностический снимок, не график. */
+        const val CONNECTIONS_POLL_MS: Long = 2_000L
 
         /** Метки уведомлений: одна метка = одна строка в шторке. */
         const val TAG_GPS: String = "gps"
@@ -924,6 +930,17 @@ class AppState(
     fun trafficSource(): TrafficSource =
         trafficSource ?: createTrafficSource().also { trafficSource = it }
 
+    private var connPollJob: Job? = null
+    private var connectionsSource: ConnectionsSource? = null
+
+    /** Последний снимок таблицы соединений; пуст, пока окно трафика не открыли. */
+    private val _connections = MutableStateFlow(ConnectionsSample.EMPTY)
+    val connections: StateFlow<ConnectionsSample> = _connections.asStateFlow()
+
+    /** Источник таблицы соединений; ленив, как и источник счётчиков. */
+    fun connectionsSource(): ConnectionsSource =
+        connectionsSource ?: createConnectionsSource().also { connectionsSource = it }
+
     // --- Загрузка и сохранение ---
 
     /**
@@ -1191,10 +1208,37 @@ class AppState(
         }
     }
 
+    /**
+     * Живая таблица соединений (§30).
+     *
+     * Свой цикл, а не общий с монитором: опрос -- блокирующее чтение
+     * файлов и команд, поэтому он идёт в IO и с периодом в секунды.
+     * Отказ источника -- не исключение для цикла: UI покажет пометку
+     * «нет доступа», а не пустую таблицу.
+     */
+    fun startConnectionsPolling() {
+        connPollJob?.cancel()
+        connPollJob = scope.launch {
+            while (isActive) {
+                val sample = withContext(Dispatchers.IO) {
+                    runCatching { connectionsSource().read() }.getOrNull()
+                }
+                if (sample != null) _connections.value = sample
+                delay(CONNECTIONS_POLL_MS)
+            }
+        }
+    }
+
+    /** Останавливает опрос таблицы соединений (окно трафика закрыто). */
+    fun stopConnectionsPolling() {
+        connPollJob?.cancel()
+        connPollJob = null
+    }
+
     /** Открывает или закрывает окно мониторинга. */
     fun setTrafficWindowOpen(open: Boolean) {
         _trafficWindowOpen.value = open
-        if (open) ensureTrafficPolling()
+        if (open) ensureTrafficPolling() else stopConnectionsPolling()
     }
 
     suspend fun resetToDefaults() {

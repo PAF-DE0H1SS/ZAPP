@@ -391,6 +391,10 @@ enum class Str {
     TRAFFIC_OPEN_WINDOW,
     TRAFFIC_PER_APP,
     TRAFFIC_SMOOTH,
+    TRAFFIC_CONNECTIONS,
+    TRAFFIC_CONN_FILTER,
+    TRAFFIC_CONN_NO_PROC,
+    TRAFFIC_CONN_NO_TOOL,
 
     /** Разрешения. */
     SETTINGS_PERMISSIONS,
@@ -812,6 +816,25 @@ enum class Str {
         TRAFFIC_OPEN_WINDOW -> pick(lang, "Open monitor", "Открыть мониторинг", "打开监控")
         TRAFFIC_PER_APP -> pick(lang, "Per-app breakdown", "По приложениям", "按应用")
         TRAFFIC_SMOOTH -> pick(lang, "Smooth graph", "Сглаживать график", "平滑曲线")
+        TRAFFIC_CONNECTIONS -> pick(lang, "Connections", "Соединения", "连接")
+        TRAFFIC_CONN_FILTER -> pick(
+            lang,
+            "Filter: process, address or port",
+            "Фильтр: процесс, адрес или порт",
+            "筛选：进程、地址或端口"
+        )
+        TRAFFIC_CONN_NO_PROC -> pick(
+            lang,
+            "Cannot read this device's connection tables",
+            "Не удалось прочитать таблицы соединений",
+            "无法读取连接表"
+        )
+        TRAFFIC_CONN_NO_TOOL -> pick(
+            lang,
+            "The system utility for connections is unavailable",
+            "Системная утилита для соединений недоступна",
+            "连接的系统工具不可用"
+        )
 
         SETTINGS_LANGUAGE -> pick(lang, "Language", "Язык", "语言")
         SETTINGS_APPEARANCE -> pick(lang, "Appearance", "Оформление", "外观")

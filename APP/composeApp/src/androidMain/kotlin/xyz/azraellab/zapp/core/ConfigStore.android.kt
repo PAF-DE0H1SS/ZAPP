@@ -17,7 +17,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * восстановить настройки из резервной копии после переустановки, а это тот
  * самый случай, ради которого пресеты вообще выгружаются в файл.
  */
-actual fun createConfigStore(): ConfigStore = AndroidConfigStore()
+actual fun createConfigStore(): ConfigStore = SecretsConfigStore(AndroidConfigStore())
 
 private class AndroidConfigStore(
     private val context: Context = AppContextHolder.current

@@ -1,6 +1,9 @@
 package xyz.azraellab.zapp.core
 
 import kotlinx.serialization.Serializable
+import xyz.azraellab.zapp.core.secure.KeyBundle
+import xyz.azraellab.zapp.core.secure.SecureStorage
+import xyz.azraellab.zapp.core.secure.platformSecureStorage
 
 /**
  * Хранилище настроек.
@@ -20,6 +23,90 @@ interface ConfigStore {
 
 /** Создаёт хранилище для текущей платформы. */
 expect fun createConfigStore(): ConfigStore
+
+/**
+ * Слой «секреты отдельно от настроек»: перед записью секретные поля
+ * профилей уходят в [SecureStorage], JSON остаётся без них; чтение
+ * собирает профили обратно.
+ *
+ * Если хранилище недоступно или отказало ([SecureStorage.put] == false),
+ * секреты просто остаются в JSON -- сохранение не ломается, поведение
+ * совпадает с прежним. Слоты после удаления профиля не чистятся: тот же
+ * профиль может лежать в пресете, а потерять ключ из-за удаления настройки
+ * хуже, чем оставить пару лишних записей.
+ */
+class SecretsConfigStore(
+    private val delegate: ConfigStore,
+    private val storage: SecureStorage = platformSecureStorage()
+) : ConfigStore {
+
+    override fun readConfig(): AppConfig? = delegate.readConfig()?.let { config ->
+        config.copy(vpn = config.vpn.copy(profiles = config.vpn.profiles.map { restoreProfile(it) }))
+    }
+
+    override fun writeConfig(config: AppConfig) {
+        delegate.writeConfig(config.copy(vpn = config.vpn.copy(profiles = config.vpn.profiles.map { stashProfile(it) })))
+    }
+
+    override fun readPresets(): List<Preset> = delegate.readPresets().map { preset ->
+        preset.copy(vpn = preset.vpn.copy(profiles = preset.vpn.profiles.map { restoreProfile(it) }))
+    }
+
+    override fun writePreset(preset: Preset) {
+        delegate.writePreset(preset.copy(vpn = preset.vpn.copy(profiles = preset.vpn.profiles.map { stashProfile(it) })))
+    }
+
+    override fun deletePreset(id: String) = delegate.deletePreset(id)
+
+    /** Уводит секреты профиля в хранилище; не вышло -- профиль возвращается как есть. */
+    private fun stashProfile(profile: VpnProfile): VpnProfile {
+        if (profile.id.isEmpty()) return profile
+        val secret = profile.privateKey.isNotEmpty() ||
+            profile.presharedKey.isNotEmpty() ||
+            profile.certPassword.isNotEmpty()
+        if (!secret) return profile
+        // wg-ini импорт хранит ключ и в тексте конфига -- уводим и его.
+        val raw = if ("PrivateKey=" in profile.rawConfig) profile.rawConfig else ""
+        val encoded = runCatching {
+            ConfigCodec.json.encodeToString(
+                KeyBundle.serializer(),
+                KeyBundle(
+                    privateKey = profile.privateKey,
+                    presharedKey = profile.presharedKey,
+                    certPassword = profile.certPassword,
+                    rawConfig = raw
+                )
+            )
+        }.getOrNull() ?: return profile
+        if (!storage.put(slotFor(profile.id), encoded)) return profile
+        return profile.copy(
+            privateKey = "",
+            presharedKey = "",
+            certPassword = "",
+            rawConfig = if (raw.isNotEmpty()) "" else profile.rawConfig
+        )
+    }
+
+    /** Собирает секреты обратно; повреждённый или отсутствующий слот -- не ошибка. */
+    private fun restoreProfile(profile: VpnProfile): VpnProfile {
+        if (profile.id.isEmpty()) return profile
+        val empty = profile.privateKey.isEmpty() &&
+            profile.presharedKey.isEmpty() &&
+            profile.certPassword.isEmpty()
+        if (!empty) return profile
+        val bundle = storage.get(slotFor(profile.id))
+            ?.let { runCatching { ConfigCodec.json.decodeFromString(KeyBundle.serializer(), it) }.getOrNull() }
+            ?: return profile
+        return profile.copy(
+            privateKey = bundle.privateKey,
+            presharedKey = bundle.presharedKey,
+            certPassword = bundle.certPassword,
+            rawConfig = if (bundle.rawConfig.isNotEmpty()) bundle.rawConfig else profile.rawConfig
+        )
+    }
+
+    private fun slotFor(id: String): String = "vpn:$id"
+}
 
 /**
  * Файловый обмен пресетами.

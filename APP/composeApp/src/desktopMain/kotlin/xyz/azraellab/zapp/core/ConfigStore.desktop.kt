@@ -12,7 +12,7 @@ import kotlinx.coroutines.withContext
  * если приложение упадёт посередине записи, останется прежний валидный файл,
  * а не обрезанный.
  */
-actual fun createConfigStore(): ConfigStore = FileConfigStore()
+actual fun createConfigStore(): ConfigStore = SecretsConfigStore(FileConfigStore())
 
 /**
  * Общий корень файлов приложения на десктопе.

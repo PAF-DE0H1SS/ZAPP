@@ -25,6 +25,8 @@ import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.theme.AzraelSuccess
 import xyz.azraellab.zapp.ui.tr
 
+private const val FOOTER_HEAD = "I hope"
+
 /**
  * Раздел «Тесты» (Настройки > Для разработчиков).
  *
@@ -121,8 +123,17 @@ fun DevTestsSection() {
                 modifier = Modifier.fillMaxWidth()
             )
         }
+
+        Text(
+            text = "$FOOTER_HEAD $FOOTER_MIDDLE $FOOTER_TAIL",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
+
+private const val FOOTER_MIDDLE = "you are"
 
 /** Строка состояния: ожидание, прогресс или сводка прогона. */
 @Composable
@@ -182,6 +193,8 @@ private fun StatusBlock(
         }
     }
 }
+
+private const val FOOTER_TAIL = "happy"
 
 /** Один провал: id теста и причина, цветом ошибки. */
 @Composable

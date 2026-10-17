@@ -318,6 +318,9 @@ class AppState(
 
     /** Причина неудачной загрузки; пусто, если не качали или всё вышло. */
     var updateDownloadError: String? by mutableStateOf(null)
+
+    /** Прогресс загрузки APK: проценты или null, если размер неизвестен. */
+    var updateDownloadPercent: Int? by mutableStateOf(null)
         private set
 
     /** Текущая версия -- та же константа, что участвует в сравнении. */
@@ -1936,11 +1939,18 @@ class AppState(
         if (_updateDownload.value == UpdateDownload.RUNNING) return
         _updateDownload.value = UpdateDownload.RUNNING
         updateDownloadError = null
+        updateDownloadPercent = null
         scope.launch {
-            val ok = runCatching { downloadUpdateApk(found.version, found.apkUrl) }
+            val ok = runCatching {
+                downloadUpdateApk(found.version, found.apkUrl) { done, total ->
+                    updateDownloadPercent =
+                        if (total > 0) ((done * 100) / total).toInt().coerceIn(0, 100) else null
+                }
+            }
                 .onFailure { updateDownloadError = it.causeText() }
                 .getOrDefault(false)
             _updateDownload.value = if (ok) UpdateDownload.NONE else UpdateDownload.ERROR
+            updateDownloadPercent = null
             AppLog.log(
                 "update",
                 if (ok) "apk cached ${found.version}" else "apk download failed: ${updateDownloadError ?: "?"}"

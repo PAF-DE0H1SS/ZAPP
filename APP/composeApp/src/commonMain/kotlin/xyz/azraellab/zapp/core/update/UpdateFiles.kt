@@ -18,7 +18,11 @@ expect fun cachedUpdateApk(version: String): String?
  * true -- файл готов (скачан заново или уже лежал); false -- сеть
  * недоступна или файл оказался пустым.
  */
-expect suspend fun downloadUpdateApk(version: String, url: String): Boolean
+expect suspend fun downloadUpdateApk(
+    version: String,
+    url: String,
+    onProgress: ((done: Long, total: Long) -> Unit)? = null
+): Boolean
 
 /** Открывает скачанный APK установщиком. false -- платформа не умеет. */
 expect fun installUpdateApk(path: String): Boolean

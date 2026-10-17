@@ -565,8 +565,11 @@ private fun UpdatesSection(state: AppState) {
                     val apkPath = release?.version?.let { cachedUpdateApk(it) }
                     ZappButtonRow(modifier = Modifier.fillMaxWidth()) {
                         if (download == UpdateDownload.RUNNING) {
+                            val percent = state.updateDownloadPercent
                             ZappButton(
-                                text = tr(Str.UPD_DOWNLOADING),
+                                text = if (percent != null)
+                                    "${tr(Str.UPD_DOWNLOADING)} $percent%"
+                                else tr(Str.UPD_DOWNLOADING),
                                 role = ButtonRole.SECONDARY,
                                 enabled = false,
                                 onClick = {},
@@ -612,6 +615,21 @@ private fun UpdatesSection(state: AppState) {
                         text = tr(Str.UPD_SNOOZED),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                val changelog = release?.changelog.orEmpty()
+                if (changelog.isNotBlank()) {
+                    Text(
+                        text = tr(Str.UPD_CHANGELOG),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                    )
+                    Text(
+                        text = changelog,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }

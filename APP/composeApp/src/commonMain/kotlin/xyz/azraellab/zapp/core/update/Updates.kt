@@ -37,8 +37,53 @@ data class ReleaseInfo(
      * Пусто, если релиз без APK (сборка не выложена): тогда остаётся
      * только кнопка «Открыть страницу релиза».
      */
-    val apkUrl: String = ""
+    val apkUrl: String = "",
+    /** Текст изменений из тела релиза; пусто -- changelog не показываем. */
+    val changelog: String = ""
 )
+
+/** Вердикт проверки релиза перед предложением обновления. */
+enum class ReleaseCheck {
+    /** Релиз годится: свежий, с APK. */
+    OK,
+
+    /** Версия не новее установленной -- откатывать нельзя. */
+    ROLLBACK,
+
+    /** Релиз без APK -- ставить нечего, остаётся только страница. */
+    NO_APK
+}
+
+/**
+ * Проверяет релиз перед тем, как предлагать обновление.
+ *
+ * Анти-откат: свежий релиз чужой ветки может быть старее установленной
+ * сборки, и ставить его -- откат. Полнота ассетов: релиз без APK нельзя
+ * «установить», только открыть страницу.
+ */
+fun checkRelease(release: ReleaseInfo, currentVersion: String): ReleaseCheck = when {
+    release.apkUrl.isBlank() -> ReleaseCheck.NO_APK
+    isRollback(release.version, currentVersion) -> ReleaseCheck.ROLLBACK
+    else -> ReleaseCheck.OK
+}
+
+/**
+ * Откат ли это: версия не новее установленной.
+ *
+ * Числовые версии сравниваются по порядку (2.8 старее 2.9). Нечисловые
+ * теги упорядочить нельзя, там откат -- только точное совпадение.
+ */
+private fun isRollback(candidate: String, current: String): Boolean {
+    val a = candidate.trim().removePrefix("v").removePrefix("V")
+    val b = current.trim().removePrefix("v").removePrefix("V")
+    if (a.isEmpty() || b.isEmpty()) return false
+    val bothNumeric = listOf(a, b).all { v ->
+        v.substringBefore('-').substringBefore('+')
+            .split('.').all { part -> part.toLongOrNull() != null }
+    }
+    return if (bothNumeric) !isNewerVersion(candidate, current)
+    else a.equals(b, ignoreCase = true)
+}
 
 /** Результат последней проверки обновлений. */
 enum class UpdateState {
@@ -130,38 +175,46 @@ suspend fun fetchLatestRelease(): ReleaseInfo? {
         AppLog.log("update", "check: no response from GitHub (сеть или таймаут)")
         return null
     }
-    return runCatching {
-        val root = RELEASE_JSON.parseToJsonElement(body).jsonObject
-        fun field(name: String): String =
-            root[name]?.jsonPrimitive?.contentOrNull() ?: ""
-        val tag = field("tag_name")
-        if (tag.isBlank()) {
-            AppLog.log("update", "check: пустой tag_name в ответе релиза")
-            return null
-        }
-        val url = field("html_url")
-        if (url.isBlank()) {
-            AppLog.log("update", "check: пустой html_url в ответе релиза")
-            return null
-        }
-        ReleaseInfo(
-            version = tag,
-            url = url,
-            name = field("name"),
-            publishedAt = field("published_at"),
-            apkUrl = runCatching {
-                root["assets"]?.jsonArray
-                    ?.mapNotNull { it.jsonObject["browser_download_url"]?.jsonPrimitive?.contentOrNull() }
-                    ?.firstOrNull { it.endsWith(".apk", ignoreCase = true) }
-                    ?: ""
-            }.getOrDefault("")
-        )
-    }.getOrElse { e ->
-        // Ошибка разбора: GitHub мог вернуть HTML ошибки или заглушку
-        // блокировщика -- в журнале видно, что именно пришло.
-        AppLog.log("update", "check: разбор ответа не удался: ${e.causeChain().ifEmpty { e::class.simpleName ?: "error" }}")
-        null
+    return parseRelease(body)
+}
+
+/**
+ * Разбирает ответ GitHub; null -- пустой тег, пустой URL или битый JSON.
+ *
+ * Отдельная чистая функция, а не тело fetchLatestRelease: разбор падает
+ * на HTML ошибки и заглушках блокировщика, и это должно проверяться без
+ * сети.
+ */
+fun parseRelease(text: String): ReleaseInfo? = runCatching {
+    val root = RELEASE_JSON.parseToJsonElement(text).jsonObject
+    fun field(name: String): String =
+        root[name]?.jsonPrimitive?.contentOrNull() ?: ""
+    val tag = field("tag_name")
+    if (tag.isBlank()) {
+        AppLog.log("update", "check: пустой tag_name в ответе релиза")
+        return null
     }
+    val url = field("html_url")
+    if (url.isBlank()) {
+        AppLog.log("update", "check: пустой html_url в ответе релиза")
+        return null
+    }
+    ReleaseInfo(
+        version = tag,
+        url = url,
+        name = field("name"),
+        publishedAt = field("published_at"),
+        apkUrl = runCatching {
+            root["assets"]?.jsonArray
+                ?.mapNotNull { it.jsonObject["browser_download_url"]?.jsonPrimitive?.contentOrNull() }
+                ?.firstOrNull { it.endsWith(".apk", ignoreCase = true) }
+                ?: ""
+        }.getOrDefault(""),
+        changelog = field("body").trim()
+    )
+}.getOrElse { e ->
+    AppLog.log("update", "check: разбор ответа не удался: ${e.causeChain().ifEmpty { e::class.simpleName ?: "error" }}")
+    null
 }
 
 /**

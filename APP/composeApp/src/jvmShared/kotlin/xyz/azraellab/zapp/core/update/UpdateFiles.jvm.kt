@@ -24,7 +24,11 @@ internal fun updateApkFile(version: String): File =
 actual fun cachedUpdateApk(version: String): String? =
     updateApkFile(version).takeIf { it.exists() && it.length() > 0 }?.absolutePath
 
-actual suspend fun downloadUpdateApk(version: String, url: String): Boolean =
+actual suspend fun downloadUpdateApk(
+    version: String,
+    url: String,
+    onProgress: ((done: Long, total: Long) -> Unit)?
+): Boolean =
     withContext(Dispatchers.IO) {
         runCatching {
             val dest = updateApkFile(version)
@@ -42,8 +46,19 @@ actual suspend fun downloadUpdateApk(version: String, url: String): Boolean =
             conn.instanceFollowRedirects = true
             try {
                 if (conn.responseCode != 200) return@runCatching false
+                val total = conn.contentLengthLong.takeIf { it > 0 } ?: 0L
                 conn.inputStream.use { input ->
-                    tmp.outputStream().use { output -> input.copyTo(output) }
+                    tmp.outputStream().use { output ->
+                        val buf = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var done = 0L
+                        while (true) {
+                            val read = input.read(buf)
+                            if (read < 0) break
+                            output.write(buf, 0, read)
+                            done += read
+                            onProgress?.invoke(done, total)
+                        }
+                    }
                 }
             } finally {
                 conn.disconnect()

@@ -480,6 +480,8 @@ enum class Str {
     UPD_COMPARE,
     UPD_COMPARE_SEMVER,
     UPD_COMPARE_TAG,
+    UPD_CHANGELOG,
+    UPD_PROGRESS,
 
     /** Строка состояния под навигацией. */
     STATUS_PERMS_NEEDED,
@@ -1416,6 +1418,8 @@ enum class Str {
         UPD_COMPARE -> pick(lang, "Version comparison", "Сравнение версий", "版本比较")
         UPD_COMPARE_SEMVER -> pick(lang, "By version number", "По номеру версии", "按版本号")
         UPD_COMPARE_TAG -> pick(lang, "By tag change", "По смене тега", "按标签变化")
+        UPD_CHANGELOG -> pick(lang, "What changed", "Что изменилось", "更新内容")
+        UPD_PROGRESS -> pick(lang, "Downloading", "Загрузка", "下载中")
         STATUS_PERMS_NEEDED -> pick(lang, "Permissions needed", "Нужны разрешения", "需要权限")
         STATUS_DPI -> pick(lang, "DPI", "DPI", "DPI")
         STATUS_RELAY -> pick(lang, "Relay", "Релей", "中继")

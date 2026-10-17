@@ -12,6 +12,13 @@ package xyz.azraellab.zapp.core.net
  */
 expect suspend fun httpGetText(url: String): String?
 
+/** POST JSON-тела; null -- сети нет, сервер ответил не 2xx или ссылка битая. */
+expect suspend fun httpPostJson(
+    url: String,
+    body: String,
+    headers: Map<String, String> = emptyMap()
+): String?
+
 /**
  * Открывает ссылку в браузере по умолчанию.
  *

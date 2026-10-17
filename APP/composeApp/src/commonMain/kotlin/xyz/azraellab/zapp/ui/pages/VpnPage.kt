@@ -213,6 +213,7 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
     var limit by rememberSaveable(pageSize) { mutableIntStateOf(pageSize) }
     var importOpen by rememberSaveable { mutableStateOf(false) }
     var importText by remember { mutableStateOf("") }
+    var warpBusy by remember { mutableStateOf(false) }
 
     val visible = remember(config.profiles) { state.visibleVpnProfiles() }
     // Достижимость, а не живость: проба -- это TCP/UDP-доступ до сервера
@@ -324,6 +325,20 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
             onClick = { addProfile(state) },
             modifier = Modifier.fillMaxWidth(),
             path = "vpn.add_profile"
+        )
+        ZappButton(
+            text = tr(Str.VPN_WARP),
+            role = ButtonRole.GHOST,
+            enabled = !warpBusy,
+            onClick = {
+                warpBusy = true
+                scope.launch {
+                    state.registerWarp()
+                    warpBusy = false
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            path = "vpn.warp"
         )
 
         if (importOpen) {

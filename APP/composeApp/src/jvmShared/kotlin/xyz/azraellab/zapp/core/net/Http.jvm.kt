@@ -12,3 +12,11 @@ import kotlinx.coroutines.withContext
 actual suspend fun httpGetText(url: String): String? = withContext(Dispatchers.IO) {
     httpGet(url)
 }
+
+actual suspend fun httpPostJson(
+    url: String,
+    body: String,
+    headers: Map<String, String>
+): String? = withContext(Dispatchers.IO) {
+    httpPost(url, body, headers)
+}

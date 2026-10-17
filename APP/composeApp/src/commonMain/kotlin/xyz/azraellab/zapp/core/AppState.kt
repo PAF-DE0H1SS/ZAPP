@@ -29,7 +29,13 @@ import xyz.azraellab.zapp.core.backup.createWebDavClient
 import xyz.azraellab.zapp.core.catalog.CatalogEntry
 import xyz.azraellab.zapp.core.catalog.CatalogFeed
 import xyz.azraellab.zapp.core.catalog.CatalogService
+import xyz.azraellab.zapp.core.net.httpPostJson
 import xyz.azraellab.zapp.core.secure.platformSecureStorage
+import xyz.azraellab.zapp.core.warp.buildRegisterRequest
+import xyz.azraellab.zapp.core.warp.generateWireGuardKeyPair
+import xyz.azraellab.zapp.core.warp.parseRegisterResponse
+import xyz.azraellab.zapp.core.warp.toProfile
+import xyz.azraellab.zapp.core.warp.warpRegisterUrl
 import xyz.azraellab.zapp.core.daemon.DaemonId
 import xyz.azraellab.zapp.core.geo.photonReverse
 import xyz.azraellab.zapp.core.daemon.DaemonSpec
@@ -2466,6 +2472,49 @@ class AppState(
         }
         return incoming.size
     }
+
+    // --- Cloudflare WARP ---
+
+    /** Регистрирует аккаунт WARP и добавляет его как wireguard-профиль. */
+    suspend fun registerWarp(): PresetMessage {
+        val keys = generateWireGuardKeyPair()
+        if (keys == null) {
+            lastMessage = PresetMessage.unavailable
+            return PresetMessage.unavailable
+        }
+        val (privateKey, publicKey) = keys
+        val serial = runCatching {
+            platformSecureStorage().get(warpSerialSlot)
+                ?: java.util.UUID.randomUUID().toString().also {
+                    platformSecureStorage().put(warpSerialSlot, it)
+                }
+        }.getOrDefault(java.util.UUID.randomUUID().toString())
+
+        val body = buildRegisterRequest(publicKey, serial)
+        val response = runCatching {
+            httpPostJson(
+                warpRegisterUrl,
+                body,
+                mapOf("User-Agent" to "okhttp/3.12.1", "Accept" to "application/json")
+            )
+        }.getOrNull()
+        if (response == null) {
+            lastMessage = PresetMessage.badFile
+            return PresetMessage.badFile
+        }
+
+        val account = parseRegisterResponse(response, privateKey)
+        if (account == null) {
+            lastMessage = PresetMessage.badFile
+            return PresetMessage.badFile
+        }
+        val profile = account.toProfile("WARP")
+        addImportedProfiles(listOf(profile))
+        lastMessage = PresetMessage.applied("WARP")
+        return lastMessage!!
+    }
+
+    private val warpSerialSlot = "warp:serial"
 
     // --- Автостарт и автоперезапуск ---
 

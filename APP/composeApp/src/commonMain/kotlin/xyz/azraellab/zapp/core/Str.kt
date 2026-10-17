@@ -84,6 +84,7 @@ enum class Str {
     /** VPN. */
     VPN_PROFILES,
     VPN_ADD_PROFILE,
+    VPN_WARP,
     VPN_NAME,
     VPN_PROTOCOL,
     VPN_TRANSPORT,
@@ -766,6 +767,7 @@ enum class Str {
 
         VPN_PROFILES -> pick(lang, "Profiles", "Профили", "配置")
         VPN_ADD_PROFILE -> pick(lang, "Add profile", "Добавить профиль", "添加配置")
+        VPN_WARP -> pick(lang, "Register Cloudflare WARP", "Регистрация WARP", "注册 WARP")
         VPN_NAME -> pick(lang, "Name", "Имя", "名称")
         VPN_PROTOCOL -> pick(lang, "Protocol", "Протокол", "协议")
         VPN_TRANSPORT -> pick(lang, "Transport", "Транспорт", "传输")

@@ -39,3 +39,31 @@ fun httpGet(
 
 /** Таймаут по умолчанию: сервер обновлений обязан ответить быстрее. */
 const val HTTP_TIMEOUT_MS: Int = 8_000
+
+/** POST JSON-тела; null -- сети нет или сервер ответил не 2xx. */
+fun httpPost(
+    url: String,
+    body: String,
+    headers: Map<String, String> = emptyMap(),
+    timeoutMs: Int = HTTP_TIMEOUT_MS
+): String? {
+    val connection = runCatching { URL(url).openConnection() as HttpURLConnection }.getOrNull()
+        ?: return null
+    return try {
+        connection.connectTimeout = timeoutMs
+        connection.readTimeout = timeoutMs
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.setRequestProperty("User-Agent", "zapp")
+        headers.forEach { (key, value) -> connection.setRequestProperty(key, value) }
+        connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        if (code !in 200..299) return null
+        connection.inputStream.bufferedReader().use { it.readText() }
+    } catch (_: Exception) {
+        null
+    } finally {
+        connection.disconnect()
+    }
+}

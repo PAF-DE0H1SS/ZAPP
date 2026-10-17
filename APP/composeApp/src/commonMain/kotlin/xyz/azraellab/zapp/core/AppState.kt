@@ -62,7 +62,9 @@ import xyz.azraellab.zapp.core.gps.GpsFix
 import xyz.azraellab.zapp.core.gps.GpsState
 import xyz.azraellab.zapp.core.gps.createGpsEngine
 import xyz.azraellab.zapp.core.log.AppLog
+import xyz.azraellab.zapp.core.log.ErrorLog
 import xyz.azraellab.zapp.core.log.causeChain
+import xyz.azraellab.zapp.core.log.diagnosticsZip
 import xyz.azraellab.zapp.core.log.errorEvent
 import xyz.azraellab.zapp.core.native.NativeBinaries
 import xyz.azraellab.zapp.core.net.ConfigImport
@@ -1199,6 +1201,24 @@ class AppState(
         }
         val bytes = BackupService.build(config, presets, appVersion, System.currentTimeMillis())
         val name = "zapp-backup"
+        val ok = runCatching { gateway.writeBytes(bytes, "$name.zip") }.getOrDefault(false)
+        lastMessage = if (ok) PresetMessage.exported(name) else PresetMessage.failed(name)
+        return lastMessage!!
+    }
+
+    /** Собирает и сохраняет отчёт о проблеме (zip) одной кнопкой. */
+    suspend fun exportDiagnostics(): PresetMessage {
+        if (!gateway.available) {
+            lastMessage = PresetMessage.unavailable
+            return PresetMessage.unavailable
+        }
+        val bytes = diagnosticsZip(
+            logs = AppLog.lines.value,
+            errors = ErrorLog.lines.value,
+            version = appVersion,
+            configJson = ConfigCodec.encodeConfig(config)
+        )
+        val name = "zapp-diagnostics"
         val ok = runCatching { gateway.writeBytes(bytes, "$name.zip") }.getOrDefault(false)
         lastMessage = if (ok) PresetMessage.exported(name) else PresetMessage.failed(name)
         return lastMessage!!

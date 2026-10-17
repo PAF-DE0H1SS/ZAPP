@@ -315,6 +315,7 @@ enum class Str {
     LOG_ERRORS,
     LOG_ERRORS_EMPTY,
     LOG_ERRORS_CLEAR,
+    LOG_EXPORT,
     LOG_ERRORS_FILE_HINT,
 
     /** Приветствие и подсказки. */
@@ -980,6 +981,7 @@ enum class Str {
         LOG_ERRORS -> pick(lang, "Errors", "Ошибки", "错误")
         LOG_ERRORS_EMPTY -> pick(lang, "No failures recorded", "Сбоев не зафиксировано", "暂无故障记录")
         LOG_ERRORS_CLEAR -> pick(lang, "Clear errors", "Очистить ошибки", "清空错误")
+        LOG_EXPORT -> pick(lang, "Save diagnostics", "Сохранить диагностику", "保存诊断")
         LOG_ERRORS_FILE_HINT -> pick(
             lang,
             "Saved to file zapp-errors.log",

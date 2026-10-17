@@ -1510,7 +1510,7 @@ private fun LogSection(state: AppState) {
             )
         }
 
-        ErrorLogCard()
+        ErrorLogCard(state)
         ZappCard {
             if (lines.isEmpty()) {
                 ZappEmptyCard(title = tr(Str.LOG_EMPTY))
@@ -1547,8 +1547,9 @@ private fun LogSection(state: AppState) {
  * поэтому строка своя и обнадёживающая.
  */
 @Composable
-private fun ErrorLogCard() {
+private fun ErrorLogCard(state: AppState) {
     val errors by ErrorLog.lines.collectAsState()
+    val scope = rememberCoroutineScope()
     ZappCard {
         ZappListRow(
             title = tr(Str.LOG_ERRORS),
@@ -1582,6 +1583,12 @@ private fun ErrorLogCard() {
                 modifier = Modifier.fillMaxWidth()
             )
         }
+        ZappButton(
+            text = tr(Str.LOG_EXPORT),
+            role = ButtonRole.SECONDARY,
+            onClick = { scope.launch { state.exportDiagnostics() } },
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

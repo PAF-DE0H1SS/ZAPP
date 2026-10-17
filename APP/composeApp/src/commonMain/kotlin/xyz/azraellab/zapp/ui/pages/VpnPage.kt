@@ -37,6 +37,9 @@ import xyz.azraellab.zapp.core.VpnConnects
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.VpnSource
+import xyz.azraellab.zapp.core.SourceFreshness
+import xyz.azraellab.zapp.core.sourceAgeText
+import xyz.azraellab.zapp.core.sourceFreshness
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.engine.SessionKind
 import xyz.azraellab.zapp.core.engine.TunnelState
@@ -595,7 +598,7 @@ internal fun SourcesExpandable(
             ZappCard {
                 ZappSettingRow(
                     title = source.name,
-                    subtitle = sourceSubtitle(status),
+                    subtitle = sourceSubtitle(source, status),
                     checked = source.enabled,
                     onCheckedChange = { on -> state.setSourceEnabled(source.id, on) },
                     path = "$prefix.sources.toggle.${source.id}"
@@ -643,16 +646,30 @@ internal fun CheckProgressLine(progress: AppState.CheckProgress) {
     )
 }
 
-/** Подпись состояния источника: загрузка, число коннектов или ошибка. */
+/**
+ * Подпись состояния источника: загрузка, число коннектов или ошибка.
+ *
+ * Пока источник молчит (IDLE), подпись несёт свежесть по времени
+ * последнего обновления -- иначе список выглядит застывшим, и непонятно,
+ * автообновитель вообще работает. Устаревший источник получает пометку
+ * вдобавок к состоянию: три периода молчания -- это уже не пауза ноутбука.
+ */
 @Composable
-private fun sourceSubtitle(status: AppState.SourceStatus?): String {
-    if (status == null) return ""
-    return when (status.state) {
-        AppState.SourceState.IDLE -> ""
+private fun sourceSubtitle(source: VpnSource, status: AppState.SourceStatus?): String {
+    val now = System.currentTimeMillis()
+    val age = sourceAgeText(now, source.lastRefreshAtMs)
+    val stale = sourceFreshness(now, source.lastRefreshAtMs, source.refreshSeconds) ==
+        SourceFreshness.STALE
+    val base = when (status?.state) {
+        null, AppState.SourceState.IDLE -> when {
+            source.lastRefreshAtMs == 0L -> tr(Str.SOURCE_NEVER)
+            else -> tr(Str.SOURCE_UPDATED) + " $age"
+        }
         AppState.SourceState.LOADING -> tr(Str.VPN_CHECKING)
         AppState.SourceState.OK -> tr(Str.VPN_SOURCE_REFRESHED) + ": ${status.links}"
         AppState.SourceState.ERROR -> tr(Str.VPN_SOURCE_FAILED) + ": ${status.error}"
     }
+    return if (stale) base + " · " + tr(Str.SOURCE_STALE) else base
 }
 
 /**

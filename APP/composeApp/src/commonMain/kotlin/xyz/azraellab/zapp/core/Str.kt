@@ -538,6 +538,9 @@ enum class Str {
     VPN_SOURCE_FAILED,
     SOURCES_EMPTY_TITLE,
     SOURCES_EMPTY_BODY,
+    SOURCE_UPDATED,
+    SOURCE_NEVER,
+    SOURCE_STALE,
     VPN_SOURCE_REMOVED,
     VPN_SOURCE_EMPTY,
     VPN_ARCHIVE,
@@ -1525,6 +1528,14 @@ enum class Str {
         VPN_SOURCE_URL -> pick(lang, "Subscription URL", "URL подписки", "订阅链接")
         VPN_SOURCE_REFRESH -> pick(lang, "Update", "Обновить", "更新")
         VPN_SOURCE_REFRESHED -> pick(lang, "Updated: links", "Обновлено: ссылок", "已更新：链接")
+        SOURCE_UPDATED -> pick(lang, "Updated", "Обновлено", "已更新")
+        SOURCE_NEVER -> pick(lang, "Never updated", "Ещё не обновлялось", "尚未更新")
+        SOURCE_STALE -> pick(
+            lang,
+            "Outdated",
+            "Устарело",
+            "已过时"
+        )
         VPN_SOURCE_FAILED -> pick(lang, "Fetch failed", "Не удалось загрузить", "获取失败")
         VPN_SOURCE_REMOVED -> pick(lang, "Source removed", "Источник удалён", "来源已删除")
         VPN_SOURCE_EMPTY -> pick(lang, "No links in source", "В источнике нет ссылок", "来源中没有链接")

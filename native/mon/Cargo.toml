@@ -1,0 +1,11 @@
+[package]
+name = "zappmon"
+version = "0.1.0"
+edition = "2021"
+
+# Никаких зависимостей: std хватает для TCP, /proc и proto3-wire.
+[dependencies]
+
+[profile.release]
+strip = true
+lto = true

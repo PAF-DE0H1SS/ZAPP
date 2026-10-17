@@ -3,8 +3,20 @@ package xyz.azraellab.zapp.core.connections
 import xyz.azraellab.zapp.core.CmdRunner
 import xyz.azraellab.zapp.core.ProcessCmd
 
-actual fun createConnectionsSource(): ConnectionsSource =
-    DesktopConnectionsSource(cmd = ProcessCmd)
+/**
+ * Десктоп: монитор соединений -- свой Rust-демон zappmon с
+ * protobuf-IPC (сам читает /proc, без спавна утилит на каждый опрос).
+ * Бинарь собирается под хост (native/build-mon.sh); на Windows и macOS
+ * его нет, как и unix-таблиц -- там остаётся прежний опрос: ss, lsof,
+ * PowerShell. Если демон вдруг замолчал, [FallbackConnectionsSource]
+ * откатывает на опрос молча и без пустых таблиц.
+ */
+actual fun createConnectionsSource(): ConnectionsSource {
+    val polling = DesktopConnectionsSource(cmd = ProcessCmd)
+    if (!System.getProperty("os.name").orEmpty().contains("linux", true)) return polling
+    val mon = MonConnectionsSource(connect = { ZappMon.connect() })
+    return FallbackConnectionsSource(primary = mon, fallback = polling)
+}
 
 /**
  * Десктоп: таблицы соединений системными утилитами.

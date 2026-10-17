@@ -1,0 +1,33 @@
+// zappmon -- IPC монитора соединений ZAPP.
+//
+// Транспорт: TCP loopback, номер порта демон печатает первой строкой
+// stdout. Каждое письмо -- фрейм: u32 LE длина + байты сообщения.
+// Первое письмо от клиента -- Hello; дальше демон шлёт снимки сам.
+
+syntax = "proto3";
+package zappmon;
+
+// Клиент -> демон: рукопожатие. Без него демон молча закрывает сокет.
+message Hello {
+  uint32 version = 1; // PROTO_VERSION, сейчас 1
+}
+
+// Демон -> клиент: снимок таблицы соединений, раз в TICK_MS.
+message Snapshot {
+  uint64 at_ms = 1;        // время снимка, epoch millis
+  repeated Conn rows = 2;  // строки таблицы
+  Note note = 3;           // прочиталось ли вообще
+}
+
+message Conn {
+  string proto = 1;        // tcp / tcp6 / udp / udp6
+  uint32 local_port = 2;   // локальный порт
+  string remote = 3;       // "ip:port" удалённой стороны, "-" у слушателей
+  string owner = 4;        // имя процесса (comm), "-" если не найден
+}
+
+enum Note {
+  NOTE_UNSPECIFIED = 0;
+  NOTE_OK = 1;       // таблицы прочитаны
+  NOTE_NO_PROC = 2;  // /proc/net недоступен
+}

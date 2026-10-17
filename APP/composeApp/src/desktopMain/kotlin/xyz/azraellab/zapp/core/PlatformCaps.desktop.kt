@@ -12,6 +12,8 @@ actual fun platformCaps(): PlatformCaps = object : PlatformCaps {
     override val apkUpdatesSupported: Boolean = false
     override val systemProxySupported: Boolean = true
     override val autostartSupported: Boolean = true
+    override val uwpLoopbackSupported: Boolean =
+        System.getProperty("os.name").orEmpty().contains("win", true)
 
     // Десктоп -- не TV: пульт тут ни при чём, даже если система
     // заявит о leanback-фиче (боксы на Android подключаются к TV).

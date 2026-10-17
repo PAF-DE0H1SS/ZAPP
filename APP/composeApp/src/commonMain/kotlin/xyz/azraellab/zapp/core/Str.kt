@@ -683,6 +683,10 @@ enum class Str {
     /** Системный прокси десктопа. */
     SETTINGS_SYSTEM_PROXY,
     SETTINGS_SYSTEM_PROXY_HINT,
+    SETTINGS_UWP_LOOPBACK,
+    UWP_LOOPBACK_HINT,
+    UWP_LOOPBACK_EMPTY,
+    UWP_LOOPBACK_FAILED,
 
     /** Системные уведомления: текст отдаётся в нотификацию целиком. */
     NOTIFY_GPS_ON,
@@ -1755,6 +1759,29 @@ enum class Str {
                 "прежние настройки возвращаются.",
             "隧道运行时，跟随本机系统代理的浏览器与其他程序经由它访问网络" +
                 "（Windows、GNOME、KDE、macOS）。停止后恢复原有设置。"
+        )
+        SETTINGS_UWP_LOOPBACK -> pick(lang, "UWP loopback", "Loopback для UWP", "UWP 回环豁免")
+        UWP_LOOPBACK_HINT -> pick(
+            lang,
+            "Packaged Windows apps are cut off from loopback by their sandbox and " +
+                "cannot see the local proxy until granted an exemption. Tick the apps " +
+                "that should reach it.",
+            "Пакетные приложения Windows песочницей отрезаны от loopback и не видят " +
+                "локальный прокси, пока для них не выдано исключение. Отметьте те, " +
+                "которым нужен доступ.",
+            "Windows 打包应用被沙箱隔离在回环之外，在获得豁免前看不到本地代理。请勾选需要访问的应用。"
+        )
+        UWP_LOOPBACK_EMPTY -> pick(
+            lang,
+            "No packaged apps found",
+            "Пакетных приложений не найдено",
+            "未找到打包应用"
+        )
+        UWP_LOOPBACK_FAILED -> pick(
+            lang,
+            "Could not read or apply exemptions",
+            "Не удалось прочитать или применить исключения",
+            "无法读取或应用豁免"
         )
         SETTINGS_PROXY_AUTH -> pick(
             lang,

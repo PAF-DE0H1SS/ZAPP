@@ -42,6 +42,15 @@ interface PlatformCaps {
     val autostartSupported: Boolean
 
     /**
+     * Можно ли выдавать loopback-исключения UWP-пакетам (Windows).
+     *
+     * Песочница UWP закрывает loopback от пакетных приложений, и без
+     * исключения CheckNetIsolation такие приложения не видят локальный
+     * прокси. Ни на Android, ни на Linux/macOS UWP нет вовсе.
+     */
+    val uwpLoopbackSupported: Boolean
+
+    /**
      * Приложение запущено на Android TV (или аналогичном leanback-устройстве).
      *
      * Определяется в рантайме, а не при компиляции: телефон и приставка

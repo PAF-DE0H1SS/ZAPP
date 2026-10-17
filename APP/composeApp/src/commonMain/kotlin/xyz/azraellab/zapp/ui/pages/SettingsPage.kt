@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +34,7 @@ import xyz.azraellab.zapp.core.Docs
 import xyz.azraellab.zapp.core.GoodbyeDpiMode
 import xyz.azraellab.zapp.core.RegionTuner
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.UwpLoopbackCtl
 import xyz.azraellab.zapp.core.backup.RestoreMode
 import xyz.azraellab.zapp.core.ZapretFamily
 import xyz.azraellab.zapp.core.ZapretMode
@@ -66,10 +69,12 @@ import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
 import xyz.azraellab.zapp.ui.components.ZappDialog
 import xyz.azraellab.zapp.ui.components.ZappEmptyCard
+import xyz.azraellab.zapp.ui.components.ZappEmptyState
 import xyz.azraellab.zapp.ui.components.ZappListRow
 import xyz.azraellab.zapp.ui.components.ZappNumberField
 import xyz.azraellab.zapp.ui.components.ZappSectionTitle
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
+import xyz.azraellab.zapp.ui.components.ZappSkeletonList
 import xyz.azraellab.zapp.ui.components.ZappTextField
 import xyz.azraellab.zapp.ui.components.debugPath
 import xyz.azraellab.zapp.ui.components.RegionDropdown
@@ -450,6 +455,98 @@ private fun GeneralSection(state: AppState) {
                         },
                         path = "settings.proxyAuthPassword"
                     )
+                }
+            }
+        }
+    }
+
+    // Loopback-исключения UWP: секция есть только на Windows (caps).
+    if (state.caps.uwpLoopbackSupported) {
+        UwpLoopbackSection()
+    }
+}
+
+/**
+ * Loopback-исключения UWP (Windows).
+ *
+ * Песочница UWP режет пакетные приложения от loopback, и без списка
+ * исключений такие приложения не видят локальный прокси — настройка
+ * прокси в них бессмысленна. Список семейств читается один раз при
+ * открытии (реестр), состояние — CheckNetIsolation; включение идёт по
+ * тапу, и локальное множество меняется только при успехе: неудачный
+ * вызов вешает баннер, а не врёт галкой.
+ */
+@Composable
+private fun UwpLoopbackSection() {
+    val scope = rememberCoroutineScope()
+    var packages by remember { mutableStateOf<List<String>?>(null) }
+    var exempt by remember { mutableStateOf(setOf<String>()) }
+    var failed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val families = runCatching { UwpLoopbackCtl.families() }.getOrNull()
+        val current = runCatching { UwpLoopbackCtl.exempt() }.getOrNull()
+        packages = families ?: emptyList()
+        exempt = current ?: emptySet()
+        failed = families == null || current == null
+    }
+
+    PageGroup(tr(Str.SETTINGS_UWP_LOOPBACK)) {
+        ZappCard {
+            Text(
+                text = tr(Str.UWP_LOOPBACK_HINT),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            if (failed) {
+                ZappBanner(title = tr(Str.UWP_LOOPBACK_FAILED))
+            }
+            val list = packages
+            when {
+                list == null -> {
+                    Spacer(modifier = Modifier.height(AzraelSpace.xs))
+                    ZappSkeletonList(rows = 4)
+                }
+                list.isEmpty() -> if (!failed) {
+                    ZappEmptyState(title = tr(Str.UWP_LOOPBACK_EMPTY))
+                }
+                else -> {
+                    for ((index, pkg) in list.withIndex()) {
+                        val on = pkg in exempt
+                        ZappListRow(
+                            title = pkg,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    scope.launch {
+                                        // Свежее состояние читается в
+                                        // корутине: серия быстрых тапов
+                                        // не должна работать по кадру.
+                                        val wasOn = pkg in exempt
+                                        val ok = runCatching {
+                                            UwpLoopbackCtl.set(pkg, !wasOn)
+                                        }.getOrDefault(false)
+                                        if (ok) {
+                                            exempt = if (wasOn) exempt - pkg else exempt + pkg
+                                            failed = false
+                                        } else {
+                                            failed = true
+                                        }
+                                    }
+                                },
+                            trailing = {
+                                Checkbox(
+                                    checked = on,
+                                    onCheckedChange = null
+                                )
+                            },
+                            path = "settings.uwpLoopback.$pkg"
+                        )
+                        if (index < list.lastIndex) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                    }
                 }
             }
         }

@@ -73,6 +73,8 @@ import xyz.azraellab.zapp.core.net.ClashStats
 import xyz.azraellab.zapp.core.net.ClashTraffic
 import xyz.azraellab.zapp.core.net.LinkProbe
 import xyz.azraellab.zapp.core.net.LinkTarget
+import xyz.azraellab.zapp.core.netcheck.NetCheckResult
+import xyz.azraellab.zapp.core.netcheck.NetCheckService
 import xyz.azraellab.zapp.core.net.fetchClashNodeProbe
 import xyz.azraellab.zapp.core.net.fetchClashProbe
 import xyz.azraellab.zapp.core.net.fetchClashRoster
@@ -331,6 +333,33 @@ class AppState(
     /** Прогресс загрузки APK: проценты или null, если размер неизвестен. */
     var updateDownloadPercent: Int? by mutableStateOf(null)
         private set
+
+    private val _netCheckResults = MutableStateFlow<List<NetCheckResult>>(emptyList())
+
+    /** Итоги последнего сканера задержки; пусто, пока не проверяли. */
+    val netCheckResults: StateFlow<List<NetCheckResult>> = _netCheckResults.asStateFlow()
+
+    private val _netCheckRunning = MutableStateFlow(false)
+
+    /** Идёт ли сейчас скан; кнопка гаснет, пока пробы не закончатся. */
+    val netCheckRunning: StateFlow<Boolean> = _netCheckRunning.asStateFlow()
+
+    private val netCheckService = NetCheckService.real()
+
+    /** Лучший живой узел по задержке; null -- живых нет или не проверяли. */
+    val netCheckBest: NetCheckResult?
+        get() = netCheckService.best(_netCheckResults.value)
+
+    /** Пробивает узлы параллельно и кладёт итоги в [netCheckResults]. */
+    suspend fun runNetCheck() {
+        if (_netCheckRunning.value) return
+        _netCheckRunning.value = true
+        val results = runCatching { netCheckService.check(NetCheckService.defaultNodes()) }
+            .getOrDefault(emptyList())
+        _netCheckResults.value = results
+        _netCheckRunning.value = false
+        AppLog.log("netcheck", "checked ${results.size} nodes, best=${results.size}")
+    }
 
     /** Текущая версия -- та же константа, что участвует в сравнении. */
     val appVersion: String = APP_VERSION

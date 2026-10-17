@@ -316,6 +316,11 @@ enum class Str {
     LOG_ERRORS_EMPTY,
     LOG_ERRORS_CLEAR,
     LOG_EXPORT,
+    NET_CHECK,
+    NET_CHECK_RUN,
+    NET_CHECK_RUNNING,
+    NET_CHECK_EMPTY,
+    NET_CHECK_BEST,
     LOG_ERRORS_FILE_HINT,
 
     /** Приветствие и подсказки. */
@@ -983,6 +988,11 @@ enum class Str {
         LOG_ERRORS_EMPTY -> pick(lang, "No failures recorded", "Сбоев не зафиксировано", "暂无故障记录")
         LOG_ERRORS_CLEAR -> pick(lang, "Clear errors", "Очистить ошибки", "清空错误")
         LOG_EXPORT -> pick(lang, "Save diagnostics", "Сохранить диагностику", "保存诊断")
+        NET_CHECK -> pick(lang, "Network check", "Проверка сети", "网络检查")
+        NET_CHECK_RUN -> pick(lang, "Check nodes", "Проверить узлы", "检查节点")
+        NET_CHECK_RUNNING -> pick(lang, "Checking…", "Проверка…", "检查中…")
+        NET_CHECK_EMPTY -> pick(lang, "Not checked yet", "Ещё не проверялось", "尚未检查")
+        NET_CHECK_BEST -> pick(lang, "Fastest", "Самый быстрый", "最快")
         LOG_ERRORS_FILE_HINT -> pick(
             lang,
             "Saved to file zapp-errors.log",

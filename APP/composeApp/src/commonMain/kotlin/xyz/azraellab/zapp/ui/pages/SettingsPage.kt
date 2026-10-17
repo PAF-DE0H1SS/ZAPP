@@ -1511,6 +1511,7 @@ private fun LogSection(state: AppState) {
         }
 
         ErrorLogCard(state)
+        NetCheckCard(state)
         ZappCard {
             if (lines.isEmpty()) {
                 ZappEmptyCard(title = tr(Str.LOG_EMPTY))
@@ -1587,6 +1588,50 @@ private fun ErrorLogCard(state: AppState) {
             text = tr(Str.LOG_EXPORT),
             role = ButtonRole.SECONDARY,
             onClick = { scope.launch { state.exportDiagnostics() } },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+/**
+ * Сканер задержки до узлов: параллельные пробы и самый быстрый узел.
+ *
+ * Пустое состояние -- «ещё не проверялось», а не «узлов нет»: список
+ * узлов задан по умолчанию, поэтому без пробы показывать нечего.
+ */
+@Composable
+private fun NetCheckCard(state: AppState) {
+    val results by state.netCheckResults.collectAsState()
+    val running by state.netCheckRunning.collectAsState()
+    val scope = rememberCoroutineScope()
+    ZappCard {
+        ZappListRow(
+            title = tr(Str.NET_CHECK),
+            subtitle = state.netCheckBest?.let { "${it.node.label} · ${it.latencyMs} ms" }
+                ?: tr(Str.NET_CHECK_EMPTY)
+        )
+        if (results.isEmpty()) {
+            ZappEmptyCard(title = tr(Str.NET_CHECK_EMPTY))
+        } else {
+            results.sortedBy { it.latencyMs ?: Int.MAX_VALUE }.forEach { r ->
+                val mark = if (r === state.netCheckBest) "★ " else ""
+                val tail = when {
+                    r.latencyMs != null -> "${r.latencyMs} ms"
+                    r.alive -> "—"
+                    else -> r.error.ifEmpty { "?" }
+                }
+                Text(
+                    text = "$mark${r.node.label} · $tail",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+        ZappButton(
+            text = tr(if (running) Str.NET_CHECK_RUNNING else Str.NET_CHECK_RUN),
+            role = ButtonRole.SECONDARY,
+            enabled = !running,
+            onClick = { scope.launch { state.runNetCheck() } },
             modifier = Modifier.fillMaxWidth()
         )
     }

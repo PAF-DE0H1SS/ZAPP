@@ -144,6 +144,9 @@ class AppState(
             instance ?: AppState().also { instance = it }
         }
 
+        /** Экземпляр, если уже создан; для shutdown-хука, чтобы не плодить второй. */
+        fun peek(): AppState? = instance
+
         /** Отложенная запись: столько ждём после последнего изменения. */
         const val SAVE_DEBOUNCE_MS = 400L
 

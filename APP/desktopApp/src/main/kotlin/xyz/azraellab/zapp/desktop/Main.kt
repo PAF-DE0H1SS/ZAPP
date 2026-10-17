@@ -1,5 +1,8 @@
 package xyz.azraellab.zapp.desktop
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -8,9 +11,12 @@ import androidx.compose.ui.window.rememberWindowState
 import java.io.File
 import kotlin.system.exitProcess
 import xyz.azraellab.zapp.App
+import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.createConfigStore
 import xyz.azraellab.zapp.core.daemon.DpiOverlay
+import xyz.azraellab.zapp.core.instance.SingleInstance
+import xyz.azraellab.zapp.core.instance.killProcessTree
 import xyz.azraellab.zapp.core.net.ProxyUri
 import xyz.azraellab.zapp.core.net.SingboxConfig
 
@@ -18,16 +24,43 @@ fun main(args: Array<String>) {
     if (args.firstOrNull() == "--check-config") {
         exitProcess(checkConfig(args.drop(1)))
     }
+    // Вторая копия не поднимается: две пары демонов держат одни порты.
+    // Её работа -- попросить первую показать окно и выйти.
+    val instance = SingleInstance.default()
+    if (!instance.tryAcquire()) {
+        SingleInstance.pingFocus()
+        exitProcess(0)
+    }
+    SingleInstance.startFocusListener(onFocus = { SingleInstance.raiseFocus() })
+    // Демоны -- дочерние процессы: без хука они переживают приложение.
+    Runtime.getRuntime().addShutdownHook(Thread {
+        AppState.peek()?.dispose()
+        // disable в dispose уходит в scope: даём ему добежать до снятия
+        // правил, прежде чем JVM оборвёт IO-диспетчер.
+        Thread.sleep(DISPOSE_GRACE_MS)
+        killProcessTree(ProcessHandle.current(), includeRoot = false)
+        instance.release()
+    })
     application {
         Window(
             onCloseRequest = ::exitApplication,
             title = "ZAPP",
             state = rememberWindowState(size = DpSize(900.dp, 640.dp))
         ) {
+            val focusTick by SingleInstance.focusRequests.collectAsState()
+            LaunchedEffect(focusTick) {
+                if (focusTick > 0) {
+                    window.toFront()
+                    window.requestFocus()
+                }
+            }
             App()
         }
     }
 }
+
+/** Сколько ждать снятия DPI-правил в shutdown-хуке. */
+private const val DISPOSE_GRACE_MS = 400L
 
 /**
  * Dev-инструмент: собрать конфиг sing-box из настроек и прогнать

@@ -878,6 +878,73 @@ private fun BackupSection(state: AppState) {
                 }
             }
         }
+
+        PageGroup(tr(Str.SETTINGS_BACKUP_DAV)) {
+            ZappCard {
+                Text(
+                    text = tr(Str.SETTINGS_BACKUP_DAV_HINT),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                val dav = state.webDavConfig
+                var davUrl by rememberSaveable { mutableStateOf(dav.url) }
+                var davLogin by rememberSaveable { mutableStateOf(dav.login) }
+                var davPass by rememberSaveable { mutableStateOf("") }
+                ZappTextField(
+                    value = davUrl,
+                    onValueChange = { davUrl = it },
+                    label = tr(Str.SETTINGS_BACKUP_DAV_URL),
+                    path = "settings.backup.dav.url"
+                )
+                ZappTextField(
+                    value = davLogin,
+                    onValueChange = { davLogin = it },
+                    label = tr(Str.SETTINGS_BACKUP_DAV_LOGIN),
+                    path = "settings.backup.dav.login"
+                )
+                ZappTextField(
+                    value = davPass,
+                    onValueChange = { davPass = it },
+                    label = tr(Str.SETTINGS_BACKUP_DAV_PASS),
+                    path = "settings.backup.dav.pass"
+                )
+                ZappButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    ZappButton(
+                        text = tr(Str.SETTINGS_BACKUP_DAV_SAVE),
+                        role = ButtonRole.SECONDARY,
+                        onClick = { state.saveWebDav(davUrl, davLogin, davPass) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ZappButton(
+                        text = tr(Str.SETTINGS_BACKUP_DAV_UPLOAD),
+                        role = ButtonRole.SECONDARY,
+                        onClick = {
+                            scope.launch {
+                                state.saveWebDav(davUrl, davLogin, davPass)
+                                val result = state.webDavUpload()
+                                message.value = result.key()
+                                failure = !result.ok
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                ZappButton(
+                    text = tr(Str.SETTINGS_BACKUP_DAV_DOWNLOAD),
+                    role = ButtonRole.SECONDARY,
+                    onClick = {
+                        scope.launch {
+                            state.saveWebDav(davUrl, davLogin, davPass)
+                            val result = state.webDavDownload()
+                            message.value = result.key()
+                            failure = !result.ok
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
     }
 }
 

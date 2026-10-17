@@ -259,6 +259,14 @@ enum class Str {
     SETTINGS_BACKUP_MODE_PRESETS,
     SETTINGS_BACKUP_APPLY,
     SETTINGS_BACKUP_CANCEL,
+    SETTINGS_BACKUP_DAV,
+    SETTINGS_BACKUP_DAV_HINT,
+    SETTINGS_BACKUP_DAV_URL,
+    SETTINGS_BACKUP_DAV_LOGIN,
+    SETTINGS_BACKUP_DAV_PASS,
+    SETTINGS_BACKUP_DAV_SAVE,
+    SETTINGS_BACKUP_DAV_UPLOAD,
+    SETTINGS_BACKUP_DAV_DOWNLOAD,
     SETTINGS_ABOUT,
     SETTINGS_SYSTEM,
     SETTINGS_APPLY_LIVE,
@@ -889,6 +897,17 @@ enum class Str {
         SETTINGS_BACKUP_MODE_PRESETS -> pick(lang, "Presets only", "Только пресеты", "仅预设")
         SETTINGS_BACKUP_APPLY -> pick(lang, "Apply", "Применить", "应用")
         SETTINGS_BACKUP_CANCEL -> pick(lang, "Cancel", "Отмена", "取消")
+        SETTINGS_BACKUP_DAV -> pick(lang, "WebDAV server", "Сервер WebDAV", "WebDAV 服务器")
+        SETTINGS_BACKUP_DAV_HINT -> pick(
+            lang, "Backup is stored on your own server",
+            "Бэкап хранится на вашем сервере", "备份存储在您自己的服务器上"
+        )
+        SETTINGS_BACKUP_DAV_URL -> pick(lang, "Address", "Адрес", "地址")
+        SETTINGS_BACKUP_DAV_LOGIN -> pick(lang, "Login", "Логин", "登录名")
+        SETTINGS_BACKUP_DAV_PASS -> pick(lang, "Password", "Пароль", "密码")
+        SETTINGS_BACKUP_DAV_SAVE -> pick(lang, "Save", "Сохранить", "保存")
+        SETTINGS_BACKUP_DAV_UPLOAD -> pick(lang, "Upload", "Загрузить на сервер", "上传")
+        SETTINGS_BACKUP_DAV_DOWNLOAD -> pick(lang, "Download", "Скачать с сервера", "下载")
         SETTINGS_ABOUT -> pick(lang, "About", "О программе", "关于")
         SETTINGS_LOG -> pick(lang, "Log", "Журнал", "日志")
         SETTINGS_DOCS -> pick(lang, "Documentation", "Документация", "文档")

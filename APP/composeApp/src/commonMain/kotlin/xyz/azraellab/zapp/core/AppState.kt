@@ -24,6 +24,9 @@ import xyz.azraellab.zapp.core.backup.BackupContents
 import xyz.azraellab.zapp.core.backup.BackupManifest
 import xyz.azraellab.zapp.core.backup.BackupService
 import xyz.azraellab.zapp.core.backup.RestoreMode
+import xyz.azraellab.zapp.core.backup.WebDavConfig
+import xyz.azraellab.zapp.core.backup.createWebDavClient
+import xyz.azraellab.zapp.core.secure.platformSecureStorage
 import xyz.azraellab.zapp.core.daemon.DaemonId
 import xyz.azraellab.zapp.core.geo.photonReverse
 import xyz.azraellab.zapp.core.daemon.DaemonSpec
@@ -1227,6 +1230,63 @@ class AppState(
     fun cancelBackup() {
         pendingBackup = null
     }
+
+    // --- WebDAV ---
+
+    private val secure = platformSecureStorage()
+    private val webDav = createWebDavClient()
+
+    /** Адрес и логин сервера; пароль лежит в SecureStorage. */
+    var webDavConfig: WebDavConfig by mutableStateOf(loadWebDav())
+        private set
+
+    private fun loadWebDav(): WebDavConfig =
+        runCatching {
+            secure.get(webDavSlot)?.let {
+                ConfigCodec.json.decodeFromString(WebDavConfig.serializer(), it)
+            }
+        }.getOrNull() ?: WebDavConfig()
+
+    /** Сохраняет вход на сервер; пароль уходит в хранилище секретов. */
+    fun saveWebDav(url: String, login: String, password: String) {
+        val merged = WebDavConfig(url.trim(), login.trim(), password.ifEmpty { webDavConfig.password })
+        webDavConfig = merged
+        val forDisk = merged.copy(password = "")
+        runCatching {
+            secure.put(webDavSlot, ConfigCodec.json.encodeToString(WebDavConfig.serializer(), forDisk))
+            if (password.isNotEmpty()) secure.put(webDavPassSlot, password)
+        }
+    }
+
+    /** Кладёт бэкап на сервер. */
+    suspend fun webDavUpload(): PresetMessage {
+        val bytes = BackupService.build(config, presets, appVersion, System.currentTimeMillis())
+        val pass = runCatching { secure.get(webDavPassSlot) }.getOrNull() ?: ""
+        val ok = webDav.upload(webDavConfig.copy(password = pass), bytes)
+        lastMessage = if (ok) PresetMessage.exported("WebDAV") else PresetMessage.failed("WebDAV")
+        return lastMessage!!
+    }
+
+    /** Тянет бэкап с сервера и готовит превью. */
+    suspend fun webDavDownload(): PresetMessage {
+        val pass = runCatching { secure.get(webDavPassSlot) }.getOrNull() ?: ""
+        val bytes = webDav.download(webDavConfig.copy(password = pass))
+        if (bytes == null || bytes.isEmpty()) {
+            lastMessage = PresetMessage.badFile
+            return PresetMessage.badFile
+        }
+        val contents = BackupService.parse(bytes)
+        if (contents == null) {
+            lastMessage = PresetMessage.badFile
+            return PresetMessage.badFile
+        }
+        pendingBackup = contents
+        lastMessage = PresetMessage.imported("WebDAV")
+        return lastMessage!!
+    }
+
+    private val webDavSlot = "backup:webdav"
+    private val webDavPassSlot = "backup:webdav:pass"
 
     // --- Мониторинг трафика ---
 

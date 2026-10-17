@@ -29,8 +29,10 @@ import xyz.azraellab.zapp.core.perApp.AppSelection
 import xyz.azraellab.zapp.core.perApp.InstalledApp
 import xyz.azraellab.zapp.core.perApp.PerAppConfig
 import xyz.azraellab.zapp.core.perApp.RouteMode
+import xyz.azraellab.zapp.core.perApp.groupByCategory
 import xyz.azraellab.zapp.core.perApp.installedApps
 import xyz.azraellab.zapp.core.perApp.ownPackageName
+import xyz.azraellab.zapp.core.perApp.toggleCategory
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ZappBanner
 import xyz.azraellab.zapp.ui.components.ZappCard
@@ -237,6 +239,14 @@ fun PerAppPicker(state: AppState, scope: PerAppScope) {
         path = "perapp.search"
     )
 
+    // Дерево процессов (десктоп) не группируется: порядок строк -- это
+    // ветки родитель-потомок, а у процессов категории и так нет.
+    val treeMode = remember(catalog) { (catalog ?: emptyList()).any { it.depth != 0 } }
+    val groups = remember(visible, perApp.groupByCategory) {
+        if (!perApp.groupByCategory) null
+        else groupByCategory(visible).takeIf { it.size > 1 }
+    }
+
     ZappCard {
         ZappSettingRow(
             title = tr(Str.PERAPP_SHOW_SYSTEM),
@@ -246,6 +256,18 @@ fun PerAppPicker(state: AppState, scope: PerAppScope) {
             },
             path = "perapp.showSystem"
         )
+        // Дерево процессов (десктоп) категории не имеет и группировкой
+        // рвать нельзя: там строки удерживают порядок родитель-потомок.
+        if (!treeMode) {
+            ZappSettingRow(
+                title = tr(Str.PERAPP_GROUP_BY_CATEGORY),
+                checked = perApp.groupByCategory,
+                onCheckedChange = { on ->
+                    state.mutate { cfg -> cfg.copy(perApp = cfg.perApp.copy(groupByCategory = on)) }
+                },
+                path = "perapp.groupByCategory"
+            )
+        }
         if (catalog == null) {
             // Каталог в сотни пакетов грузится заметно: раньше список
             // молча пустел, и непонятно -- нет приложений или ещё не
@@ -259,6 +281,28 @@ fun PerAppPicker(state: AppState, scope: PerAppScope) {
         }
     }
 
+    // Свежий выбор читается внутри mutate: серия быстрых тапов не
+    // должна работать по кадру старому списку.
+    val tapApp: (InstalledApp) -> Unit = { app ->
+        state.mutate { cfg ->
+            val cur = scope.read(cfg.perApp)
+            val next = if (app.packageName in cur.packages) {
+                cur.packages - app.packageName
+            } else {
+                cur.packages + app.packageName
+            }
+            cfg.copy(perApp = scope.write(cfg.perApp, cur.copy(packages = next)))
+        }
+    }
+    // Галка категории: «все отмечены -- снять, иначе добавить» считает
+    // toggleCategory по свежему списку внутри mutate.
+    val tapGroup: (List<String>) -> Unit = { pkgs ->
+        state.mutate { cfg ->
+            val cur = scope.read(cfg.perApp)
+            cfg.copy(perApp = scope.write(cfg.perApp, cur.copy(packages = toggleCategory(cur.packages, pkgs))))
+        }
+    }
+
     // Список отдельной карточкой: сотни строк внутри карточки с
     // тумблерами раздули бы её рекомпозицию на каждое нажатие чекбокса.
     if (visible.isNotEmpty()) {
@@ -266,42 +310,68 @@ fun PerAppPicker(state: AppState, scope: PerAppScope) {
             // Длинный список -- не карточка с пустотой, а линованная
             // лента: тонкая линейка между строками держит глаз на строке,
             // когда прокручиваешь сотни пунктов.
-            for ((index, app) in visible.withIndex()) {
-                val checked = app.packageName in selection.packages
-                ZappListRow(
-                    title = app.label,
-                    subtitle = app.packageName,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        // Отступ уровня: на десктопе это ветка дерева
-                        // процессов (потомок видно под родителем).
-                        .padding(start = (app.depth * 14).dp)
-                        .clickable {
-                            // Свежий выбор читается внутри mutate: серия
-                            // быстрых тапов не должна работать по кадру
-                            // старому списку.
-                            state.mutate { cfg ->
-                                val cur = scope.read(cfg.perApp)
-                                val next = if (app.packageName in cur.packages) {
-                                    cur.packages - app.packageName
-                                } else {
-                                    cur.packages + app.packageName
-                                }
-                                cfg.copy(perApp = scope.write(cfg.perApp, cur.copy(packages = next)))
-                            }
+            if (groups == null) {
+                for ((index, app) in visible.withIndex()) {
+                    appRow(app, app.packageName in selection.packages) { tapApp(app) }
+                    if (index < visible.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+            } else {
+                for ((groupIndex, group) in groups.withIndex()) {
+                    val (category, apps) = group
+                    val picked = apps.count { it.packageName in selection.packages }
+                    ZappListRow(
+                        title = tr(category.str),
+                        subtitle = "$picked/${apps.size}",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { tapGroup(apps.map { it.packageName }) },
+                        trailing = {
+                            Checkbox(
+                                checked = picked == apps.size,
+                                onCheckedChange = null
+                            )
                         },
-                    trailing = {
-                        Checkbox(
-                            checked = checked,
-                            onCheckedChange = null
-                        )
-                    },
-                    path = "perapp.app.${app.packageName}"
-                )
-                if (index < visible.lastIndex) {
+                        path = "perapp.cat.${category.name}"
+                    )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    for ((index, app) in apps.withIndex()) {
+                        appRow(app, app.packageName in selection.packages) { tapApp(app) }
+                        if (index < apps.lastIndex) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                    }
+                    if (groupIndex < groups.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * Строка приложения в списке выбора.
+ *
+ * Отступ уровня -- ветка дерева процессов на десктопе (потомок видно
+ * под родителем); на Android depth всегда 0.
+ */
+@Composable
+private fun appRow(app: InstalledApp, checked: Boolean, onTap: () -> Unit) {
+    ZappListRow(
+        title = app.label,
+        subtitle = app.packageName,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = (app.depth * 14).dp)
+            .clickable(onClick = onTap),
+        trailing = {
+            Checkbox(
+                checked = checked,
+                onCheckedChange = null
+            )
+        },
+        path = "perapp.app.${app.packageName}"
+    )
 }

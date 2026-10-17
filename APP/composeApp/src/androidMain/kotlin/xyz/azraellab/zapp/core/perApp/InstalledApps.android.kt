@@ -51,5 +51,17 @@ private fun ApplicationInfo.toInstalledApp(pm: PackageManager): InstalledApp =
         label = pm.getApplicationLabel(this)?.toString()?.takeIf { it.isNotBlank() }
             ?: packageName,
         uid = if (uid != 0) uid else null,
-        isSystem = (flags and ApplicationInfo.FLAG_SYSTEM) != 0
+        isSystem = (flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+        category = refineCategory(packageName, platformCategory(category))
     )
+
+/** Категория платформы в нашу шкалу; мелкие медиа-типы схлопнуты в MEDIA. */
+private fun platformCategory(value: Int): AppCategory = when (value) {
+    ApplicationInfo.CATEGORY_GAME -> AppCategory.GAME
+    ApplicationInfo.CATEGORY_AUDIO,
+    ApplicationInfo.CATEGORY_VIDEO,
+    ApplicationInfo.CATEGORY_IMAGE -> AppCategory.MEDIA
+    ApplicationInfo.CATEGORY_SOCIAL -> AppCategory.SOCIAL
+    ApplicationInfo.CATEGORY_NEWS -> AppCategory.NEWS
+    else -> AppCategory.OTHER
+}

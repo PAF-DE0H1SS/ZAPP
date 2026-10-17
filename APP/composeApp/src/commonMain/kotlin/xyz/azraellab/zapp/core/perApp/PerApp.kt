@@ -66,7 +66,15 @@ data class PerAppConfig(
     val goodbyeDpi: AppSelection = AppSelection(),
 
     /** Показывать ли системные приложения в списке пикера. */
-    val showSystemApps: Boolean = false
+    val showSystemApps: Boolean = false,
+
+    /**
+     * Группировать список по категориям с галкой на всю группу.
+     *
+     * На десктопе игнорируется: там каталог -- дерево процессов,
+     * категории у него нет, и группировка разорвала бы ветки.
+     */
+    val groupByCategory: Boolean = true
 ) {
     fun sanitized(): PerAppConfig = copy(
         vpn = vpn.sanitized(),
@@ -97,7 +105,10 @@ data class InstalledApp(
     val uid: Int?,
     val isSystem: Boolean,
     val depth: Int = 0,
-    val familyId: Int? = null
+    val familyId: Int? = null,
+
+    /** Категория для группировки в пикере; платформа не размечена -- OTHER. */
+    val category: AppCategory = AppCategory.OTHER
 )
 
 /**

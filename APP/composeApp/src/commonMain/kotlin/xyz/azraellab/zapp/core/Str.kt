@@ -316,6 +316,14 @@ enum class Str {
     PERAPP_SCOPE_UNAVAILABLE,
     PERAPP_NEXT_CONNECT,
     PERAPP_SELF_EXCLUDED,
+    PERAPP_GROUP_BY_CATEGORY,
+    CAT_SOCIAL,
+    CAT_MESSENGER,
+    CAT_FINANCE,
+    CAT_GAME,
+    CAT_MEDIA,
+    CAT_NEWS,
+    CAT_OTHER,
 
     /** Журнал (детальный лог). */
     LOG_DETAIL_ON,
@@ -984,6 +992,14 @@ enum class Str {
         PERAPP_SELECT -> pick(lang, "Select apps", "Выбирать приложения", "选择应用")
         PERAPP_SEARCH -> pick(lang, "Search", "Поиск", "搜索")
         PERAPP_SHOW_SYSTEM -> pick(lang, "Show system apps", "Показывать системные", "显示系统应用")
+        PERAPP_GROUP_BY_CATEGORY -> pick(lang, "Group by category", "Группировать по категориям", "按类别分组")
+        CAT_SOCIAL -> pick(lang, "Social", "Соцсети", "社交")
+        CAT_MESSENGER -> pick(lang, "Messengers", "Мессенджеры", "即时通讯")
+        CAT_FINANCE -> pick(lang, "Finance", "Банки и платежи", "金融支付")
+        CAT_GAME -> pick(lang, "Games", "Игры", "游戏")
+        CAT_MEDIA -> pick(lang, "Media", "Медиа", "多媒体")
+        CAT_NEWS -> pick(lang, "News", "Новости", "新闻")
+        CAT_OTHER -> pick(lang, "Other", "Прочие", "其他")
         PERAPP_SELECTED -> pick(lang, "Selected", "Выбрано", "已选")
         PERAPP_EXCEPT -> pick(lang, "Except", "Кроме", "除外")
         PERAPP_MODE -> pick(lang, "Selected apps", "Выбранные приложения", "所选应用")

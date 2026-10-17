@@ -46,6 +46,7 @@ import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.RegionTuner
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.detectRegion
 import xyz.azraellab.zapp.core.UsageProfile
 import xyz.azraellab.zapp.core.UsageTuner
 import xyz.azraellab.zapp.core.native.NativeBinaries
@@ -258,6 +259,7 @@ private fun AutoSetupStep(state: AppState) {
     var components by remember { mutableStateOf(AutoStepState()) }
     var updates by remember { mutableStateOf(AutoStepState()) }
     var perfStep by remember { mutableStateOf(AutoStepState()) }
+    var regionStep by remember { mutableStateOf(AutoStepState()) }
     var finished by remember { mutableStateOf(false) }
 
     // Загруженный пресет выключает автонастройку: настройки уже заданы.
@@ -294,6 +296,25 @@ private fun AutoSetupStep(state: AppState) {
             finished = true
             return@LaunchedEffect
         }
+
+        // --- Регион: если не выбран -- определить по IP и применить ---
+        regionStep = AutoStepState(AutoStep.RUNNING)
+        if (region.isNotBlank()) {
+            // Пользователь уже выбрал -- второе мнение IP ему не нужно.
+            regionStep = AutoStepState(AutoStep.DONE)
+        } else {
+            val code = detectRegion()
+            // Перепроверка: пока шёл запрос, регион мог выбрать руками.
+            when {
+                code != null && region.isBlank() -> {
+                    applyRegion(code)
+                    regionStep = AutoStepState(AutoStep.DONE)
+                }
+                region.isNotBlank() -> regionStep = AutoStepState(AutoStep.DONE)
+                else -> regionStep = AutoStepState(AutoStep.FAILED, Str.WELCOME_FAIL_REGION)
+            }
+        }
+
         val sourceStatus = state.sourceStatus
         val checkProgress = state.checkProgress
         val strategyRunning = state.strategyRunning
@@ -513,7 +534,7 @@ private fun AutoSetupStep(state: AppState) {
         )
     }
 
-    val steps = listOf(sources, pings, strategy, components, updates, perfStep)
+    val steps = listOf(regionStep, sources, pings, strategy, components, updates, perfStep)
     val doneCount = if (presetApplied) steps.size
     else steps.count { it.step == AutoStep.DONE || it.step == AutoStep.FAILED }
     val progress by animateFloatAsState(
@@ -528,6 +549,7 @@ private fun AutoSetupStep(state: AppState) {
 
     ZappCard(modifier = Modifier.fillMaxWidth()) {
         val presetStep = AutoStepState(AutoStep.DONE)
+        AutoRow(tr(Str.WELCOME_AUTO_REGION), if (presetApplied) presetStep else regionStep)
         AutoRow(tr(Str.WELCOME_AUTO_SOURCES), if (presetApplied) presetStep else sources)
         AutoRow(tr(Str.WELCOME_AUTO_PING), if (presetApplied) presetStep else pings)
         AutoRow(tr(Str.WELCOME_AUTO_STRATEGY), if (presetApplied) presetStep else strategy)

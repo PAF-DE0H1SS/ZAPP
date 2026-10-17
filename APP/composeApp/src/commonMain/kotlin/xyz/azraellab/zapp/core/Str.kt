@@ -348,6 +348,7 @@ enum class Str {
     WELCOME_AUTO_COMPONENTS,
     WELCOME_AUTO_UPDATES,
     WELCOME_AUTO_PERF,
+    WELCOME_AUTO_REGION,
 
     /** Причины неудач шагов автонастройки: ✗ без объяснения ничего не объясняет. */
     WELCOME_FAIL_NO_SOURCES,
@@ -356,6 +357,7 @@ enum class Str {
     WELCOME_FAIL_STRATEGY,
     WELCOME_FAIL_COMPONENTS,
     WELCOME_FAIL_UPDATES,
+    WELCOME_FAIL_REGION,
     WELCOME_SKIP,
     WELCOME_LOAD_PRESET,
     WELCOME_LOAD_PRESET_HINT,
@@ -1124,6 +1126,12 @@ enum class Str {
             "Профиль производительности",
             "应用性能配置"
         )
+        WELCOME_AUTO_REGION -> pick(
+            lang,
+            "Detecting region",
+            "Определение региона",
+            "检测地区"
+        )
         WELCOME_FAIL_NO_SOURCES -> pick(
             lang,
             "No sources are enabled",
@@ -1159,6 +1167,12 @@ enum class Str {
             "Update check failed",
             "Проверка обновлений не удалась",
             "更新检查失败"
+        )
+        WELCOME_FAIL_REGION -> pick(
+            lang,
+            "Region not detected",
+            "Регион не определён",
+            "未检测到地区"
         )
         WELCOME_Q_TITLE -> pick(
             lang,

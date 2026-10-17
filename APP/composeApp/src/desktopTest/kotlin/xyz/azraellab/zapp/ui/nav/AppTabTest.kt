@@ -41,6 +41,34 @@ class AppTabTest {
     }
 
     @Test
+    fun noviceModeKeepsOnlyVpnAndSettings() {
+        // Простой режим: два пункта, порядок entries, GPS не подмешивается.
+        assertEquals(
+            listOf("VPN", "SETTINGS"),
+            AppTab.available(gpsSupported = true, noviceMode = true).map { it.name }
+        )
+        assertEquals(
+            listOf("VPN", "SETTINGS"),
+            AppTab.available(gpsSupported = false, noviceMode = true).map { it.name }
+        )
+        // Дефолт -- прежнее поведение: вкладки не пропадают молча.
+        assertEquals(
+            listOf("TOR", "VPN", "ZAPRET", "GOODBYE_DPI", "SETTINGS"),
+            AppTab.available(gpsSupported = false).map { it.name }
+        )
+    }
+
+    @Test
+    fun noviceModeKeepsPairsWorking() {
+        // Без пар в панели не остаётся мусора: VPN одиночка, настройки одиночка.
+        assertEquals(
+            listOf(listOf("VPN"), listOf("SETTINGS")),
+            tabSlots(AppTab.available(gpsSupported = true, noviceMode = true))
+                .map { it.map(AppTab::name) }
+        )
+    }
+
+    @Test
     fun everyTabHasUniqueTitleAndIcon() {
         // Заголовок и иконка входят в композицию панели: два одинаковых
         // ключа сломали бы подпись вкладки, одинаковые иконки -- выбор.

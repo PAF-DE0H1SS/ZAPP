@@ -95,8 +95,8 @@ fun AppRoot(state: AppState) {
         }
     }
 
-    val tabs = remember(state.caps.gpsSpoofingSupported) {
-        AppTab.available(state.caps.gpsSpoofingSupported)
+    val tabs = remember(state.caps.gpsSpoofingSupported, state.config.noviceMode) {
+        AppTab.available(state.caps.gpsSpoofingSupported, state.config.noviceMode)
     }
 
     // Раздел мог остаться открытым после смены настроек. Если его больше

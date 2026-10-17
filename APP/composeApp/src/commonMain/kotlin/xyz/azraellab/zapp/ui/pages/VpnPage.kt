@@ -170,24 +170,28 @@ fun VpnPage(state: AppState) {
         // --- Коннекты: выбор и проверка ---
         ConnectsExpandable(state, checkProgress)
 
-        // --- Источники: откуда берутся коннекты ---
-        // Только обычные подписки: мостовые (kind == "tor") живут на
-        // вкладке Tor -- разделы не смешивают свои темы.
-        SourcesExpandable(
-            state = state,
-            title = Str.VPN_SOURCES,
-            kind = "proxy",
-            prefix = "vpn",
-            sources = remember(config.sources) {
-                VpnConnects.sourcesByKind(config.sources, "proxy")
-            }
-        )
+        // Простой режим: источники, архив и журнал -- продвинутая
+        // диагностика. Карточка туннекта и список коннектов остаются.
+        if (!state.config.noviceMode) {
+            // --- Источники: откуда берутся коннекты ---
+            // Только обычные подписки: мостовые (kind == "tor") живут на
+            // вкладке Tor -- разделы не смешивают свои темы.
+            SourcesExpandable(
+                state = state,
+                title = Str.VPN_SOURCES,
+                kind = "proxy",
+                prefix = "vpn",
+                sources = remember(config.sources) {
+                    VpnConnects.sourcesByKind(config.sources, "proxy")
+                }
+            )
 
-        // --- Архив: мёртвые коннекты с причиной ---
-        ArchiveExpandable(state)
+            // --- Архив: мёртвые коннекты с причиной ---
+            ArchiveExpandable(state)
 
-        // --- Журнал туннеля ---
-        JournalExpandable(tunnelLog)
+            // --- Журнал туннеля ---
+            JournalExpandable(tunnelLog)
+        }
     }
 }
 

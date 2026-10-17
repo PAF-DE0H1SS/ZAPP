@@ -37,8 +37,13 @@ enum class AppTab(val title: Str, val short: Str, val icon: ImageVector, val act
          * на десктопе раздел не показывается вовсе, а не показывается
          * заглушкой «недоступно». Пустая вкладка, которая ничего не делает,
          * хуже отсутствующей: её нажатие выглядит как поломка.
+         *
+         * [noviceMode] — простой режим: остаётся только базовый сценарий
+         * (подключить VPN, выбрать коннект, настройки), всё остальное
+         * спрятано, а не выключено. Порядок entries сохраняется.
          */
-        fun available(gpsSupported: Boolean): List<AppTab> =
-            entries.filter { it != GPS || gpsSupported }
+        fun available(gpsSupported: Boolean, noviceMode: Boolean = false): List<AppTab> =
+            if (noviceMode) entries.filter { it == VPN || it == SETTINGS }
+            else entries.filter { it != GPS || gpsSupported }
     }
 }

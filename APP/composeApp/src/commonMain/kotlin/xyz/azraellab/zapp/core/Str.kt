@@ -251,6 +251,8 @@ enum class Str {
     SETTINGS_THEME_LIGHT,
     SETTINGS_DYNAMIC_COLORS,
     SETTINGS_DYNAMIC_COLORS_HINT,
+    SETTINGS_NOVICE_MODE,
+    SETTINGS_NOVICE_MODE_HINT,
     SETTINGS_PRESETS,
     SETTINGS_PRESET_NAME,
     SETTINGS_BACKUP,
@@ -909,6 +911,13 @@ enum class Str {
             "Palette from your wallpaper (Android 12+)",
             "Палитра из обоев (Android 12+)",
             "取自壁纸的配色（Android 12+）"
+        )
+        SETTINGS_NOVICE_MODE -> pick(lang, "Simple mode", "Простой режим", "简洁模式")
+        SETTINGS_NOVICE_MODE_HINT -> pick(
+            lang,
+            "Only the basics: connect, pick a connection, settings",
+            "Только базовое: подключение, выбор коннекта, настройки",
+            "只保留基础：连接、选择节点、设置"
         )
         SETTINGS_PRESETS -> pick(lang, "Presets", "Пресеты", "预设")
         SETTINGS_PRESET_NAME -> pick(lang, "Preset name", "Имя пресета", "预设名称")

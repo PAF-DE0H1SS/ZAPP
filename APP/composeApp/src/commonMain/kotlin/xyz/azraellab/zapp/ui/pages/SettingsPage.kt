@@ -210,6 +210,10 @@ fun SettingsPage(state: AppState) {
 
 @Composable
 private fun SettingsRoot(state: AppState, onOpen: (String) -> Unit) {
+    // Простой режим: остаются категории базового сценария. Продвинутые
+    // прячутся вместе со своими вкладками, а не ведут на страницы
+    // скрытых разделов.
+    val novice = state.config.noviceMode
     PageScaffold(title = tr(Str.TAB_SETTINGS)) {
         ZappCard {
             CategoryRow(tr(Str.SETTINGS_SECTION_GENERAL), path = "settings.general") { onOpen("general") }
@@ -217,23 +221,29 @@ private fun SettingsRoot(state: AppState, onOpen: (String) -> Unit) {
             CategoryRow(tr(Str.SETTINGS_DEVICE), path = "settings.device") { onOpen("device") }
             CategoryRow(tr(Str.SETTINGS_UPDATES), path = "settings.updates") { onOpen("updates") }
             CategoryRow(tr(Str.TAB_TRAFFIC), path = "settings.traffic") { onOpen("traffic") }
-            CategoryRow(tr(Str.SETTINGS_PRESETS), path = "settings.presets") { onOpen("presets") }
-            CategoryRow(tr(Str.SETTINGS_PERF), path = "settings.perf") { onOpen("perf") }
-            CategoryRow(tr(Str.SETTINGS_PERAPP), path = "settings.perapp") { onOpen("perapp") }
+            if (!novice) {
+                CategoryRow(tr(Str.SETTINGS_PRESETS), path = "settings.presets") { onOpen("presets") }
+                CategoryRow(tr(Str.SETTINGS_PERF), path = "settings.perf") { onOpen("perf") }
+                CategoryRow(tr(Str.SETTINGS_PERAPP), path = "settings.perapp") { onOpen("perapp") }
+            }
             CategoryRow(tr(Str.TAB_VPN), path = "settings.vpn") { onOpen("vpn") }
-            CategoryRow(tr(Str.TAB_TOR), path = "settings.tor") { onOpen("tor") }
-            if (NativeBinaries.installed().isNotEmpty()) {
+            if (!novice) {
+                CategoryRow(tr(Str.TAB_TOR), path = "settings.tor") { onOpen("tor") }
+            }
+            if (NativeBinaries.installed().isNotEmpty() && !novice) {
                 CategoryRow(tr(Str.TAB_ZAPRET), path = "settings.zapret") { onOpen("zapret") }
                 CategoryRow(tr(Str.TAB_GOODBYE_DPI), path = "settings.gdpi") { onOpen("dpi") }
             }
-            if (NativeBinaries.installed().isNotEmpty()) {
+            if (NativeBinaries.installed().isNotEmpty() && !novice) {
                 CategoryRow(tr(Str.COMPONENTS), path = "settings.components") { onOpen("components") }
             }
-            CategoryRow(tr(Str.SETTINGS_LOG), path = "settings.log") { onOpen("log") }
+            if (!novice) {
+                CategoryRow(tr(Str.SETTINGS_LOG), path = "settings.log") { onOpen("log") }
+            }
             CategoryRow(tr(Str.SETTINGS_DOCS), path = "settings.docs") { onOpen("docs") }
             CategoryRow(tr(Str.SETTINGS_ABOUT), path = "settings.about") { onOpen("about") }
             // Разработка: только debug, в релизе строка не рисуется.
-            if (isDebugBuild()) {
+            if (isDebugBuild() && !novice) {
                 CategoryRow(tr(Str.SETTINGS_DEV), path = "settings.dev") { onOpen("dev") }
             }
         }
@@ -333,6 +343,20 @@ private fun GeneralSection(state: AppState) {
                     AppLog.log("app", "dynamic colors -> $on")
                 },
                 path = "settings.dynamicColors"
+            )
+        }
+    }
+    PageGroup(tr(Str.SETTINGS_NOVICE_MODE)) {
+        ZappCard {
+            ZappSettingRow(
+                title = tr(Str.SETTINGS_NOVICE_MODE),
+                subtitle = tr(Str.SETTINGS_NOVICE_MODE_HINT),
+                checked = state.config.noviceMode,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(noviceMode = on) }
+                    AppLog.log("app", "novice mode -> $on")
+                },
+                path = "settings.noviceMode"
             )
         }
     }

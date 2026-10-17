@@ -5,13 +5,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.core.AppState
+import xyz.azraellab.zapp.core.tvFontScale
 import xyz.azraellab.zapp.ui.AppThemeRoot
 import xyz.azraellab.zapp.ui.GlassBackground
 import xyz.azraellab.zapp.ui.components.ZappSkeleton
@@ -38,23 +42,34 @@ fun App() {
         state.load()
     }
 
-    AppThemeRoot(
-        mode = state.config.themeMode,
-        dynamicColors = state.config.dynamicColors
-    ) {
-        GlassBackground(perf = state.config.perf.sanitized()) {
-            // До чтения конфига -- скелетон, а не «пусто»: первый кадр
-            // стартует раньше load(), и без заглушки страницы успевали
-            // показать «нет коннектов» как настоящий ответ.
-            if (!booted) {
-                BootSkeleton()
-                return@GlassBackground
-            }
-            // Первый запуск: приветствие с туров и разрешениями.
-            if (state.config.welcomeDone) {
-                AppRoot(state = state)
-            } else {
-                WelcomeScreen(state = state)
+    // TV: пульт и диван -- шрифт крупнее, сетка в dp не меняется.
+    val systemDensity = LocalDensity.current
+    val tvDensity = remember(systemDensity, state.caps.tvMode) {
+        Density(
+            density = systemDensity.density,
+            fontScale = tvFontScale(systemDensity.fontScale, state.caps.tvMode)
+        )
+    }
+
+    CompositionLocalProvider(LocalDensity provides tvDensity) {
+        AppThemeRoot(
+            mode = state.config.themeMode,
+            dynamicColors = state.config.dynamicColors
+        ) {
+            GlassBackground(perf = state.config.perf.sanitized()) {
+                // До чтения конфига -- скелетон, а не «пусто»: первый кадр
+                // стартует раньше load(), и без заглушки страницы успевали
+                // показать «нет коннектов» как настоящий ответ.
+                if (!booted) {
+                    BootSkeleton()
+                    return@GlassBackground
+                }
+                // Первый запуск: приветствие с туров и разрешениями.
+                if (state.config.welcomeDone) {
+                    AppRoot(state = state)
+                } else {
+                    WelcomeScreen(state = state)
+                }
             }
         }
     }

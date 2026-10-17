@@ -13,12 +13,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -121,6 +123,9 @@ fun ConnectionOrb(
 
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    // Фокус с пульта/клавиатуры: indication выключена, поэтому обводка
+    // рисуется сама -- без неё на TV непонятно, куда тычет джойстик.
+    var focused by remember { mutableStateOf(false) }
     val pressScale by animateFloatAsState(
         targetValue = if (pressed) 0.94f else 1f,
         animationSpec = spring(
@@ -135,6 +140,7 @@ fun ConnectionOrb(
     Canvas(
         modifier = modifier
             .size(size)
+            .onFocusChanged { focused = it.isFocused }
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -343,6 +349,17 @@ fun ConnectionOrb(
                     cap = StrokeCap.Round
                 )
             }
+        }
+
+        // --- 6. Обводка фокуса: indication выключена, пульт должен видеть цель ---
+        if (focused) {
+            val focusR = r * 1.30f
+            drawCircle(
+                color = scheme.primary,
+                radius = focusR,
+                center = center,
+                style = Stroke(width = 3.dp.toPx())
+            )
         }
     }
 }

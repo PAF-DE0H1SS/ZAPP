@@ -12,4 +12,8 @@ actual fun platformCaps(): PlatformCaps = object : PlatformCaps {
     override val apkUpdatesSupported: Boolean = false
     override val systemProxySupported: Boolean = true
     override val autostartSupported: Boolean = true
+
+    // Десктоп -- не TV: пульт тут ни при чём, даже если система
+    // заявит о leanback-фиче (боксы на Android подключаются к TV).
+    override val tvMode: Boolean = false
 }

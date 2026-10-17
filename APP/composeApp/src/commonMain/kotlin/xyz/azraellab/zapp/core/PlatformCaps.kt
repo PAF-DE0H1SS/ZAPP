@@ -40,6 +40,15 @@ interface PlatformCaps {
      * и тут показывается как есть, без регистрации в системе.
      */
     val autostartSupported: Boolean
+
+    /**
+     * Приложение запущено на Android TV (или аналогичном leanback-устройстве).
+     *
+     * Определяется в рантайме, а не при компиляции: телефон и приставка
+     * собираются из одного androidMain. На TV пульт -- единственный ввод,
+     * поэтому по флагу включается крупный шрифт и обводка фокуса.
+     */
+    val tvMode: Boolean
 }
 
 expect fun platformCaps(): PlatformCaps

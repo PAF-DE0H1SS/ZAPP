@@ -1,5 +1,6 @@
 package xyz.azraellab.zapp.core
 
+import android.content.pm.PackageManager
 import android.os.Build
 
 /**
@@ -14,4 +15,13 @@ actual fun platformCaps(): PlatformCaps = object : PlatformCaps {
     override val apkUpdatesSupported: Boolean = true
     override val systemProxySupported: Boolean = false
     override val autostartSupported: Boolean = false
+
+    // Рантайм-детект: телефон и приставка -- один androidMain. Контекст
+    // к этому моменту уже присоединён (ZappApp.onCreate раньше первого
+    // AppState); без контекста -- не TV, а не падение.
+    override val tvMode: Boolean = runCatching {
+        AndroidCtx.current
+            ?.packageManager
+            ?.hasSystemFeature(PackageManager.FEATURE_LEANBACK) == true
+    }.getOrDefault(false)
 }

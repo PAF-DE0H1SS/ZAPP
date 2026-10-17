@@ -660,6 +660,7 @@ enum class Str {
     NOTIFY_GPS_OFF,
     NOTIFY_GPS_ERROR,
     NOTIFY_UPDATE,
+    NOTIFY_UPDATE_READY,
     NOTIFY_VPN_ON,
 
     /**
@@ -1435,6 +1436,7 @@ enum class Str {
         NOTIFY_GPS_OFF -> pick(lang, "GPS spoofing off", "Подмена GPS выключена", "GPS 伪造已关闭")
         NOTIFY_GPS_ERROR -> pick(lang, "GPS spoofing failed", "Подмена GPS не запустилась", "GPS 伪造失败")
         NOTIFY_UPDATE -> pick(lang, "Update available", "Доступно обновление", "有可用更新")
+        NOTIFY_UPDATE_READY -> pick(lang, "Update ready to install", "Обновление готово к установке", "更新已可安装")
         NOTIFY_VPN_ON -> pick(lang, "VPN tunnel is active", "VPN-туннель активен", "VPN 隧道已启用")
 
         PROTO_WIREGUARD -> pick(lang, "WireGuard", "WireGuard", "WireGuard")

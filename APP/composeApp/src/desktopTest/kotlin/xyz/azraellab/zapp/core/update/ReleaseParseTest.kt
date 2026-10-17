@@ -17,8 +17,11 @@ class ReleaseParseTest {
           "published_at": "2026-10-17T00:00:00Z",
           "body": "Исправлен обход и бэкап.",
           "assets": [
-            {"browser_download_url": "https://x/app-release.apk"},
-            {"browser_download_url": "https://x/app.msi"}
+            {"browser_download_url": "https://x/ZAPP-2.8.0.apk"},
+            {"browser_download_url": "https://x/ZAPP-2.8.0-arm64-v8a.apk"},
+            {"browser_download_url": "https://x/ZAPP-ROOT-2.8.0.apk"},
+            {"browser_download_url": "https://x/ZAPP-ROOT-2.8.0-x86_64.apk"},
+            {"browser_download_url": "https://x/zapp-2.8.0.msi"}
           ]
         }
     """.trimIndent()
@@ -30,7 +33,9 @@ class ReleaseParseTest {
         assertEquals("v2.8.0", release.version)
         assertEquals("https://github.com/x/zapp/releases/tag/v2.8.0", release.url)
         assertEquals("Исправлен обход и бэкап.", release.changelog)
-        assertEquals("https://x/app-release.apk", release.apkUrl)
+        // десктопная сборка -- root (BuildMode.rootAllowed = true), берётся
+        // универсальный root-APK, а не ABI-вариант
+        assertEquals("https://x/ZAPP-ROOT-2.8.0.apk", release.apkUrl)
     }
 
     @Test
@@ -95,5 +100,50 @@ class ReleaseParseTest {
         """.trimIndent()
         val release = parseRelease(json)!!
         assertTrue(updateAvailable(release.version, "2.7.0", UPDATE_COMPARE_TAG))
+    }
+
+    @Test
+    fun rootBuildPicksRootApkOnly() {
+        val urls = listOf(
+            "https://x/ZAPP-2.8.0.apk",
+            "https://x/ZAPP-ROOT-2.8.0.apk"
+        )
+        assertEquals("https://x/ZAPP-ROOT-2.8.0.apk", pickApkAsset(urls, isRoot = true))
+    }
+
+    @Test
+    fun norootBuildSkipsRootApk() {
+        val urls = listOf(
+            "https://x/ZAPP-ROOT-2.8.0.apk",
+            "https://x/ZAPP-2.8.0.apk"
+        )
+        assertEquals("https://x/ZAPP-2.8.0.apk", pickApkAsset(urls, isRoot = false))
+    }
+
+    @Test
+    fun prefersUniversalOverAbi() {
+        val urls = listOf(
+            "https://x/ZAPP-2.8.0-arm64-v8a.apk",
+            "https://x/ZAPP-2.8.0-x86_64.apk",
+            "https://x/ZAPP-2.8.0.apk"
+        )
+        assertEquals("https://x/ZAPP-2.8.0.apk", pickApkAsset(urls, isRoot = false))
+        val rootUrls = listOf(
+            "https://x/ZAPP-ROOT-2.8.0-arm64-v8a.apk",
+            "https://x/ZAPP-ROOT-2.8.0.apk"
+        )
+        assertEquals("https://x/ZAPP-ROOT-2.8.0.apk", pickApkAsset(rootUrls, isRoot = true))
+    }
+
+    @Test
+    fun fallsBackToAbiWhenNoUniversal() {
+        val urls = listOf("https://x/ZAPP-2.8.0-armeabi-v7a.apk")
+        assertEquals("https://x/ZAPP-2.8.0-armeabi-v7a.apk", pickApkAsset(urls, isRoot = false))
+    }
+
+    @Test
+    fun noMatchingFlavorMeansNull() {
+        val urls = listOf("https://x/ZAPP-2.8.0.apk")
+        assertNull(pickApkAsset(urls, isRoot = true))
     }
 }

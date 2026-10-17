@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import xyz.azraellab.zapp.core.BuildMode
 import xyz.azraellab.zapp.core.log.AppLog
 import xyz.azraellab.zapp.core.log.causeChain
 import xyz.azraellab.zapp.core.net.httpGetText
@@ -205,16 +206,44 @@ fun parseRelease(text: String): ReleaseInfo? = runCatching {
         name = field("name"),
         publishedAt = field("published_at"),
         apkUrl = runCatching {
-            root["assets"]?.jsonArray
+            val urls = root["assets"]?.jsonArray
                 ?.mapNotNull { it.jsonObject["browser_download_url"]?.jsonPrimitive?.contentOrNull() }
-                ?.firstOrNull { it.endsWith(".apk", ignoreCase = true) }
-                ?: ""
+                ?: emptyList()
+            pickApkAsset(urls, BuildMode.rootAllowed) ?: ""
         }.getOrDefault(""),
         changelog = field("body").trim()
     )
 }.getOrElse { e ->
     AppLog.log("update", "check: разбор ответа не удался: ${e.causeChain().ifEmpty { e::class.simpleName ?: "error" }}")
     null
+}
+
+/**
+ * Выбирает APK под текущую сборку: root ставит только `ZAPP-ROOT-*`,
+ * noroot -- `ZAPP-*` (не `ROOT`).
+ *
+ * В релизе лежат обе сборки сразу, и «первый попавшийся `.apk`» мог бы
+ * поставить root-сборку поверх noroot (или наоборот) -- сломав разделение
+ * root/noroot. Из подходящих предпочтительнее универсальный (без суффикса
+ * ABI): он ставится на любую архитектуру, а конкретный ABI-вариант --
+ * запасной выбор, если универсального в релизе нет.
+ */
+fun pickApkAsset(urls: List<String>, isRoot: Boolean): String? {
+    val matching = urls.filter { it.endsWith(".apk", ignoreCase = true) }.filter { url ->
+        val name = url.substringAfterLast('/')
+        if (isRoot) name.startsWith("ZAPP-ROOT-", ignoreCase = true)
+        else name.startsWith("ZAPP-", ignoreCase = true) &&
+            !name.startsWith("ZAPP-ROOT-", ignoreCase = true)
+    }
+    return matching.firstOrNull { isUniversalApk(it.substringAfterLast('/'), isRoot) }
+        ?: matching.firstOrNull()
+}
+
+/** Универсальный APK: после сборки-префикса и версии нет суффикса ABI. */
+private fun isUniversalApk(name: String, isRoot: Boolean): Boolean {
+    val rest = name.removeSuffix(".apk")
+        .let { if (isRoot) it.removePrefix("ZAPP-ROOT-") else it.removePrefix("ZAPP-") }
+    return '-' !in rest
 }
 
 /**

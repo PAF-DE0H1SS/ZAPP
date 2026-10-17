@@ -1950,6 +1950,9 @@ class AppState(
             val snoozed = System.currentTimeMillis() < config.updateSnoozeUntilMs
             AppLog.log("update", "latest=${found.version} current=$appVersion newer=$newer snoozed=$snoozed")
             if (newer && !snoozed) notify(Str.NOTIFY_UPDATE, found.version, TAG_UPDATE)
+            // Обновление нашлось и под эту сборку есть APK -- качаем сами,
+            // пользователю останется только нажать «Установить».
+            if (newer && found.apkUrl.isNotBlank()) downloadUpdate()
         }
     }
 
@@ -1982,6 +1985,8 @@ class AppState(
                 "update",
                 if (ok) "apk cached ${found.version}" else "apk download failed: ${updateDownloadError ?: "?"}"
             )
+            // APK лежит в кеше -- предлагаем установить прямо сейчас.
+            if (ok) notify(Str.NOTIFY_UPDATE_READY, found.version, TAG_UPDATE)
         }
     }
 

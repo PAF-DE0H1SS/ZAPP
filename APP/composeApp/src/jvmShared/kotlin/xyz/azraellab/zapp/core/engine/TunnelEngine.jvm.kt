@@ -877,6 +877,12 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     // --- Kill switch ---
 
     private fun enableKillSwitch(endpoints: List<String>, vpn: VpnConfig) {
+        // Прокси-режим: туннеля нет, крышка удерживать нечего, а
+        // iptables-блок без туннеля просто убьёт сеть приложениям.
+        if (vpn.proxyOnly) {
+            log("note: kill switch is off in proxy-only mode")
+            return
+        }
         // Свои DNS при kill switch -- только серверы самого конфига, не
         // «любой DNS»: без них не резолвится переподключение по домену.
         // Механизм и снятие блокировки -- у платформы.

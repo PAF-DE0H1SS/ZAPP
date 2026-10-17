@@ -1045,11 +1045,22 @@ private fun VpnBehaviorGroup(state: AppState) {
     PageGroup(tr(Str.VPN_BEHAVIOR)) {
         ZappCard {
             ZappSettingRow(
+                title = tr(Str.VPN_PROXY_ONLY),
+                subtitle = tr(Str.VPN_PROXY_ONLY_HINT),
+                checked = vpn.proxyOnly,
+                enabled = !tunnelLive,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(vpn = it.vpn.copy(proxyOnly = on)) }
+                },
+                path = "settings.vpn.proxy_only"
+            )
+            ZappSettingRow(
                 title = tr(Str.VPN_KILL_SWITCH),
                 checked = vpn.killSwitch,
-                subtitle = if (tunnelLive) tr(Str.PERAPP_NEXT_CONNECT)
+                subtitle = if (vpn.proxyOnly) tr(Str.VPN_PROXY_ONLY_HINT)
+                else if (tunnelLive) tr(Str.PERAPP_NEXT_CONNECT)
                 else lockReason(locks, SettingKeys.KILL_SWITCH),
-                enabled = !isLocked(locks, SettingKeys.KILL_SWITCH) && !tunnelLive,
+                enabled = !isLocked(locks, SettingKeys.KILL_SWITCH) && !tunnelLive && !vpn.proxyOnly,
                 onCheckedChange = { on ->
                     state.mutate { it.copy(vpn = it.vpn.copy(killSwitch = on)) }
                 },
@@ -1058,7 +1069,7 @@ private fun VpnBehaviorGroup(state: AppState) {
             ZappSettingRow(
                 title = tr(Str.VPN_KILL_SWITCH_DNS),
                 checked = vpn.killSwitchDns,
-                enabled = vpn.killSwitch && !tunnelLive,
+                enabled = vpn.killSwitch && !tunnelLive && !vpn.proxyOnly,
                 onCheckedChange = { on ->
                     state.mutate { it.copy(vpn = it.vpn.copy(killSwitchDns = on)) }
                 },

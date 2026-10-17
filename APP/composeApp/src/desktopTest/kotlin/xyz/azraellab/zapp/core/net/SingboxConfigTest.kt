@@ -12,8 +12,10 @@ import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.VpnProtocol
 import xyz.azraellab.zapp.core.daemon.DpiOverlay
+import xyz.azraellab.zapp.core.engine.vpnTunnelParams
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -101,6 +103,41 @@ class SingboxConfigTest {
         } finally {
             tmp.delete()
         }
+    }
+
+    // --- Прокси-режим без TUN ---
+
+    @Test
+    fun defaultConfigCarriesTunInbound() {
+        // Обычный режим: tun-инбаунд на месте, платформа поднимет туннель.
+        assertNotNull(inboundsOfType(group(), "tun"), "без proxy-only tun обязан быть")
+    }
+
+    @Test
+    fun proxyOnlyDropsTunAndKeepsLocalInbounds() {
+        // §123: без tun-интерфейса, но socks/http живы -- приложения,
+        // умеющие прокси, настраиваются на локальный адрес руками.
+        val vpn = VpnConfig(proxyOnly = true)
+        val built = group(vpn)
+        assertNull(inboundsOfType(built, "tun"), "tun-инбаунд в прокси-режиме не нужен")
+        assertNotNull(inboundsOfType(built, "socks"), "socks обязателен")
+        assertNotNull(inboundsOfType(built, "http"), "http обязателен")
+        // vpnTunnelParams -- то, по чему движок решает, поднимать ли
+        // VpnService: без tun-инбаунда он обязан вернуть null.
+        assertNull(
+            vpnTunnelParams(built.json, vpn, "test"),
+            "движок не должен поднимать туннель в прокси-режиме"
+        )
+    }
+
+    @Test
+    fun proxyOnlyNotesKillSwitchOff() {
+        // Крышка без туннеля удерживать нечего -- заметка честно говорит, что она выключена.
+        val built = group(VpnConfig(proxyOnly = true, killSwitch = true))
+        assertTrue(
+            built.notes.any { "kill-switch: off" in it },
+            "заметка о выключенной крышке обязательна, notes=${built.notes}"
+        )
     }
 
     // --- urltest: минимум пинга между узлами ---

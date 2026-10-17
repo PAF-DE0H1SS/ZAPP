@@ -218,6 +218,16 @@ data class VpnConfig(
      * [dnsList], свои серверы, а не «любой DNS».
      */
     val killSwitchDns: Boolean = false,
+    /**
+     * Режим «только прокси»: без TUN-интерфейса.
+     *
+     * Конфиг несёт socks/http-входы на loopback, туннель не поднимается
+     * вовсе — VpnService и tun-инбаунд в конфиг не попадают. Для приложений,
+     * которые сами умеют прокси: они указывают локальный адрес руками,
+     * остальная сеть ходит мимо. Kill switch в этом режиме не имеет смысла
+     * (нечего удерживать) и игнорируется.
+     */
+    val proxyOnly: Boolean = false,
     val ipv6: Boolean = false,
     val dnsServers: String = "",
     @SerialName("splitTunneling") val splitTunneling: Boolean = false,

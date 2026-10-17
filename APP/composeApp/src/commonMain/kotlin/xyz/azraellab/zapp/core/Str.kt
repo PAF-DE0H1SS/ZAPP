@@ -101,6 +101,8 @@ enum class Str {
     VPN_KEEPALIVE,
     VPN_KILL_SWITCH,
     VPN_KILL_SWITCH_DNS,
+    VPN_PROXY_ONLY,
+    VPN_PROXY_ONLY_HINT,
     VPN_BEHAVIOR,
     VPN_SPLIT_TUNNELING,
     VPN_AUTO_RECONNECT,
@@ -809,6 +811,17 @@ enum class Str {
             "Allow configured DNS while kill switch is on",
             "Пропускать DNS конфига при kill switch",
             "断网保护时允许配置的 DNS"
+        )
+        VPN_PROXY_ONLY -> pick(lang, "Proxy-only mode", "Только прокси, без TUN", "仅代理模式")
+        VPN_PROXY_ONLY_HINT -> pick(
+            lang,
+            "No TUN interface: a local SOCKS/HTTP proxy is raised instead, " +
+                "for apps that can use a proxy on their own. " +
+                "Kill switch does not apply in this mode.",
+            "Без TUN-интерфейса: поднимается локальный SOCKS/HTTP-прокси " +
+                "для приложений, которые сами умеют прокси. " +
+                "Kill switch в этом режиме не применяется.",
+            "不创建 TUN 接口：改为启动本地 SOCKS/HTTP 代理，供支持代理的应用使用。此模式下断网保护无效。"
         )
         VPN_SPLIT_TUNNELING -> pick(lang, "Split tunneling", "Раздельное туннелирование", "分流")
         VPN_AUTO_RECONNECT -> pick(lang, "Auto reconnect", "Переподключение", "自动重连")

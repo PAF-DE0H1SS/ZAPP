@@ -293,8 +293,12 @@ object SingboxConfig {
             // без root её нет, и запись «applied by engine (iptables)»
             // врала бы и про механизм, и про само применение.
             if (vpn.killSwitch) add(
-                if (BuildMode.rootAllowed) "kill-switch: applied by engine (iptables)"
-                else "kill-switch: applied by the VPN session"
+                when {
+                    // Крышка без туннеля убила бы сеть, не удержав ничего.
+                    vpn.proxyOnly -> "kill-switch: off (proxy-only mode)"
+                    BuildMode.rootAllowed -> "kill-switch: applied by engine (iptables)"
+                    else -> "kill-switch: applied by the VPN session"
+                }
             )
             if (vpn.routing.allowPerAppBypass && vpn.routing.bypassAppList().isNotEmpty()) {
                 add("per-app bypass: ${vpn.routing.bypassAppList().size} package(s)")
@@ -310,8 +314,16 @@ object SingboxConfig {
             })
             put("dns", dns)
             put("inbounds", buildJsonArray {
-                add(tunInbound(profile, vpn))
-                localProxyInbounds(platformCaps().systemProxySupported, vpn).forEach { add(it) }
+                // Прокси-режим: tun-инбаунда нет вовсе, платформа по
+                // vpnTunnelParams вернёт null и туннель не поднимется.
+                if (!vpn.proxyOnly) add(tunInbound(profile, vpn))
+                // Локальные входы нужны в обоих режимах: без системного
+                // прокси это и есть единственная точка входа -- приложения,
+                // которые сами умеют прокси, указывают её руками.
+                localProxyInbounds(
+                    supported = platformCaps().systemProxySupported || vpn.proxyOnly,
+                    vpn = vpn
+                ).forEach { add(it) }
             })
             put("outbounds", buildJsonArray {
                 builtOutbounds.forEach { add(it) }

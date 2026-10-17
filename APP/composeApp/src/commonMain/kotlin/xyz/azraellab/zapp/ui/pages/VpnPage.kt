@@ -48,6 +48,9 @@ import xyz.azraellab.zapp.core.log.errorLine
 import xyz.azraellab.zapp.core.log.looksLikeErrorLine
 import xyz.azraellab.zapp.core.statusLine
 import xyz.azraellab.zapp.ui.AppLangState
+import androidx.compose.material3.AlertDialog
+import xyz.azraellab.zapp.core.qr.encodeQr
+import xyz.azraellab.zapp.ui.components.QrImage
 import xyz.azraellab.zapp.ui.components.Choice
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.ConnectionOrb
@@ -214,6 +217,7 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
     var importOpen by rememberSaveable { mutableStateOf(false) }
     var importText by remember { mutableStateOf("") }
     var warpBusy by remember { mutableStateOf(false) }
+    var qrOpen by remember { mutableStateOf(false) }
 
     val visible = remember(config.profiles) { state.visibleVpnProfiles() }
     // Достижимость, а не живость: проба -- это TCP/UDP-доступ до сервера
@@ -340,6 +344,18 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
             modifier = Modifier.fillMaxWidth(),
             path = "vpn.warp"
         )
+        ZappButton(
+            text = tr(Str.VPN_QR),
+            role = ButtonRole.GHOST,
+            enabled = active?.rawConfig?.isNotBlank() == true,
+            onClick = { qrOpen = true },
+            modifier = Modifier.fillMaxWidth(),
+            path = "vpn.qr"
+        )
+
+        if (qrOpen && active != null) {
+            QrExportDialog(profile = active, onDismiss = { qrOpen = false })
+        }
 
         if (importOpen) {
             ZappCard {
@@ -860,3 +876,34 @@ internal fun activeModes(state: AppState, tunnelState: TunnelState): String {
 
 @Composable
 internal fun VpnProtocol.label(lang: AppLang): String = if (lang == AppLang.RU) ru else en
+
+/** QR профиля для передачи на другое устройство. */
+@Composable
+private fun QrExportDialog(profile: VpnProfile, onDismiss: () -> Unit) {
+    val text = profile.rawConfig
+    val matrix = remember(text) { encodeQr(text) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = profile.name,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        },
+        text = {
+            if (matrix != null) {
+                QrImage(matrix = matrix)
+            } else {
+                Text(
+                    text = tr(Str.VPN_QR_EMPTY),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            ZappButton(text = tr(Str.COMMON_CLOSE), onClick = onDismiss)
+        }
+    )
+}

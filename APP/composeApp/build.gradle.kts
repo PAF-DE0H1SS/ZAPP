@@ -80,10 +80,12 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
+            implementation("com.google.zxing:core:3.5.3")
         }
         val desktopMain by getting
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
+            implementation("com.google.zxing:core:3.5.3")
         }
         val desktopTest by getting
         desktopTest.dependencies {

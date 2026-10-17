@@ -989,7 +989,7 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     }
 
     private fun connectionAlive(): Boolean = when {
-        iface != null -> RootShell.run("ip link show dev ${iface}", 2000).ok
+        iface != null -> RootShell.sessionRun("ip link show dev ${iface}", 2000).ok
         boxDaemon != null -> boxDaemon?.state?.value == DaemonState.RUNNING
         openvpnDaemon != null -> openvpnDaemon?.state?.value == DaemonState.RUNNING
         torDaemon != null -> torDaemon?.state?.value == DaemonState.RUNNING

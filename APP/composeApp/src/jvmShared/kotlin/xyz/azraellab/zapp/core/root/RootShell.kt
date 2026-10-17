@@ -39,6 +39,11 @@ object RootShell {
 
     private val probeLock = Any()
 
+    @Volatile
+    private var session: RootSession? = null
+
+    private val sessionLock = Any()
+
     /** Найденная форма вызова; пробуется один раз на сессию. */
     fun mode(): Mode {
         // Noroot-сборка: ни одной пробы su. Режим известен на этапе сборки,
@@ -71,6 +76,12 @@ object RootShell {
      */
     fun forget() {
         synchronized(probeLock) { probed = null }
+        // Живая сессия держит старый su: без сброса после смены политики
+        // Magisk продолжала бы отвечать от имени прежних прав.
+        synchronized(sessionLock) {
+            session?.close()
+            session = null
+        }
     }
 
     /**
@@ -123,6 +134,24 @@ object RootShell {
         val output = synchronized(collected) { collected.toString() }
         val code = if (finished) process.exitValue() else -1
         return Result(code, output)
+    }
+
+    /**
+     * Выполняет [command] через персистентную root-сессию.
+     *
+     * Дешевле [run] при частых вызовах (наблюдение за туннелем): один `su`
+     * поднимается один раз, дальше шлём только текст команды. Если шелл
+     * поднять не удалось, откат на обычный поштучный [run] -- вызывающий
+     * не должен знать про механизм.
+     */
+    fun sessionRun(command: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): Result {
+        if (mode() == Mode.NONE) return run(command, timeoutMs)
+        val s = synchronized(sessionLock) {
+            session ?: RootSession { openRootChannel(mode()) }.also { session = it }
+        }
+        val result = s.run(command, timeoutMs)
+        // Сессия недоступна -- откат на поштучный запуск, чтобы не сломать вызов.
+        return if (result.code == RootSession.UNAVAILABLE) run(command, timeoutMs) else result
     }
 
     /**

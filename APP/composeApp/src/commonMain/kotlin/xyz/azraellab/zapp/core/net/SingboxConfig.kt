@@ -311,7 +311,7 @@ object SingboxConfig {
             put("dns", dns)
             put("inbounds", buildJsonArray {
                 add(tunInbound(profile, vpn))
-                localProxyInbounds(platformCaps().systemProxySupported).forEach { add(it) }
+                localProxyInbounds(platformCaps().systemProxySupported, vpn).forEach { add(it) }
             })
             put("outbounds", buildJsonArray {
                 builtOutbounds.forEach { add(it) }
@@ -345,21 +345,41 @@ object SingboxConfig {
      * разные программы указывают разные схемы, а туннельные правила
      * им одинаковы. Пустой список за пределами десктопа -- поведение
      * Android-конфига не меняется ни на строку.
+     *
+     * [vpn.proxyAuthEnabled] навешивает login:pass на оба входа: loopback
+     * закрыт от чужой сети, но не от чужих приложений машины. Креды -- в
+     * `users[]`, формат box'а для inbound'ов (плоские username/password
+     * он отвергает как unknown field). Пустой логин или пароль -- без
+     * авторизации: включённый флаг с недописанными полями не должен
+     * ломать конфиг.
      */
-    fun localProxyInbounds(supported: Boolean): List<JsonObject> {
+    fun localProxyInbounds(supported: Boolean, vpn: VpnConfig = VpnConfig()): List<JsonObject> {
         if (!supported) return emptyList()
+        val authed = vpn.proxyAuthEnabled &&
+            vpn.proxyAuthUser.isNotBlank() && vpn.proxyAuthPassword.isNotBlank()
+        fun JsonObjectBuilder.withAuth() {
+            if (!authed) return
+            put("users", buildJsonArray {
+                add(buildJsonObject {
+                    put("username", vpn.proxyAuthUser)
+                    put("password", vpn.proxyAuthPassword)
+                })
+            })
+        }
         return listOf(
             buildJsonObject {
                 put("type", "socks")
                 put("tag", SOCKS_IN_TAG)
                 put("listen", "127.0.0.1")
                 put("listen_port", ProxyPorts.SOCKS)
+                withAuth()
             },
             buildJsonObject {
                 put("type", "http")
                 put("tag", HTTP_IN_TAG)
                 put("listen", "127.0.0.1")
                 put("listen_port", ProxyPorts.HTTP)
+                withAuth()
             }
         )
     }

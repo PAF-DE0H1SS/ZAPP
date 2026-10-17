@@ -414,6 +414,43 @@ private fun GeneralSection(state: AppState) {
                     onCheckedChange = { on -> state.setSystemProxy(on) },
                     path = "settings.systemProxy"
                 )
+                Spacer(modifier = Modifier.height(AzraelSpace.xs))
+                ZappSettingRow(
+                    title = tr(Str.SETTINGS_PROXY_AUTH),
+                    subtitle = tr(Str.SETTINGS_PROXY_AUTH_HINT),
+                    checked = state.config.vpn.proxyAuthEnabled,
+                    onCheckedChange = { on ->
+                        state.mutate {
+                            it.copy(vpn = it.vpn.copy(proxyAuthEnabled = on))
+                        }
+                        AppLog.log("app", "proxy auth -> $on")
+                    },
+                    path = "settings.proxyAuth"
+                )
+                // Поля живут под тумблером: без включённой авторизации
+                // логин и пароль -- просто места для ошибки.
+                if (state.config.vpn.proxyAuthEnabled) {
+                    ZappTextField(
+                        label = tr(Str.SETTINGS_PROXY_USER),
+                        value = state.config.vpn.proxyAuthUser,
+                        onValueChange = { v ->
+                            state.mutate {
+                                it.copy(vpn = it.vpn.copy(proxyAuthUser = v))
+                            }
+                        },
+                        path = "settings.proxyAuthUser"
+                    )
+                    ZappTextField(
+                        label = tr(Str.SETTINGS_PROXY_PASS),
+                        value = state.config.vpn.proxyAuthPassword,
+                        onValueChange = { v ->
+                            state.mutate {
+                                it.copy(vpn = it.vpn.copy(proxyAuthPassword = v))
+                            }
+                        },
+                        path = "settings.proxyAuthPassword"
+                    )
+                }
             }
         }
     }

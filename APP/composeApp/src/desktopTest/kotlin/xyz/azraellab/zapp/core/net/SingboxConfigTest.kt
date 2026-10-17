@@ -43,6 +43,66 @@ class SingboxConfigTest {
     private fun outboundOfType(built: SingboxConfig.Built, type: String): JsonObject? =
         outboundsOf(built).firstOrNull { it["type"]?.jsonPrimitive?.content == type }
 
+    private fun inboundsOfType(built: SingboxConfig.Built, type: String): JsonObject? =
+        json.parseToJsonElement(built.json).jsonObject["inbounds"]!!.jsonArray
+            .map { it.jsonObject }
+            .firstOrNull { it["type"]?.jsonPrimitive?.content == type }
+
+    // --- Авторизация локального прокси (десктоп) ---
+
+    @Test
+    fun proxyAuthPutsCredentialsOnBothInbounds() {
+        // Включённый флаг с заполненными полями: и socks, и http закрыты,
+        // креды ровно в users[] -- формате box'а для inbound'ов.
+        val vpn = VpnConfig(proxyAuthEnabled = true, proxyAuthUser = "u", proxyAuthPassword = "p")
+        val socks = inboundsOfType(group(vpn), "socks") ?: error("нет socks-in")
+        val users = socks["users"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(1, users.size)
+        assertEquals("u", users[0]["username"]!!.jsonPrimitive.content)
+        assertEquals("p", users[0]["password"]!!.jsonPrimitive.content)
+        val http = inboundsOfType(group(vpn), "http") ?: error("нет http-in")
+        assertEquals("u", http["users"]!!.jsonArray[0].jsonObject["username"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun proxyAuthOffMeansNoUsersField() {
+        // По умолчанию авторизации нет: локальные программы заходят как раньше.
+        val socks = inboundsOfType(group(), "socks") ?: error("нет socks-in")
+        assertNull(socks["users"], "без тумблера кредов нет")
+        assertNull(socks["username"], "плоского логина тоже нет -- это unknown field")
+    }
+
+    @Test
+    fun proxyAuthHalfFilledStaysOff() {
+        // Недописанные поля не должны ломать конфиг: логин без пароля
+        // -- не авторизация, а пустой вход.
+        listOf(
+            VpnConfig(proxyAuthEnabled = true, proxyAuthUser = "u"),
+            VpnConfig(proxyAuthEnabled = true, proxyAuthPassword = "p"),
+            VpnConfig(proxyAuthEnabled = false, proxyAuthUser = "u", proxyAuthPassword = "p")
+        ).forEach { vpn ->
+            val socks = inboundsOfType(group(vpn), "socks") ?: error("нет socks-in")
+            assertNull(socks["users"], "флаг $vpn не должен навешивать users")
+        }
+    }
+
+    @Test
+    fun proxyAuthIsValidatedByRealBox() {
+        // Собственный бинарь box: формат users[] принят, плоские поля -- нет.
+        // Прогоняется только когда бинарь на месте (норма для CI и прогона).
+        val box = java.io.File("native/out/x86_64/box")
+        if (!box.canExecute()) return
+        val vpn = VpnConfig(proxyAuthEnabled = true, proxyAuthUser = "u", proxyAuthPassword = "p")
+        val tmp = java.io.File.createTempFile("zapp-auth", ".json")
+        try {
+            tmp.writeText(group(vpn).json)
+            val proc = ProcessBuilder(box.absolutePath, "check", "-c", tmp.absolutePath).start()
+            assertEquals(0, proc.waitFor(), "box обязан принять конфиг с users[]")
+        } finally {
+            tmp.delete()
+        }
+    }
+
     // --- urltest: минимум пинга между узлами ---
 
     @Test

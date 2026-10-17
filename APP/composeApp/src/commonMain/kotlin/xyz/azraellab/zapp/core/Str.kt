@@ -253,6 +253,10 @@ enum class Str {
     SETTINGS_DYNAMIC_COLORS_HINT,
     SETTINGS_NOVICE_MODE,
     SETTINGS_NOVICE_MODE_HINT,
+    SETTINGS_PROXY_AUTH,
+    SETTINGS_PROXY_AUTH_HINT,
+    SETTINGS_PROXY_USER,
+    SETTINGS_PROXY_PASS,
     SETTINGS_PRESETS,
     SETTINGS_PRESET_NAME,
     SETTINGS_BACKUP,
@@ -1712,6 +1716,22 @@ enum class Str {
             "隧道运行时，跟随本机系统代理的浏览器与其他程序经由它访问网络" +
                 "（Windows、GNOME、KDE、macOS）。停止后恢复原有设置。"
         )
+        SETTINGS_PROXY_AUTH -> pick(
+            lang,
+            "Proxy login and password",
+            "Логин и пароль прокси",
+            "代理登录与密码"
+        )
+        SETTINGS_PROXY_AUTH_HINT -> pick(
+            lang,
+            "Other programs on this machine must log in to the local SOCKS/HTTP proxy. " +
+                "Both fields must be filled in to take effect.",
+            "Программы на этой машине входят в локальный SOCKS/HTTP-прокси по логину и " +
+                "паролю. Чтобы применилось, заполните оба поля.",
+            "本机程序访问本地 SOCKS/HTTP 代理需登录。两项都填写后生效。"
+        )
+        SETTINGS_PROXY_USER -> pick(lang, "Login", "Логин", "登录名")
+        SETTINGS_PROXY_PASS -> pick(lang, "Password", "Пароль", "密码")
 
         SETTINGS_DEV -> pick(lang, "For developers", "Для разработчиков", "开发者选项")
         DEV_TESTS -> pick(lang, "Tests", "Тесты", "测试")

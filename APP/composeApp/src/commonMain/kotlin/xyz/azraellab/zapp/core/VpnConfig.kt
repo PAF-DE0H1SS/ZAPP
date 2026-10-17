@@ -263,6 +263,21 @@ data class VpnConfig(
     val clashApiPort: Int = 9090,
     val clashApiSecret: String = "",
 
+    // --- Авторизация локального прокси (десктоп) ---
+    /**
+     * Пускать на локальные socks/http входы только с login:pass.
+     *
+     * Loopback закрыт от чужой сети, но не от чужих приложений машины:
+     * с выключенной авторизацией любой локальный процесс едет через
+     * туннель молча. Включается только вместе с systemProxySupported,
+     * на Android входов нет вовсе.
+     */
+    val proxyAuthEnabled: Boolean = false,
+    /** Логин локального прокси; пустой -- авторизация не навешивается. */
+    val proxyAuthUser: String = "",
+    /** Пароль локального прокси; логин без пароля тоже не считается. */
+    val proxyAuthPassword: String = "",
+
     // --- Источники коннектов (GitHub-репо и свои ссылки) ---
     val sources: List<VpnSource> = defaultSources(),
 

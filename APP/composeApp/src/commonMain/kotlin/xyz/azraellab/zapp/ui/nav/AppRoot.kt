@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.core.AppState
+import xyz.azraellab.zapp.core.deeplink.DeepLinkRequest
 import xyz.azraellab.zapp.ui.components.debugPath
 import xyz.azraellab.zapp.ui.pages.GoodbyeDpiPage
 import xyz.azraellab.zapp.ui.pages.GpsPage
@@ -83,6 +84,14 @@ fun AppRoot(state: AppState) {
         if (openSettings) {
             tabName = AppTab.SETTINGS.name
             AppNavRequest.openSettings.value = false
+        }
+    }
+
+    val deepLink by DeepLinkRequest.pending.collectAsState()
+    LaunchedEffect(deepLink) {
+        deepLink?.let {
+            state.handleDeepLink(it)
+            DeepLinkRequest.pending.value = null
         }
     }
 

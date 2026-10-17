@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import xyz.azraellab.zapp.core.deeplink.DeepLinkRequest
+import xyz.azraellab.zapp.core.deeplink.parseDeepLink
 import xyz.azraellab.zapp.core.installPresetFileBridge
 import xyz.azraellab.zapp.core.permissions.AndroidPermissionBridge
 import xyz.azraellab.zapp.ui.nav.AppNavRequest
@@ -118,6 +120,7 @@ class MainActivity : ComponentActivity() {
         // Кнопка «открыть настройки» из шторки: intent приходит сюда,
         // дальше запрос уходит в общий код и переключает вкладку.
         consumeOpenSettings(intent)
+        consumeDeepLink(intent)
 
         setContent {
             App()
@@ -129,6 +132,13 @@ class MainActivity : ComponentActivity() {
         // Та же кнопка, когда приложение уже живо и Activity переиспользуется
         // (SINGLE_TOP из флага PendingIntent'а).
         consumeOpenSettings(intent)
+        consumeDeepLink(intent)
+    }
+
+    /** Разбирает `zapp://`-интент и кладёт действие в общий мост. */
+    private fun consumeDeepLink(intent: Intent?) {
+        val uri = intent?.data ?: return
+        DeepLinkRequest.pending.value = parseDeepLink(uri.toString())
     }
 
     /** Превращает extra из intent'а в запрос навигации для AppRoot. */

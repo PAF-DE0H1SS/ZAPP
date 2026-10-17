@@ -82,7 +82,23 @@
         -->
         <activity
             android:name=".MainActivity"
-            android:exported="true" />
+            android:launchMode="singleTask"
+            android:exported="true">
+            <!-- Deep-link zapp://import?url=... и zapp://connect?profile=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="zapp"
+                    android:host="import" />
+                <data
+                    android:scheme="zapp"
+                    android:host="connect" />
+            </intent-filter>
+        </activity>
 
         <activity-alias
             android:name=".LauncherLock"

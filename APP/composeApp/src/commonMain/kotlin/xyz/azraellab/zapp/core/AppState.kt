@@ -29,6 +29,7 @@ import xyz.azraellab.zapp.core.backup.createWebDavClient
 import xyz.azraellab.zapp.core.catalog.CatalogEntry
 import xyz.azraellab.zapp.core.catalog.CatalogFeed
 import xyz.azraellab.zapp.core.catalog.CatalogService
+import xyz.azraellab.zapp.core.deeplink.DeepLink
 import xyz.azraellab.zapp.core.net.httpPostJson
 import xyz.azraellab.zapp.core.secure.platformSecureStorage
 import xyz.azraellab.zapp.core.warp.buildRegisterRequest
@@ -2082,6 +2083,19 @@ class AppState(
     fun selectProfile(id: String) {
         if (config.vpn.profileById(id) == null) return
         mutate { it.copy(vpn = it.vpn.copy(activeProfileId = id)) }
+    }
+
+    /** Выполняет действие deep-link: импорт конфига или выбор профиля. */
+    fun handleDeepLink(link: DeepLink) {
+        when (link) {
+            is DeepLink.Import -> scope.launch { importVpnText(link.url) }
+            is DeepLink.Connect -> {
+                val profile = config.vpn.profiles.firstOrNull {
+                    it.id == link.profile || it.name == link.profile
+                } ?: return
+                selectProfile(profile.id)
+            }
+        }
     }
 
     /** Удаляет коннекты: архив чистится кнопкой, ручные -- из списка. */

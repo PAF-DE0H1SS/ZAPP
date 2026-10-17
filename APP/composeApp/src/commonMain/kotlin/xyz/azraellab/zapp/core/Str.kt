@@ -267,6 +267,13 @@ enum class Str {
     SETTINGS_BACKUP_DAV_SAVE,
     SETTINGS_BACKUP_DAV_UPLOAD,
     SETTINGS_BACKUP_DAV_DOWNLOAD,
+    ZAPRET_CATALOG,
+    ZAPRET_CATALOG_HINT,
+    ZAPRET_CATALOG_URL,
+    ZAPRET_CATALOG_LOAD,
+    ZAPRET_CATALOG_EMPTY,
+    ZAPRET_CATALOG_INSTALL,
+    ZAPRET_CATALOG_UPDATE,
     SETTINGS_ABOUT,
     SETTINGS_SYSTEM,
     SETTINGS_APPLY_LIVE,
@@ -908,6 +915,16 @@ enum class Str {
         SETTINGS_BACKUP_DAV_SAVE -> pick(lang, "Save", "Сохранить", "保存")
         SETTINGS_BACKUP_DAV_UPLOAD -> pick(lang, "Upload", "Загрузить на сервер", "上传")
         SETTINGS_BACKUP_DAV_DOWNLOAD -> pick(lang, "Download", "Скачать с сервера", "下载")
+        ZAPRET_CATALOG -> pick(lang, "Preset catalog", "Каталог пресетов", "预设目录")
+        ZAPRET_CATALOG_HINT -> pick(
+            lang, "Bypass presets from a shared feed",
+            "Пресеты обхода из общего фида", "来自共享源的绕过预设"
+        )
+        ZAPRET_CATALOG_URL -> pick(lang, "Feed address", "Адрес фида", "源地址")
+        ZAPRET_CATALOG_LOAD -> pick(lang, "Load", "Загрузить каталог", "加载目录")
+        ZAPRET_CATALOG_EMPTY -> pick(lang, "Nothing loaded", "Пусто", "暂无内容")
+        ZAPRET_CATALOG_INSTALL -> pick(lang, "Install", "Установить", "安装")
+        ZAPRET_CATALOG_UPDATE -> pick(lang, "Update", "Обновить", "更新")
         SETTINGS_ABOUT -> pick(lang, "About", "О программе", "关于")
         SETTINGS_LOG -> pick(lang, "Log", "Журнал", "日志")
         SETTINGS_DOCS -> pick(lang, "Documentation", "Документация", "文档")

@@ -1,10 +1,19 @@
 package xyz.azraellab.zapp.ui.pages
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.ByeDpiStrategy
@@ -14,9 +23,12 @@ import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.ZapretStrategy
 import xyz.azraellab.zapp.core.domains.DpiScope
 import xyz.azraellab.zapp.ui.AppLangState
+import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.Choice
+import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappCard
 import xyz.azraellab.zapp.ui.components.ZappChoiceRow
+import xyz.azraellab.zapp.ui.components.ZappListRow
 import xyz.azraellab.zapp.ui.components.ZappSettingRow
 import xyz.azraellab.zapp.ui.components.ZappTextField
 import xyz.azraellab.zapp.ui.tr
@@ -197,5 +209,72 @@ fun ZapretPage(state: AppState) {
 
         // --- Журнал: причина запуска и смерти процесса ---
         DaemonLogCard(engine = state.zapretDaemon, path = "zapret.log.expand")
+    }
+
+    CatalogCard(state)
+}
+
+/** Каталог пресетов обхода: адрес фида, загрузка, установка записи. */
+@Composable
+private fun CatalogCard(state: AppState) {
+    val scope = rememberCoroutineScope()
+    var feedUrl by remember { mutableStateOf("") }
+    val feed = state.catalogFeed
+    val loading = state.catalogLoading
+
+    PageGroup(tr(Str.ZAPRET_CATALOG)) {
+        ZappCard {
+            Text(
+                text = tr(Str.ZAPRET_CATALOG_HINT),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            ZappTextField(
+                label = tr(Str.ZAPRET_CATALOG_URL),
+                value = feedUrl,
+                onValueChange = { feedUrl = it },
+                path = "zapret.catalog.url"
+            )
+            ZappButton(
+                text = tr(Str.ZAPRET_CATALOG_LOAD),
+                role = ButtonRole.SECONDARY,
+                enabled = !loading && feedUrl.isNotBlank(),
+                onClick = { scope.launch { state.loadCatalog(feedUrl) } },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        if (feed != null && feed.entries.isNotEmpty()) {
+            ZappCard {
+                feed.entries.forEach { entry ->
+                    ZappListRow(
+                        title = entry.name,
+                        subtitle = listOfNotNull(
+                            entry.description.ifEmpty { null },
+                            entry.version.ifEmpty { null }?.let { "v$it" }
+                        ).joinToString(" · "),
+                        trailing = {
+                            ZappButton(
+                                text = tr(Str.ZAPRET_CATALOG_INSTALL),
+                                role = ButtonRole.SECONDARY,
+                                onClick = {
+                                    scope.launch { state.installCatalogEntry(entry) }
+                                }
+                            )
+                        },
+                        path = "zapret.catalog.entry"
+                    )
+                }
+            }
+        } else if (feed != null) {
+            ZappCard {
+                Text(
+                    text = tr(Str.ZAPRET_CATALOG_EMPTY),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }

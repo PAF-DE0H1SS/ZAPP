@@ -26,6 +26,9 @@ import xyz.azraellab.zapp.core.backup.BackupService
 import xyz.azraellab.zapp.core.backup.RestoreMode
 import xyz.azraellab.zapp.core.backup.WebDavConfig
 import xyz.azraellab.zapp.core.backup.createWebDavClient
+import xyz.azraellab.zapp.core.catalog.CatalogEntry
+import xyz.azraellab.zapp.core.catalog.CatalogFeed
+import xyz.azraellab.zapp.core.catalog.CatalogService
 import xyz.azraellab.zapp.core.secure.platformSecureStorage
 import xyz.azraellab.zapp.core.daemon.DaemonId
 import xyz.azraellab.zapp.core.geo.photonReverse
@@ -1287,6 +1290,36 @@ class AppState(
 
     private val webDavSlot = "backup:webdav"
     private val webDavPassSlot = "backup:webdav:pass"
+
+    // --- Каталог пресетов ---
+
+    /** Загруженный фид каталога; null -- ещё не тянули или не вышло. */
+    var catalogFeed: CatalogFeed? by mutableStateOf(null)
+        private set
+
+    /** Идёт ли загрузка фида сейчас. */
+    var catalogLoading: Boolean by mutableStateOf(false)
+        private set
+
+    /** Скачать фид по ссылке; true -- есть что показывать. */
+    suspend fun loadCatalog(url: String): Boolean {
+        catalogLoading = true
+        val feed = runCatching { CatalogService.fetchFeed(url) }.getOrNull()
+        catalogLoading = false
+        catalogFeed = feed
+        return feed != null
+    }
+
+    /** Скачивает пресет записи каталога и применяет его. */
+    suspend fun installCatalogEntry(entry: CatalogEntry): PresetMessage {
+        val preset = runCatching { CatalogService.fetchPreset(entry.presetUrl) }.getOrNull()
+        if (preset == null) {
+            lastMessage = PresetMessage.badFile
+            return PresetMessage.badFile
+        }
+        applyPreset(preset)
+        return lastMessage ?: PresetMessage.applied(preset.name)
+    }
 
     // --- Мониторинг трафика ---
 

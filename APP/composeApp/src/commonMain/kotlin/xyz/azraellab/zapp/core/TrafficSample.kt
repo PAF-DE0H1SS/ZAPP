@@ -13,7 +13,14 @@ data class InterfaceCounters(
     /** Интерфейс активен: есть трафик или поднят. */
     val up: Boolean = true,
     /** Интерфейс служебный: `lo`, туннели, VPN. */
-    val tunnelled: Boolean = false
+    val tunnelled: Boolean = false,
+    /**
+     * Оценочный счётчик: netd-фолбэк (бакеты NetworkStats ленивые или
+     * мёртвые на прошивках без eBPF). Такой счётчик может молчать при
+     * живом трафике, поэтому точный clash_api при выборе скорости имеет
+     * приоритет над ним.
+     */
+    val estimated: Boolean = false
 ) {
     val totalBytes: Long get() = rxBytes + txBytes
 }

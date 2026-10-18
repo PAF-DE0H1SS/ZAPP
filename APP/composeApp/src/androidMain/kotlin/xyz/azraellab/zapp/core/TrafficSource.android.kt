@@ -139,8 +139,18 @@ internal class AndroidTrafficSource : TrafficSource {
                 netdLogged = true
                 AppLog.log("traffic", "counters via netd uid fallback")
             }
+            // Бакеты NetworkStats обновляются лениво, а на прошивках без
+            // eBPF (S24) не ведутся вовсе: счётчик мёртв при живом
+            // трафике. Помечаем оценочным -- выбор скорости тогда
+            // отдаёт clash_api, где box считает сам.
             return listOf(
-                InterfaceCounters(name = "zapp-uid", rxBytes = netd.first, txBytes = netd.second, tunnelled = true)
+                InterfaceCounters(
+                    name = "zapp-uid",
+                    rxBytes = netd.first,
+                    txBytes = netd.second,
+                    tunnelled = true,
+                    estimated = true
+                )
             )
         }
         // При активном VPN почти весь трафик устройства идёт через tun, поэтому

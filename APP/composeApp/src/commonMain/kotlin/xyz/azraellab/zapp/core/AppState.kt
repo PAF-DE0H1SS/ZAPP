@@ -71,13 +71,14 @@ import xyz.azraellab.zapp.core.native.NativeBinaries
 import xyz.azraellab.zapp.core.net.ConfigImport
 import xyz.azraellab.zapp.core.net.ClashProbe
 import xyz.azraellab.zapp.core.net.ClashStats
-import xyz.azraellab.zapp.core.net.ClashTraffic
 import xyz.azraellab.zapp.core.net.LinkProbe
 import xyz.azraellab.zapp.core.net.LinkTarget
 import xyz.azraellab.zapp.core.netcheck.NetCheckResult
 import xyz.azraellab.zapp.core.netcheck.NetCheckService
+import xyz.azraellab.zapp.core.traffic.ClashBridge
 import xyz.azraellab.zapp.core.traffic.TrafficDay
 import xyz.azraellab.zapp.core.traffic.TrafficHistory
+import xyz.azraellab.zapp.core.traffic.preferClash
 import xyz.azraellab.zapp.core.net.fetchClashNodeProbe
 import xyz.azraellab.zapp.core.net.fetchClashProbe
 import xyz.azraellab.zapp.core.net.fetchClashRoster
@@ -599,16 +600,14 @@ class AppState(
         linkJob = scope.launch {
             val source = trafficSource()
             var previous: TrafficSample? = null
-            var previousClash: ClashTraffic? = null
-            var previousClashAt = 0L
             var clashError: Throwable? = null
             var ticks = 0
             while (isActive) {
                 val mark = source.nowMs()
                 val sample = runCatching { source.read(mark) }.getOrNull()
-                // Точные счётчики box'а (сам владеет tun): чужие файлы/
-                // права/sysfs не нужны, а worker'ы/системный трафик в них
-                // не попадают. Если clash_api выключен или box не отвечает
+                // clash_api -- источник, не требующий ни root, ни прав на
+                // /proc: сам box владеет tun и отдаёт готовую скорость
+                // байт/с. Если clash_api выключен или box не отвечает
                 // -- падаем на интерфейсные счётчики. Причина сбоя -- в
                 // журнал вместе с периодической строкой, а не молча в null.
                 val clash = if (config.vpn.clashApiEnabled) {
@@ -619,27 +618,24 @@ class AppState(
                         .onFailure { clashError = it }
                         .getOrNull()
                 } else null
+                var speedSrc = "-"
                 val speed = when {
-                    // Интерфейсные счётчики -- по ним дельты точнее и видны сразу
-                    // (native/proc/sysfs/TrafficStats). Приоритет выше clash_api:
-                    // итоги box'а обновляются рывками, и на секундном тике дают
-                    // рваную скорость. Зато clash_api -- единственный источник,
-                    // не требующий ни root, ни прав на /proc, и по нему же
-                    // считает сторож «Подключено, но туннель мёртв».
-                    sample != null && sample.interfaces.isNotEmpty() ->
+                    // Оценочные фолбэки (netd-бакеты, сумма устройства) на
+                    // части прошивок мертвы при живом трафике, и тогда
+                    // источник истины -- box: /traffic отдаёт скорость
+                    // напрямую, вычитать из неё нечего.
+                    preferClash(sample) && clash != null -> {
+                        speedSrc = "clash"
+                        LinkSpeed(downBps = clash.down, upBps = clash.up)
+                    }
+                    // Настоящие счётчики интерфейсов (native/proc/sysfs/su,
+                    // живой TrafficStats) точнее: дельты по ним видны сразу
+                    // и считают весь трафик устройства.
+                    sample != null && sample.interfaces.isNotEmpty() -> {
+                        speedSrc = "iface"
                         previous?.let { linkSpeedBetween(it, sample) }
-                    previousClash != null && clash != null -> {
-                        val sec = ((mark - previousClashAt) / 1000.0).coerceAtLeast(0.001)
-                        LinkSpeed(
-                            downBps = ((clash.down - previousClash.down).coerceAtLeast(0L) / sec).toLong(),
-                            upBps = ((clash.up - previousClash.up).coerceAtLeast(0L) / sec).toLong()
-                        )
                     }
                     else -> null
-                }
-                if (clash != null) {
-                    previousClash = clash
-                    previousClashAt = mark
                 }
                 if (sample != null) previous = sample
                 LinkSpeedBus.publish(speed)
@@ -652,7 +648,7 @@ class AppState(
                     AppLog.log(
                         "spd",
                         "tick=$ticks clash=${clash != null} err=${clashError?.causeText() ?: "-"} " +
-                            "ifaces=${sample?.interfaces?.size ?: 0} speed=$speed"
+                            "ifaces=${sample?.interfaces?.size ?: 0} src=$speedSrc speed=$speed"
                     )
                 }
                 ticks++
@@ -1460,10 +1456,22 @@ class AppState(
             return
         }
         pollJob = scope.launch {
+            val bridge = ClashBridge()
             while (isActive) {
                 val period = config.traffic.intervalMs.coerceAtLeast(POLL_FLOOR_MS).toLong()
                 val source = trafficSource()
-                val sample = runCatching { source.read(source.nowMs()) }.getOrNull()
+                val mark = source.nowMs()
+                var sample = runCatching { source.read(mark) }.getOrNull()
+                // Оценочные фолбэки мертвы при живом трафике (netd не видит
+                // туннель): метер кормим мостом счётчиков box'а, если
+                // clash_api отвечает. Живые интерфейсы точнее и не требуют
+                // лишних запросов.
+                if (preferClash(sample) && config.vpn.clashApiEnabled) {
+                    val clash = runCatching {
+                        fetchClashTraffic(config.vpn.clashApiPort, config.vpn.clashApiSecret, 3_000)
+                    }.getOrNull()
+                    if (clash != null) sample = bridge.sample(clash, mark)
+                }
                 if (sample != null) {
                     meter.update(sample)
                     trafficPoints = meter.history()

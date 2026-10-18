@@ -13,8 +13,11 @@ import xyz.azraellab.zapp.core.TrafficUnit
 import xyz.azraellab.zapp.core.formatSpeed
 import xyz.azraellab.zapp.core.isTunnelSpeedInterface
 import xyz.azraellab.zapp.core.linkSpeedBetween
+import xyz.azraellab.zapp.core.net.ClashTraffic
 import xyz.azraellab.zapp.core.statusLine
 import xyz.azraellab.zapp.core.toDisplayString
+import xyz.azraellab.zapp.core.traffic.ClashBridge
+import xyz.azraellab.zapp.core.traffic.preferClash
 
 /**
  * Мониторинг трафика: форматирование, счётчик скорости, плашка.
@@ -239,6 +242,75 @@ internal fun trafficTests(out: MutableList<DevTest>) {
         checkEq("b", s.interfaceByName("b")?.name, "по имени")
         checkEq(null, s.interfaceByName("zzz"), "нет такого")
         checkEq(30L, InterfaceCounters("c", 10, 20).totalBytes, "iface total")
+    }
+
+    // --- clash_api как источник скорости ---
+
+    fun estimatedUid(t: Long, rx: Long, tx: Long) = sample(
+        t, InterfaceCounters("zapp-uid", rx, tx, tunnelled = true, estimated = true)
+    )
+
+    out += DevTest("traffic/prefer-clash-empty", DevCategory.TRAFFIC, "Пустого источника нет -- берём clash") {
+        checkTrue(preferClash(null), "нет среза")
+        checkTrue(preferClash(sample(0)), "пустые интерфейсы")
+    }
+
+    out += DevTest("traffic/prefer-clash-estimated", DevCategory.TRAFFIC, "Оценочные счётчики -- берём clash") {
+        checkTrue(preferClash(estimatedUid(0, 0, 0)), "только оценка")
+    }
+
+    out += DevTest("traffic/prefer-clash-live", DevCategory.TRAFFIC, "Живые счётчики -- приоритет их") {
+        checkFalse(preferClash(sample(0, InterfaceCounters("tun0", 0, 0, tunnelled = true))), "настоящие")
+        checkFalse(
+            preferClash(
+                sample(
+                    0,
+                    InterfaceCounters("tun0", 0, 0, tunnelled = true),
+                    InterfaceCounters("zapp-uid", 0, 0, estimated = true)
+                )
+            ),
+            "смесь -- живой тянет"
+        )
+    }
+
+    out += DevTest("traffic/clash-bridge-integrates", DevCategory.TRAFFIC, "Мост интегрирует скорость в байты") {
+        val bridge = ClashBridge()
+        checkEq(0L, bridge.sample(ClashTraffic(up = 0, down = 0), 0).totalBytes(), "база с нулевой меткой")
+        val first = bridge.sample(ClashTraffic(up = 100, down = 200), 1000)
+        checkEq(200L, first.rxBytes(), "down за первую секунду")
+        checkEq(100L, first.txBytes(), "up за первую секунду")
+        val second = bridge.sample(ClashTraffic(up = 100, down = 200), 2000)
+        checkEq(400L, second.rxBytes(), "вторая секунда")
+        checkEq(200L, second.txBytes(), "up тоже")
+        val third = bridge.sample(ClashTraffic(up = 50, down = 250), 3000)
+        checkEq(650L, third.rxBytes(), "скорость подхватилась")
+        checkEq(250L, third.txBytes(), "up тоже")
+        val iface = third.interfaces.single()
+        checkEq("zapp-box", iface.name, "псевдоинтерфейс")
+        checkTrue(iface.tunnelled, "туннельный")
+        checkTrue(iface.isTunnelSpeedInterface(), "проходит фильтр скорости")
+    }
+
+    out += DevTest("traffic/clash-bridge-meter", DevCategory.TRAFFIC, "Мост кормит метер живыми дельтами") {
+        val meter = TrafficMeter()
+        val bridge = ClashBridge()
+        meter.update(bridge.sample(ClashTraffic(up = 0, down = 0), 0))
+        meter.update(bridge.sample(ClashTraffic(up = 0, down = 1000), 1000))
+        val point = meter.update(bridge.sample(ClashTraffic(up = 0, down = 1000), 2000))
+        // мост добавил 1000 байт за секунду: 8000 бит/с
+        checkEq(8000.0, point.rxBitsPerSecond, "rx из clash-скорости")
+        checkEq(2000L, meter.summary().totalBytes, "итог растёт")
+    }
+
+    out += DevTest("traffic/meter-source-switch-baseline", DevCategory.TRAFFIC, "Смена источника не даёт скачок") {
+        val meter = TrafficMeter()
+        meter.update(sample(0, InterfaceCounters("zapp-box", 0, 0, tunnelled = true)))
+        meter.update(sample(1000, InterfaceCounters("zapp-box", 100, 50, tunnelled = true)))
+        // clash умер, метер снова кормят интерфейсы с большими
+        // накопленными счётчиками: это новая база, а не трафик.
+        val point = meter.update(sample(2000, InterfaceCounters("tun0", 24_000_000, 8_000_000, tunnelled = true)))
+        checkEq(0.0, point.totalBitsPerSecond, "новый источник -- новая база")
+        checkEq(150L, meter.summary().totalBytes, "итоги без ложного всплеска")
     }
 
     // --- Плашка скорости ---

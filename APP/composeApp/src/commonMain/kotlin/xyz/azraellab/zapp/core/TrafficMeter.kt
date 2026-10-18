@@ -60,9 +60,12 @@ class TrafficMeter(
         var rxDelta = 0L
         var txDelta = 0L
         counted.forEach { current ->
-            val before = prev.interfaceByName(current.name)
-            rxDelta += positiveDelta(before?.rxBytes ?: 0L, current.rxBytes)
-            txDelta += positiveDelta(before?.txBytes ?: 0L, current.txBytes)
+            // Интерфейса не было в прошлом срезе -- он сам себе база:
+            // счётчик начинается с нуля, а при смене источника
+            // (интерфейсы <-> clash-мост) чужие накопления -- не трафик.
+            val before = prev.interfaceByName(current.name) ?: return@forEach
+            rxDelta += positiveDelta(before.rxBytes, current.rxBytes)
+            txDelta += positiveDelta(before.txBytes, current.txBytes)
         }
 
         val rxBits = rxDelta * 8.0 / seconds
@@ -141,13 +144,23 @@ class TrafficMeter(
             interfaces = names.map { name ->
                 val now = current.interfaceByName(name)
                 val before = prev.interfaceByName(name)
-                InterfaceCounters(
-                    name = name,
-                    rxBytes = positiveDelta(before?.rxBytes ?: 0L, now?.rxBytes ?: 0L),
-                    txBytes = positiveDelta(before?.txBytes ?: 0L, now?.txBytes ?: 0L),
-                    up = now?.up ?: false,
-                    tunnelled = now?.tunnelled ?: false
-                )
+                // Без базы на обеих сторонах дельты нет: интерфейс
+                // появился или исчез -- это смена источника, а не трафик.
+                if (before == null || now == null) {
+                    InterfaceCounters(
+                        name = name,
+                        up = now?.up ?: false,
+                        tunnelled = now?.tunnelled ?: false
+                    )
+                } else {
+                    InterfaceCounters(
+                        name = name,
+                        rxBytes = positiveDelta(before.rxBytes, now.rxBytes),
+                        txBytes = positiveDelta(before.txBytes, now.txBytes),
+                        up = now.up,
+                        tunnelled = now.tunnelled
+                    )
+                }
             }
         )
     }

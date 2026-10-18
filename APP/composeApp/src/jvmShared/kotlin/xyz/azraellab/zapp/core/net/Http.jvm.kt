@@ -20,3 +20,7 @@ actual suspend fun httpPostJson(
 ): String? = withContext(Dispatchers.IO) {
     httpPost(url, body, headers)
 }
+
+actual suspend fun httpGetBytes(url: String): ByteArray? = withContext(Dispatchers.IO) {
+    httpGetRaw(url)
+}

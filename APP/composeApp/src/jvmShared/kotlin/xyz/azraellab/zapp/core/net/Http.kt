@@ -67,3 +67,30 @@ fun httpPost(
         connection.disconnect()
     }
 }
+
+/**
+ * GET байтами -- для архивов, где тело не текст.
+ *
+ * Таймаут чтения длиннее текстового: архив ядра -- десятки мегабайт,
+ * и медленная сеть не должна рвать загрузку посреди файла.
+ */
+fun httpGetRaw(
+    url: String,
+    readTimeoutMs: Int = 120_000
+): ByteArray? {
+    val connection = runCatching { URL(url).openConnection() as HttpURLConnection }.getOrNull()
+        ?: return null
+    return try {
+        connection.connectTimeout = HTTP_TIMEOUT_MS
+        connection.readTimeout = readTimeoutMs
+        connection.instanceFollowRedirects = true
+        connection.setRequestProperty("User-Agent", "zapp")
+        val code = connection.responseCode
+        if (code !in 200..299) return null
+        connection.inputStream.use { it.readBytes() }
+    } catch (_: Exception) {
+        null
+    } finally {
+        connection.disconnect()
+    }
+}

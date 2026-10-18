@@ -19,6 +19,9 @@ expect suspend fun httpPostJson(
     headers: Map<String, String> = emptyMap()
 ): String?
 
+/** GET байтами для архивов (обновление ядра); null -- сети нет, не 2xx или битая ссылка. */
+expect suspend fun httpGetBytes(url: String): ByteArray?
+
 /**
  * Открывает ссылку в браузере по умолчанию.
  *

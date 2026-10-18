@@ -51,6 +51,15 @@ interface PlatformCaps {
     val uwpLoopbackSupported: Boolean
 
     /**
+     * Можно ли заменить бинарь ядра (sing-box) поверх дистрибутива.
+     *
+     * Десктоп да: бинари лежат в каталоге данных и запускаются оттуда.
+     * Android нет: бинари -- jniLibs, исполняются только из
+     * nativeLibraryDir, и SELinux не пропускает exec из каталога данных.
+     */
+    val coreUpdateSupported: Boolean
+
+    /**
      * Приложение запущено на Android TV (или аналогичном leanback-устройстве).
      *
      * Определяется в рантайме, а не при компиляции: телефон и приставка

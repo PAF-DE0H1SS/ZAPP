@@ -82,6 +82,7 @@ import xyz.azraellab.zapp.core.net.fetchClashNodeProbe
 import xyz.azraellab.zapp.core.net.fetchClashProbe
 import xyz.azraellab.zapp.core.net.fetchClashRoster
 import xyz.azraellab.zapp.core.net.fetchClashTraffic
+import xyz.azraellab.zapp.core.net.httpGetBytes
 import xyz.azraellab.zapp.core.net.httpGetText
 import xyz.azraellab.zapp.core.net.probeLink
 import xyz.azraellab.zapp.core.net.probeTarget
@@ -104,14 +105,24 @@ import xyz.azraellab.zapp.core.update.APP_VERSION
 import xyz.azraellab.zapp.core.update.ReleaseInfo
 import xyz.azraellab.zapp.core.update.UpdateDownload
 import xyz.azraellab.zapp.core.update.UpdateState
+import xyz.azraellab.zapp.core.update.CORE_RELEASES_URL
+import xyz.azraellab.zapp.core.update.CoreUpdateInfo
 import xyz.azraellab.zapp.core.update.NoticeInfo
+import xyz.azraellab.zapp.core.update.ZappComponent
 import xyz.azraellab.zapp.core.update.cachedUpdateApk
+import xyz.azraellab.zapp.core.update.coreOsArch
 import xyz.azraellab.zapp.core.update.downloadUpdateApk
 import xyz.azraellab.zapp.core.update.fetchLatestRelease
+import xyz.azraellab.zapp.core.update.findCoreBinary
 import xyz.azraellab.zapp.core.update.installUpdateApk
 import xyz.azraellab.zapp.core.update.localDayEndMs
+import xyz.azraellab.zapp.core.update.parseCoreRelease
 import xyz.azraellab.zapp.core.update.parseNotice
+import xyz.azraellab.zapp.core.update.probeComponentVersion
+import xyz.azraellab.zapp.core.update.tarGzEntries
 import xyz.azraellab.zapp.core.update.updateAvailable
+import xyz.azraellab.zapp.core.update.writeUpdatedCore
+import xyz.azraellab.zapp.core.update.zipEntries
 import xyz.azraellab.zapp.core.connections.ConnectionsSample
 import xyz.azraellab.zapp.core.connections.ConnectionsSource
 import xyz.azraellab.zapp.core.connections.createConnectionsSource
@@ -2116,6 +2127,95 @@ class AppState(
         mutate { it.copy(noticeDismissedId = current.id) }
         AppLog.log("update", "notice dismissed: ${current.title}")
     }
+
+    // --- Обновление ядра sing-box ---
+
+    /** Обновление ядра с официального фида; null -- нет или не проверено. */
+    private val _coreUpdate = MutableStateFlow<CoreUpdateInfo?>(null)
+    val coreUpdate: StateFlow<CoreUpdateInfo?> = _coreUpdate.asStateFlow()
+
+    /** Ядро качается прямо сейчас. */
+    var coreUpdateBusy by mutableStateOf(false)
+        private set
+
+    /** Ядро обновлено в этой сессии; применяется при следующем старте туннеля. */
+    var coreUpdateDone by mutableStateOf(false)
+        private set
+
+    /** Причина неудачи обновления ядра; null -- всё хорошо или ещё не пробовали. */
+    var coreUpdateError by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * Проверяет официальный фид sing-box на свежее ядро.
+     *
+     * Предлагаются только patch-релизы своей minor-ветки: конфиги
+     * проверены на версии, с которой собран дистрибутив (см.
+     * [coreGateOpen]). Android -- no-op: бинарь в jniLibs заменить нельзя.
+     */
+    fun checkCoreUpdate() {
+        if (!caps.coreUpdateSupported || _coreUpdate.value != null || coreUpdateBusy) return
+        scope.launch {
+            val current = runCatching { probeComponentVersion(ZappComponent.BOX) }.getOrNull()
+            if (current == null) {
+                AppLog.log("core", "check: cannot read box version")
+                return@launch
+            }
+            val body = httpGetText(CORE_RELEASES_URL)
+            if (body == null) {
+                AppLog.log("core", "check: no response from GitHub")
+                return@launch
+            }
+            val osArch = corePlatform()
+            if (osArch == null) {
+                AppLog.log("core", "check: unsupported platform")
+                return@launch
+            }
+            val found = parseCoreRelease(body, current, osArch.first, osArch.second)
+            AppLog.log("core", "check: current=$current available=${found?.version ?: "none in line"}")
+            _coreUpdate.value = found
+        }
+    }
+
+    /**
+     * Качает архив ядра, распаковывает бинарь и кладёт его поверх PATH.
+     *
+     * Запущенный туннель не трогается: свежий файл применяется при
+     * следующем старте -- перезапуск ради обновления поднял бы трафик
+     * и оборвал бы сессию.
+     */
+    fun downloadCoreUpdate() {
+        val info = _coreUpdate.value ?: return
+        if (coreUpdateBusy) return
+        coreUpdateBusy = true
+        coreUpdateDone = false
+        coreUpdateError = null
+        scope.launch {
+            val result = runCatching {
+                val os = corePlatform()?.first ?: error("unsupported platform")
+                val bytes = httpGetBytes(info.url) ?: error("no response from GitHub")
+                val entries = if (info.zip) zipEntries(bytes) else tarGzEntries(bytes)
+                val binary = findCoreBinary(entries, os) ?: error("no $os binary in archive")
+                if (!writeUpdatedCore(binary, info.version)) error("platform cannot replace core")
+            }
+            coreUpdateBusy = false
+            result.onSuccess {
+                _coreUpdate.value = null
+                coreUpdateDone = true
+                AppLog.log("core", "updated to ${info.version}; applies on next tunnel start")
+            }.onFailure { e ->
+                val cause = e.causeText()
+                coreUpdateError = cause
+                AppLog.log("core", "update failed: $cause")
+            }
+        }
+    }
+
+    /** Целевая пара платформы; null -- ОС или архитектура не поддержаны. */
+    private fun corePlatform(): Pair<String, String>? = coreOsArch(
+        System.getProperty("os.name") ?: "",
+        System.getProperty("os.arch") ?: ""
+    )
 
     // --- Уведомления ---
 

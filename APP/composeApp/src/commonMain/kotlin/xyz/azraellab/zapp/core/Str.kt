@@ -700,6 +700,10 @@ enum class Str {
     NOTIFY_GPS_OFF,
     NOTICE_GOT_IT,
     NOTICE_OPEN,
+    CORE_UPDATE,
+    CORE_UPDATE_AVAILABLE,
+    CORE_UPDATE_BUSY,
+    CORE_UPDATE_DONE,
     NOTIFY_GPS_ERROR,
     NOTIFY_UPDATE,
     NOTIFY_UPDATE_READY,
@@ -1524,6 +1528,15 @@ enum class Str {
         NOTIFY_GPS_OFF -> pick(lang, "GPS spoofing off", "Подмена GPS выключена", "GPS 伪造已关闭")
         NOTICE_GOT_IT -> pick(lang, "Got it", "Понятно", "知道了")
         NOTICE_OPEN -> pick(lang, "Open", "Открыть", "打开")
+        CORE_UPDATE -> pick(lang, "Update core", "Обновить ядро", "更新内核")
+        CORE_UPDATE_AVAILABLE -> pick(lang, "New core version", "Новая версия ядра", "新内核版本")
+        CORE_UPDATE_BUSY -> pick(lang, "Downloading core...", "Загрузка ядра...", "正在下载内核...")
+        CORE_UPDATE_DONE -> pick(
+            lang,
+            "Core updated — applies on next tunnel start",
+            "Ядро обновлено — применится при следующем старте туннеля",
+            "内核已更新 — 下次启动隧道时生效"
+        )
         NOTIFY_GPS_ERROR -> pick(lang, "GPS spoofing failed", "Подмена GPS не запустилась", "GPS 伪造失败")
         NOTIFY_UPDATE -> pick(lang, "Update available", "Доступно обновление", "有可用更新")
         NOTIFY_UPDATE_READY -> pick(lang, "Update ready to install", "Обновление готово к установке", "更新已可安装")

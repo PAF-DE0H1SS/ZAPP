@@ -183,7 +183,7 @@ fun SettingsPage(state: AppState) {
         }
 
         "components" -> SubPage(Str.COMPONENTS, back = { section = null }) {
-            ComponentsSection()
+            ComponentsSection(state)
         }
 
         "log" -> SubPage(Str.SETTINGS_LOG, back = { section = null }) {
@@ -1625,8 +1625,9 @@ private fun GoodbyeDpiSection(state: AppState) {
 }
 
 @Composable
-private fun ComponentsSection() {
+private fun ComponentsSection(state: AppState) {
     val scope = rememberCoroutineScope()
+    val scheme = MaterialTheme.colorScheme
 
     // Версии настоящие, а не версия приложения: каждый бинарь отвечает
     // сам. `--version` -- это короткий запуск процесса, поэтому проба
@@ -1638,6 +1639,9 @@ private fun ComponentsSection() {
         versions = ZappComponent.entries.map { component ->
             component.title to (probeComponentVersion(component) ?: "-")
         }
+        // Фид ядра проверяется здесь же: версия box только что прочитана,
+        // и сравнение идёт с настоящим бинарём, а не с догадкой.
+        state.checkCoreUpdate()
     }
 
     PageGroup(tr(Str.COMPONENTS)) {
@@ -1650,6 +1654,46 @@ private fun ComponentsSection() {
                 role = ButtonRole.SECONDARY,
                 onClick = { scope.launch { NativeBinaries.reinstall() } }
             )
+        }
+
+        // Обновление ядра: только там, где бинарь вообще можно заменить.
+        // Android прячет карточку целиком -- там sing-box едет с APK.
+        val coreUpdate by state.coreUpdate.collectAsState()
+        val coreVisible = state.caps.coreUpdateSupported &&
+            (coreUpdate != null || state.coreUpdateBusy || state.coreUpdateDone || state.coreUpdateError != null)
+        if (coreVisible) {
+            ZappCard {
+                coreUpdate?.let { info ->
+                    InfoRow(label = tr(Str.CORE_UPDATE_AVAILABLE), value = info.version)
+                    ZappButton(
+                        text = tr(Str.CORE_UPDATE),
+                        role = ButtonRole.SECONDARY,
+                        onClick = { state.downloadCoreUpdate() },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (state.coreUpdateBusy) {
+                    Text(
+                        text = tr(Str.CORE_UPDATE_BUSY),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant
+                    )
+                }
+                if (state.coreUpdateDone) {
+                    Text(
+                        text = tr(Str.CORE_UPDATE_DONE),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.primary
+                    )
+                }
+                state.coreUpdateError?.let { reason ->
+                    Text(
+                        text = reason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.error
+                    )
+                }
+            }
         }
     }
 }

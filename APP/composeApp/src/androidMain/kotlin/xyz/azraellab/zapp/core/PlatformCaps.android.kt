@@ -16,6 +16,7 @@ actual fun platformCaps(): PlatformCaps = object : PlatformCaps {
     override val systemProxySupported: Boolean = false
     override val autostartSupported: Boolean = false
     override val uwpLoopbackSupported: Boolean = false
+    override val coreUpdateSupported: Boolean = false
 
     // Рантайм-детект: телефон и приставка -- один androidMain. Контекст
     // к этому моменту уже присоединён (ZappApp.onCreate раньше первого

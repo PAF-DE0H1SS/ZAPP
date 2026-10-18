@@ -37,6 +37,7 @@ import xyz.azraellab.zapp.core.perApp.PerAppConfig
 import xyz.azraellab.zapp.core.perApp.RouteMode
 import xyz.azraellab.zapp.core.perApp.installedApps
 import xyz.azraellab.zapp.core.root.RootShell
+import xyz.azraellab.zapp.core.update.coreBoxPath
 import java.io.File
 import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
@@ -589,7 +590,9 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
      * самую туннель-сессию.
      */
     private fun boxSpec(built: SingboxConfig.Built, useTunSocket: Boolean): DaemonSpec = DaemonSpec(
-        binary = "box",
+        // Обновлённое ядро перекрывает box из PATH: файл лежит в
+        // каталоге данных и подставляется при следующем старте.
+        binary = coreBoxPath() ?: "box",
         args = listOf("run", "-c", "{{config}}"),
         files = mapOf("config" to built.json),
         env = if (useTunSocket && VpnTunnel.fdSocketPath != null) {

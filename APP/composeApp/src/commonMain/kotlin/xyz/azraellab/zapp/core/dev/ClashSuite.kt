@@ -351,6 +351,9 @@ internal fun clashTests(out: MutableList<DevTest>) {
         checkEq("8000:9000", rangeRule["port_range"]!!.jsonArray[0].jsonPrimitive.content, "диапазон через двоеточие")
         val networkRule = rules.first { "network" in it }
         checkEq("tcp", networkRule["network"]!!.jsonArray[0].jsonPrimitive.content, "network")
+        // RULE-SET с известным провайдером становится ссылкой на rule_set.
+        val rulesetRule = ruleWith("rp-apple")
+        checkEq("direct", rulesetRule["outbound"]?.jsonPrimitive?.content, "RULE-SET -> цель правила")
         checkEq("main", rootOf(buildClash())["route"]!!.jsonObject["final"]?.jsonPrimitive?.content, "final из MATCH")
     }
 
@@ -358,16 +361,56 @@ internal fun clashTests(out: MutableList<DevTest>) {
         val built = buildClash()
         val notes = notesOf(built)
         checkContains(notes, "clash: skipped GEOIP rule (geo database removed in sing-box 1.12)", "GEOIP")
-        checkContains(notes, "clash: skipped RULE-SET rule (providers are not converted)", "RULE-SET")
         checkContains(notes, "clash: skipped logical rule (AND)", "логическое правило")
         checkContains(notes, "clash: skipped unknown rule type (WEIRD-TYPE)", "неизвестный тип")
         checkContains(notes, "clash: skipped rule: target 'missing-group' not found", "несуществующая цель")
         checkNotContains(built.json, "\"geoip\"", "geoip не попал в конфиг")
-        checkNotContains(built.json, "\"rule_set\"", "rule_set не попал в конфиг")
     }
 
-    out += DevTest("clash/build-providers-note", DevCategory.PARSERS, "clash: провайдеры не качаются и объяснены") {
-        checkContains(notesOf(buildClash()), "clash: 2 provider(s) ignored (never fetched)", "счётчик провайдеров")
+    out += DevTest("clash/build-ruleset-providers", DevCategory.PARSERS, "clash: rule-providers уходят в секцию rule_set") {
+        val built = buildClash("""
+            proxies:
+              - name: n1
+                type: vless
+                server: s.example
+                port: 443
+                uuid: 11111111-1111-4111-8111-111111111111
+            rules:
+              - RULE-SET,web,DIRECT
+              - RULE-SET,local,DIRECT
+              - RULE-SET,ghost,DIRECT
+              - MATCH,DIRECT
+            rule-providers:
+              web:
+                type: http
+                behavior: classical
+                format: mrs
+                url: https://example.com/web.mrs
+                interval: 12h
+              local:
+                type: file
+                path: ./local.yaml
+        """.trimIndent())
+        val root = rootOf(built)
+        val ruleSets = root["rule_set"]!!.jsonArray.map { it.jsonObject }
+        // Провайдер с url уходит remote-файлом: ядро скачает и обновит сам.
+        val web = ruleSets.first { it["tag"]!!.jsonPrimitive.content == "rp-web" }
+        checkEq("remote", web["type"]!!.jsonPrimitive.content, "remote-файл")
+        checkEq("mrs", web["format"]!!.jsonPrimitive.content, "формат mrs пройден")
+        checkEq("https://example.com/web.mrs", web["url"]!!.jsonPrimitive.content, "url провайдера")
+        checkEq("12h", web["update_interval"]!!.jsonPrimitive.content, "интервал обновления")
+        checkEq(1, ruleSets.size, "файловый и неизвестный провайдеры не попали в секцию")
+        val notes = notesOf(built)
+        checkContains(notes, "clash: skipped RULE-SET 'local' (provider has no url)", "файловый провайдер")
+        checkContains(notes, "clash: skipped RULE-SET 'ghost' (provider not found)", "неизвестный провайдер")
+    }
+
+    out += DevTest("clash/build-providers-note", DevCategory.PARSERS, "clash: провайдеры подсчитаны и объяснены") {
+        checkContains(
+            notesOf(buildClash()),
+            "clash: 2 provider(s) counted; rule-providers with url become rule_set, proxy-providers are never fetched",
+            "счётчик провайдеров"
+        )
     }
 
     out += DevTest("clash/build-no-auto", DevCategory.PARSERS, "clash: при своих группах встроенный auto не добавляется") {

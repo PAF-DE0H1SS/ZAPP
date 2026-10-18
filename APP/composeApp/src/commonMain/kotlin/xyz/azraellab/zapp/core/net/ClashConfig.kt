@@ -9,8 +9,10 @@ package xyz.azraellab.zapp.core.net
  * Поля узла остаются сырыми картами: типов прокси больше, чем полей,
  * которые реально используются.
  *
- * Провайдеры (proxy-providers и rule-providers) считаются, но не качаются:
- * импорт -- без сети, чужие файлы по ссылкам не тянем.
+ * Провайдеры: proxy-providers считаются, но не качаются (импорт -- без
+ * сети). Rule-providers уходят дальше в [SingboxConfig] как remote
+ * rule_set: их URL кладётся в конфиг, и ядро sing-box скачает файлы
+ * само при старте туннеля.
  */
 data class ClashConfig(
     /** Узлы: имя, тип, поля и адрес для проверки живости. */
@@ -22,7 +24,9 @@ data class ClashConfig(
     /** Имя файла из верхнеуровневого `name:`, если оно есть. */
     val name: String = "",
     /** Сколько провайдеров описано: конвертер их не использует, только заметка. */
-    val providers: Int = 0
+    val providers: Int = 0,
+    /** Провайдеры правил из секции `rule-providers`: имя -> URL/формат. */
+    val ruleProviders: List<ClashRuleProvider> = emptyList()
 ) {
 
     companion object {
@@ -76,7 +80,20 @@ data class ClashConfig(
                 rules = root.texts("rules"),
                 name = root.str("name")?.trim().orEmpty(),
                 providers = (root.obj("proxy-providers")?.fields?.size ?: 0) +
-                    (root.obj("rule-providers")?.fields?.size ?: 0)
+                    (root.obj("rule-providers")?.fields?.size ?: 0),
+                ruleProviders = (root.obj("rule-providers")?.fields ?: LinkedHashMap())
+                    .mapNotNull { (name, node) ->
+                        val fields = node as? ClashYaml.Node.Obj ?: return@mapNotNull null
+                        val clean = name.trim()
+                        if (clean.isEmpty()) return@mapNotNull null
+                        ClashRuleProvider(
+                            name = clean,
+                            url = fields.str("url")?.trim().orEmpty(),
+                            format = fields.str("format")?.trim().orEmpty().lowercase()
+                                .ifBlank { "yaml" },
+                            interval = fields.str("interval")?.trim().orEmpty()
+                        )
+                    }
             )
         }
     }
@@ -97,4 +114,20 @@ data class ClashGroup(
     val type: String,
     val members: List<String>,
     val fields: ClashYaml.Node.Obj
+)
+
+/**
+ * Провайдер правил: источник файла для sing-box rule_set.
+ *
+ * behavior не выносится: yaml-источник sing-box разбирает сам, а формат
+ * `mrs` (mihomo) поддержан ядром напрямую.
+ */
+data class ClashRuleProvider(
+    val name: String,
+    /** Пустой URL -- провайдер файловый, конвертер его пропустит с заметкой. */
+    val url: String = "",
+    /** yaml | mrs; прочие значения читаются как yaml. */
+    val format: String = "yaml",
+    /** Интервал обновления clash-вида (`1h`); пусто -- без автообновления. */
+    val interval: String = ""
 )

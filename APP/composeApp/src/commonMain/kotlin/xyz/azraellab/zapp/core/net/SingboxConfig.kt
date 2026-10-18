@@ -272,7 +272,8 @@ object SingboxConfig {
         notes: List<String>,
         finalTag: String? = null,
         extraRules: List<JsonObject> = emptyList(),
-        autoGroup: Boolean = true
+        autoGroup: Boolean = true,
+        ruleSets: List<JsonObject> = emptyList()
     ): Built {
         val cascade = applyCascade(vpn, outbounds, finalTag)
         val builtOutbounds = cascade.outbounds
@@ -335,6 +336,9 @@ object SingboxConfig {
             })
             if (endpoints.isNotEmpty()) {
                 put("endpoints", buildJsonArray { endpoints.forEach { add(it) } })
+            }
+            if (ruleSets.isNotEmpty()) {
+                put("rule_set", buildJsonArray { ruleSets.forEach { add(it) } })
             }
             put("route", route)
             if (vpn.clashApiEnabled) {
@@ -1039,8 +1043,11 @@ object SingboxConfig {
 
         val notes = mutableListOf<String>()
         if (clash.providers > 0) {
-            notes += "clash: ${clash.providers} provider(s) ignored (never fetched)"
+            notes += "clash: ${clash.providers} provider(s) counted; " +
+                "rule-providers with url become rule_set, proxy-providers are never fetched"
         }
+        val providersByName = clash.ruleProviders.associateBy { it.name }
+        val wiredProviders = LinkedHashSet<String>()
 
         // Дубликат тега роняет весь конфиг, поэтому служебные имена заняты
         // заранее: узел clash под именем «auto» уедет в «auto (2)».
@@ -1198,7 +1205,8 @@ object SingboxConfig {
                 notes += "clash: skipped malformed rule ($head)"
                 continue
             }
-            clashRuleOf(head, parts[1].trim(), parts[2].trim(), tags, notes)?.let { routeRules += it }
+            clashRuleOf(head, parts[1].trim(), parts[2].trim(), tags, providersByName, wiredProviders, notes)
+                ?.let { routeRules += it }
         }
 
         // Финал -- из последнего MATCH; без него первая группа, а без неё
@@ -1230,11 +1238,28 @@ object SingboxConfig {
             else -> null
         }
 
+        // Секция rule_set -- только востребованные правилами провайдеры.
+        // Ядро скачает файлы при старте туннеля и обновит их сам.
+        val ruleSets = wiredProviders.mapNotNull { name ->
+            val provider = providersByName[name] ?: return@mapNotNull null
+            buildJsonObject {
+                put("tag", "rp-$name")
+                put("type", "remote")
+                put("format", if (provider.format == "mrs") "mrs" else "yaml")
+                put("url", provider.url)
+                // Правила качаются мимо туннеля: конфиг готовится до того,
+                // как узел поднят, и это не пользовательский трафик.
+                put("download_detour", DIRECT_TAG)
+                clashDuration(provider.interval)?.let { put("update_interval", it) }
+            }
+        }
+
         return assemble(
             profile, vpn, outbounds, endpoints, notes,
             finalTag = finalTag,
             extraRules = routeRules,
-            autoGroup = !hasGroups
+            autoGroup = !hasGroups,
+            ruleSets = ruleSets
         )
     }
 
@@ -1244,6 +1269,8 @@ object SingboxConfig {
         value: String,
         target: String,
         tags: Map<String, String>,
+        providers: Map<String, ClashRuleProvider>,
+        wired: MutableSet<String>,
         notes: MutableList<String>
     ): JsonObject? {
         val kind = type.uppercase()
@@ -1253,13 +1280,28 @@ object SingboxConfig {
                 notes += "clash: skipped $kind rule (geo database removed in sing-box 1.12)"
                 return null
             }
-            // Провайдеры rule-providers -- чужой формат payload, не качаем.
-            "RULE-SET" -> {
-                notes += "clash: skipped RULE-SET rule (providers are not converted)"
-                return null
-            }
         }
         val matcher: JsonObject = when (kind) {
+            // Правило RULE-SET ссылается на провайдер: тот уходит в секцию
+            // rule_set remote-файлом, ядро само скачает его по своему URL и
+            // обновит по update_interval -- свежие правила и geo-секции
+            // тянутся без релиза приложения. Без URL провайдер пропускается:
+            // файловый путь чужого конфига нам недоступен.
+            "RULE-SET" -> {
+                val provider = providers[value]
+                if (provider == null) {
+                    notes += "clash: skipped RULE-SET '$value' (provider not found)"
+                    return null
+                }
+                if (provider.url.isBlank()) {
+                    notes += "clash: skipped RULE-SET '$value' (provider has no url)"
+                    return null
+                }
+                wired += provider.name
+                buildJsonObject {
+                    put("rule_set", buildJsonArray { add(JsonPrimitive("rp-${provider.name}")) })
+                }
+            }
             "DOMAIN" -> clashMatcher("domain", value)
             "DOMAIN-SUFFIX" -> clashMatcher("domain_suffix", value)
             "DOMAIN-KEYWORD" -> clashMatcher("domain_keyword", value)

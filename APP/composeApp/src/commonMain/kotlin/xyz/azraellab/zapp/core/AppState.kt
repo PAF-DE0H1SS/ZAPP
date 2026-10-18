@@ -104,11 +104,13 @@ import xyz.azraellab.zapp.core.update.APP_VERSION
 import xyz.azraellab.zapp.core.update.ReleaseInfo
 import xyz.azraellab.zapp.core.update.UpdateDownload
 import xyz.azraellab.zapp.core.update.UpdateState
+import xyz.azraellab.zapp.core.update.NoticeInfo
 import xyz.azraellab.zapp.core.update.cachedUpdateApk
 import xyz.azraellab.zapp.core.update.downloadUpdateApk
 import xyz.azraellab.zapp.core.update.fetchLatestRelease
 import xyz.azraellab.zapp.core.update.installUpdateApk
 import xyz.azraellab.zapp.core.update.localDayEndMs
+import xyz.azraellab.zapp.core.update.parseNotice
 import xyz.azraellab.zapp.core.update.updateAvailable
 import xyz.azraellab.zapp.core.connections.ConnectionsSample
 import xyz.azraellab.zapp.core.connections.ConnectionsSource
@@ -328,6 +330,10 @@ class AppState(
 
     private val _release = MutableStateFlow<ReleaseInfo?>(null)
     val release: StateFlow<ReleaseInfo?> = _release.asStateFlow()
+
+    /** Объявление разработчика из тела релиза; null -- блока нет. */
+    private val _devNotice = MutableStateFlow<NoticeInfo?>(null)
+    val devNotice: StateFlow<NoticeInfo?> = _devNotice.asStateFlow()
 
     /**
      * Загрузка APK последнего релиза в кеш.
@@ -2019,6 +2025,9 @@ class AppState(
             }
             updateError = null
             _release.value = found
+            // Объявление -- блок в теле того же релиза: отдельного фида нет,
+            // и проверка обновлений уже ходит в GitHub.
+            _devNotice.value = parseNotice(found.changelog)
             val newer = updateAvailable(found.version, appVersion, config.updateCompareMode)
             _updateState.value = if (newer) UpdateState.AVAILABLE else UpdateState.CURRENT
             // «Не напоминать сегодня» глушит только уведомление: состояние
@@ -2090,6 +2099,22 @@ class AppState(
     fun openReleasePage(): Boolean {
         val url = _release.value?.url ?: return false
         return xyz.azraellab.zapp.core.net.openUrl(url)
+    }
+
+    /** Ссылка из объявления разработчика в браузере. */
+    fun openNoticeUrl(): Boolean {
+        val url = _devNotice.value?.url ?: return false
+        return xyz.azraellab.zapp.core.net.openUrl(url)
+    }
+
+    /**
+     * Гасит текущее объявление: его ID запоминается в настройках, и
+     * баннер не всплывает заново для того же текста.
+     */
+    fun dismissNotice() {
+        val current = _devNotice.value ?: return
+        mutate { it.copy(noticeDismissedId = current.id) }
+        AppLog.log("update", "notice dismissed: ${current.title}")
     }
 
     // --- Уведомления ---

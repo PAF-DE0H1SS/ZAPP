@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,7 +41,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import xyz.azraellab.zapp.core.AppState
+import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.deeplink.DeepLinkRequest
+import xyz.azraellab.zapp.core.update.noticeVisible
+import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
+import xyz.azraellab.zapp.ui.components.ZappBanner
+import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.debugPath
 import xyz.azraellab.zapp.ui.pages.GoodbyeDpiPage
 import xyz.azraellab.zapp.ui.pages.GpsPage
@@ -49,6 +55,7 @@ import xyz.azraellab.zapp.ui.pages.TorPage
 import xyz.azraellab.zapp.ui.pages.VpnPage
 import xyz.azraellab.zapp.ui.pages.ZapretPage
 import xyz.azraellab.zapp.ui.StatusBar
+import xyz.azraellab.zapp.ui.theme.AzraelSpace
 import xyz.azraellab.zapp.ui.traffic.TrafficWindow
 import xyz.azraellab.zapp.ui.tr
 
@@ -270,17 +277,25 @@ fun AppRoot(state: AppState) {
     ) { padding ->
         // На широких экранах контент ограничен и отцентрован: лента полей
         // во всю ширину монитора нечитаема, строка становится длиннее глаза.
-        Box(
+        // Баннер объявления живёт над этой колонкой -- виден на любой вкладке,
+        // как строка состояния над панелью.
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentAlignment = Alignment.Center
+                .padding(padding)
         ) {
+            DevNoticeBanner(state = state)
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .widthIn(max = 720.dp)
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
             ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .widthIn(max = 720.dp)
+                ) {
             // Ключ -- это содержимое, а не имя вкладки: окно трафика живёт
             // поверх выбранной вкладки, и при его закрытии переход должен
             // вернуться к той же странице, а не переигрывать её появление.
@@ -316,6 +331,7 @@ fun AppRoot(state: AppState) {
         }
     }
 }
+}
 
 /**
  * Слоты нижней панели из списка доступных вкладок.
@@ -343,4 +359,45 @@ internal fun partnerOf(tab: AppTab): AppTab? = when (tab) {
     AppTab.VPN -> AppTab.TOR
     AppTab.GOODBYE_DPI -> AppTab.ZAPRET
     else -> null
+}
+
+/**
+ * Баннер объявления разработчика над контентом вкладок.
+ *
+ * Объявление приходит в фиде релизов (см. parseNotice) и виден, пока его
+ * не закрыли и не истёк срок: «Понятно» гасит баннер навсегда для своего
+ * текста, новое содержимое приходит с новым ID.
+ */
+@Composable
+private fun DevNoticeBanner(state: AppState) {
+    val notice by state.devNotice.collectAsState()
+    val dismissed = state.config.noticeDismissedId
+    val shown = notice?.takeIf { noticeVisible(it, System.currentTimeMillis(), dismissed) }
+        ?: return
+    ZappBanner(
+        title = shown.title,
+        body = shown.content.ifBlank { null },
+        trailing = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(AzraelSpace.sm),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (shown.url.isNotBlank()) {
+                    ZappButton(
+                        text = tr(Str.NOTICE_OPEN),
+                        role = ButtonRole.GHOST,
+                        onClick = { state.openNoticeUrl() },
+                        modifier = Modifier.weight(1f),
+                        path = "notice.open"
+                    )
+                }
+                ZappButton(
+                    text = tr(Str.NOTICE_GOT_IT),
+                    onClick = { state.dismissNotice() },
+                    modifier = Modifier.weight(1f),
+                    path = "notice.dismiss"
+                )
+            }
+        }
+    )
 }

@@ -698,6 +698,8 @@ enum class Str {
     /** Системные уведомления: текст отдаётся в нотификацию целиком. */
     NOTIFY_GPS_ON,
     NOTIFY_GPS_OFF,
+    NOTICE_GOT_IT,
+    NOTICE_OPEN,
     NOTIFY_GPS_ERROR,
     NOTIFY_UPDATE,
     NOTIFY_UPDATE_READY,
@@ -1520,6 +1522,8 @@ enum class Str {
         STATUS_RELAY -> pick(lang, "Relay", "Релей", "中继")
         NOTIFY_GPS_ON -> pick(lang, "GPS spoofing on", "Подмена GPS включена", "GPS 伪造已开启")
         NOTIFY_GPS_OFF -> pick(lang, "GPS spoofing off", "Подмена GPS выключена", "GPS 伪造已关闭")
+        NOTICE_GOT_IT -> pick(lang, "Got it", "Понятно", "知道了")
+        NOTICE_OPEN -> pick(lang, "Open", "Открыть", "打开")
         NOTIFY_GPS_ERROR -> pick(lang, "GPS spoofing failed", "Подмена GPS не запустилась", "GPS 伪造失败")
         NOTIFY_UPDATE -> pick(lang, "Update available", "Доступно обновление", "有可用更新")
         NOTIFY_UPDATE_READY -> pick(lang, "Update ready to install", "Обновление готово к установке", "更新已可安装")

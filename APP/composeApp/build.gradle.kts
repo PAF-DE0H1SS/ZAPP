@@ -90,6 +90,10 @@ kotlin {
         val desktopTest by getting
         desktopTest.dependencies {
             implementation(kotlin("test"))
+            // UI-тесты критичных путей: композиция страниц на десктопе,
+            // headless под Xvfb. Тот же junit4, что и в kotlin("test").
+            implementation("org.jetbrains.compose.ui:ui-test-junit4:${libs.versions.composeMultiplatform.get()}")
+            implementation(compose.desktop.currentOs)
         }
     }
     tasks.withType<Test>().configureEach {

@@ -40,6 +40,9 @@ import xyz.azraellab.zapp.core.VpnSource
 import xyz.azraellab.zapp.core.SourceFreshness
 import xyz.azraellab.zapp.core.sourceAgeText
 import xyz.azraellab.zapp.core.sourceFreshness
+import xyz.azraellab.zapp.core.speedtest.DuelResult
+import xyz.azraellab.zapp.core.speedtest.DuelSide
+import xyz.azraellab.zapp.core.speedtest.DuelWinner
 import xyz.azraellab.zapp.core.daemon.DaemonState
 import xyz.azraellab.zapp.core.engine.SessionKind
 import xyz.azraellab.zapp.core.engine.TunnelState
@@ -226,6 +229,8 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
     var warpBusy by remember { mutableStateOf(false) }
     var qrOpen by remember { mutableStateOf(false) }
 
+    val duel by state.nodeDuel.collectAsState()
+
     val visible = remember(config.profiles) { state.visibleVpnProfiles() }
     // Достижимость, а не живость: проба -- это TCP/UDP-доступ до сервера
     // (см. probeLink), она не гоняет через узел ни байта. Замерено на
@@ -330,6 +335,17 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
         // Прогресс проверки виден полосой, а не только цифрой в подписи
         // кнопки: N/M у строки есть, у заполнения -- не было.
         CheckProgressLine(progress = checkProgress)
+
+        // Дуэль узлов: пока режим выключен -- кнопка входа, при выборе --
+        // отмена. Замер идёт через clash_api работающего туннеля.
+        ZappButton(
+            text = if (duel.pick > 0) tr(Str.COMMON_CANCEL) else tr(Str.NODE_DUEL),
+            role = ButtonRole.GHOST,
+            onClick = { if (duel.pick > 0) state.duelClose() else state.duelToggle() },
+            modifier = Modifier.fillMaxWidth(),
+            path = "vpn.node_duel"
+        )
+        DuelCard(state = state, duel = duel)
         ZappButton(
             text = tr(Str.VPN_ADD_PROFILE),
             role = ButtonRole.GHOST,
@@ -423,11 +439,24 @@ private fun ConnectsExpandable(state: AppState, checkProgress: AppState.CheckPro
         } else {
             ZappCard {
                 shown.forEach { profile ->
+                    // В режиме дуэли тап выбирает узел, а не подключается;
+                    // метки A/B живут и при результате, пока карточка открыта.
+                    val duelActive = duel.pick > 0 || duel.running || duel.result != null
+                    val mark = when {
+                        !duelActive || duel.aId.isEmpty() -> null
+                        duel.aId == profile.id -> "A"
+                        duel.bId == profile.id -> "B"
+                        else -> null
+                    }
                     ConnectRow(
                         profile = profile,
                         active = profile.id == config.activeProfileId,
                         lang = lang,
-                        onClick = { state.selectProfile(profile.id) },
+                        duelMark = mark,
+                        onClick = {
+                            if (duel.pick > 0 && !duel.running) state.duelTap(profile.id)
+                            else if (duel.pick == 0) state.selectProfile(profile.id)
+                        },
                         path = "vpn.connect.${profile.id}"
                     )
                 }
@@ -452,7 +481,8 @@ internal fun ConnectRow(
     active: Boolean,
     lang: AppLang,
     onClick: () -> Unit,
-    path: String? = null
+    path: String? = null,
+    duelMark: String? = null
 ) {
     val protocol = VpnProtocol.of(profile.protocol)
     // Тройство здоровья маршрута -- явный enum: «не проверялось», «живо»
@@ -468,7 +498,8 @@ internal fun ConnectRow(
     }
 
     ZappListRow(
-        title = (if (active) "● " else "") + profile.name.ifBlank { tr(protocol.strKey) },
+        title = (if (active) "● " else "") + (duelMark?.let { "$it · " } ?: "") +
+            profile.name.ifBlank { tr(protocol.strKey) },
         subtitle = protocol.label(lang),
         modifier = Modifier.clickable(onClick = onClick),
         trailing = {
@@ -484,6 +515,100 @@ internal fun ConnectRow(
         },
         path = path
     )
+}
+
+/**
+ * Карточка дуэли: подсказка выбора, ход замера, итог или ошибка.
+ *
+ * Три исхода в одном месте: узел в принципе не замеряем (сырой конфиг
+ * sing-box/xray -- тегов в боксе нет), замер прошёл (две строки сторон
+ * плюс вердикт) и оба узла мертвы -- обычно туннель не запущен, и
+ * честнее сказать это прямо, чем показать пустые нули.
+ */
+@Composable
+private fun DuelCard(state: AppState, duel: AppState.NodeDuelState) {
+    val error = duel.error
+    val result = duel.result
+    if (duel.pick == 0 && !duel.running && result == null && error == null) return
+    ZappCard {
+        when {
+            error != null -> Text(
+                text = tr(error),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+            duel.running -> Text(
+                text = "${tr(Str.NODE_DUEL)} ${duel.done}/${duel.total}",
+                style = MaterialTheme.typography.bodySmall
+            )
+            duel.pick == 1 -> Text(
+                text = tr(Str.NODE_DUEL_PICK_A),
+                style = MaterialTheme.typography.bodySmall
+            )
+            duel.pick == 2 -> Text(
+                text = tr(Str.NODE_DUEL_PICK_B) + " · A: " +
+                    (state.config.vpn.profileById(duel.aId)?.name ?: duel.aId),
+                style = MaterialTheme.typography.bodySmall
+            )
+            result != null -> DuelResultView(state = state, result = result)
+        }
+    }
+}
+
+/** Итог дуэли: обе стороны строками и вердикт одной строкой. */
+@Composable
+private fun DuelResultView(state: AppState, result: DuelResult) {
+    val profiles = state.config.vpn.profiles
+    DuelSideView(mark = "A", side = result.a, name = duelNodeName(profiles, result.a.tag))
+    DuelSideView(mark = "B", side = result.b, name = duelNodeName(profiles, result.b.tag))
+    val verdict = when {
+        // Оба мертвы -- почти всегда туннель не запущен или узлы вне
+        // росписи; нули «0 ms» на экране соврали бы пользователю.
+        !result.a.alive && !result.b.alive -> tr(Str.NODE_DUEL_FAILED)
+        result.winner == null -> tr(Str.NODE_DUEL_TIE)
+        else -> {
+            val winner = if (result.winner == DuelWinner.A) result.a else result.b
+            val loser = if (result.winner == DuelWinner.A) result.b else result.a
+            val gap = if (loser.alive) " (+${loser.avgMs - winner.avgMs} ms)" else ""
+            "${tr(Str.NODE_DUEL_WINNER)}: ${duelNodeName(profiles, winner.tag)}$gap"
+        }
+    }
+    Text(
+        text = verdict,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.primary
+    )
+    ZappButton(
+        text = tr(Str.COMMON_CLOSE),
+        role = ButtonRole.GHOST,
+        onClick = { state.duelClose() },
+        modifier = Modifier.fillMaxWidth(),
+        path = "vpn.node_duel_close"
+    )
+}
+
+/** Строка одной стороны: лучшая/средняя задержка, разброс и счёт проб. */
+@Composable
+private fun DuelSideView(mark: String, side: DuelSide, name: String) {
+    val stats = if (side.alive) {
+        "${side.minMs}/${side.avgMs} ms · ±${side.spreadMs} · ${side.ok}/${side.probes}"
+    } else {
+        "${tr(Str.VPN_STATUS_DEAD)} ${side.ok}/${side.probes}"
+    }
+    ZappListRow(
+        title = "$mark · $name",
+        subtitle = stats,
+        path = "vpn.node_duel_$mark"
+    )
+}
+
+/**
+ * Имя узла по его тегу в боксе: дуэль меряла тег (такова реальность
+ * clash_api), а показывает имя -- по нему пользователь и выбирает.
+ */
+private fun duelNodeName(profiles: List<VpnProfile>, tag: String): String {
+    val id = VpnConnects.profileIdByNodeTag(profiles, tag)
+    return profiles.firstOrNull { it.id == id }?.name?.ifBlank { tag } ?: tag
 }
 
 /**

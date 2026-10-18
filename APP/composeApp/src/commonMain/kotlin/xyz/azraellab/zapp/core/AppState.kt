@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -96,6 +97,9 @@ import xyz.azraellab.zapp.core.probe.StrategyProbe
 import xyz.azraellab.zapp.core.probe.StrategyProbeOutcome
 import xyz.azraellab.zapp.core.probe.forgetRootProbe
 import xyz.azraellab.zapp.core.probe.probeDevice
+import xyz.azraellab.zapp.core.speedtest.DUEL_PROBES_PER_SIDE
+import xyz.azraellab.zapp.core.speedtest.DuelResult
+import xyz.azraellab.zapp.core.speedtest.NodeDuelRunner
 import xyz.azraellab.zapp.core.update.APP_VERSION
 import xyz.azraellab.zapp.core.update.ReleaseInfo
 import xyz.azraellab.zapp.core.update.UpdateDownload
@@ -2965,6 +2969,104 @@ class AppState(
 
     fun clearStrategyOutcome() {
         _strategyOutcome.value = null
+    }
+
+    // --- Дуэль узлов (A-vs-B) ---
+
+    /**
+     * Состояние дуэли двух узлов: выбор и итог в одном поле.
+     *
+     * pick -- режим выбора (0 выключен, 1 выбран A, 2 ждёт B): пока он
+     * включён, тап по строке списка выбирает узел для дуэли, а не
+     * подключается. error -- узел в принципе не замеряем (сырой конфиг
+     * sing-box/xray: тегов в боксе нет).
+     */
+    data class NodeDuelState(
+        val pick: Int = 0,
+        val aId: String = "",
+        val bId: String = "",
+        val running: Boolean = false,
+        val done: Int = 0,
+        val total: Int = 0,
+        val result: DuelResult? = null,
+        val error: Str? = null
+    )
+
+    private val _nodeDuel = MutableStateFlow(NodeDuelState())
+    val nodeDuel: StateFlow<NodeDuelState> = _nodeDuel.asStateFlow()
+    private var duelJob: Job? = null
+
+    /** Вход в режим выбора; повторное нажатие -- выход и сброс. */
+    fun duelToggle() {
+        duelJob?.cancel()
+        _nodeDuel.value = if (_nodeDuel.value.pick > 0) NodeDuelState()
+        else NodeDuelState(pick = 1)
+    }
+
+    /** Закрыть итог или сбросить выбор: дуэль отменяется целиком. */
+    fun duelClose() {
+        duelJob?.cancel()
+        _nodeDuel.value = NodeDuelState()
+    }
+
+    /**
+     * Тап по строке в режиме дуэли: первый узел -- A, второй -- B и старт.
+     *
+     * Свой конфиг (sing-box/xray) тегов в боксе не имеет -- замерить его
+     * нечем, и это честная ошибка, а не молчаливый отказ тапа.
+     */
+    fun duelTap(id: String) {
+        val duel = _nodeDuel.value
+        if (duel.running) return
+        when (duel.pick) {
+            1 -> _nodeDuel.update { it.copy(aId = id, pick = 2) }
+            2 -> {
+                if (id == duel.aId) return
+                _nodeDuel.update { it.copy(bId = id) }
+                startNodeDuel()
+            }
+        }
+    }
+
+    /**
+     * Замер: пробы двух сторон вперемешку через clash_api, пока туннель
+     * поднят ([NodeDuelRunner] -- чередование и агрегаты). Требует,
+     * чтобы оба узла были в росписи работающего бокса.
+     */
+    private fun startNodeDuel() {
+        val duel = _nodeDuel.value
+        val a = config.vpn.profileById(duel.aId)
+        val b = config.vpn.profileById(duel.bId)
+        if (a == null || b == null) return
+        val aTag = VpnConnects.nodeTag(a)
+        val bTag = VpnConnects.nodeTag(b)
+        if (aTag == null || bTag == null) {
+            _nodeDuel.update { it.copy(pick = 0, error = Str.NODE_DUEL_UNSUPPORTED) }
+            return
+        }
+        duelJob?.cancel()
+        _nodeDuel.update {
+            it.copy(running = true, done = 0, total = DUEL_PROBES_PER_SIDE * 2, result = null, error = null)
+        }
+        duelJob = scope.launch {
+            val url = config.vpn.urlTest.testingUrl.ifBlank { WATCHDOG_PROBE_URL }
+            val runner = NodeDuelRunner { tag ->
+                fetchClashNodeProbe(
+                    config.vpn.clashApiPort, config.vpn.clashApiSecret,
+                    tag, url, TUNNEL_PROBE_TIMEOUT_MS
+                )?.delayMs
+            }
+            val result = runCatching {
+                runner.run(aTag, bTag) { done, total ->
+                    _nodeDuel.update { it.copy(done = done, total = total) }
+                }
+            }.getOrNull()
+            // null -- отмена: состояние уже сброшено вызвавшим, трогать
+            // его заново не нужно.
+            if (result != null) {
+                _nodeDuel.update { it.copy(running = false, result = result, pick = 0) }
+            }
+        }
     }
 
     fun dispose() {

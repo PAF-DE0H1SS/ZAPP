@@ -556,6 +556,13 @@ enum class Str {
     VPN_RECHECK,
     VPN_CHECK_ALL,
     VPN_CHECKING,
+    NODE_DUEL,
+    NODE_DUEL_PICK_A,
+    NODE_DUEL_PICK_B,
+    NODE_DUEL_WINNER,
+    NODE_DUEL_TIE,
+    NODE_DUEL_FAILED,
+    NODE_DUEL_UNSUPPORTED,
     VPN_PING_LABEL,
     VPN_STATUS_ALIVE,
     VPN_STATUS_DEAD,
@@ -1564,6 +1571,13 @@ enum class Str {
         VPN_RECHECK -> pick(lang, "Recheck", "Проверить снова", "重新检查")
         VPN_CHECK_ALL -> pick(lang, "Check all", "Проверить все", "全部检查")
         VPN_CHECKING -> pick(lang, "Checking", "Проверка", "检查中")
+        NODE_DUEL -> pick(lang, "Compare two nodes", "Сравнить два узла", "对比两个节点")
+        NODE_DUEL_PICK_A -> pick(lang, "Duel: tap the first node (A)", "Дуэль: выберите первый узел (A)", "对决：点选第一个节点（A）")
+        NODE_DUEL_PICK_B -> pick(lang, "Duel: now tap the second node (B)", "Дуэль: теперь второй узел (B)", "对决：再点选第二个节点（B）")
+        NODE_DUEL_WINNER -> pick(lang, "Winner", "Победитель", "胜出者")
+        NODE_DUEL_TIE -> pick(lang, "Tie", "Ничья", "平局")
+        NODE_DUEL_FAILED -> pick(lang, "Both nodes are unreachable — is the tunnel running?", "Оба узла недоступны — туннель запущен?", "两个节点均不可达 — 隧道是否在运行？")
+        NODE_DUEL_UNSUPPORTED -> pick(lang, "This node cannot be measured (own config)", "Этот узел нельзя замерить (свой конфиг)", "无法测量该节点（自定义配置）")
         VPN_PING_LABEL -> pick(lang, "Ping", "Пинг", "延迟")
         VPN_STATUS_ALIVE -> pick(lang, "Reachable", "Доступен", "可达")
         VPN_STATUS_DEAD -> pick(lang, "Dead", "Мёртв", "失效")

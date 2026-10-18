@@ -75,6 +75,8 @@ import xyz.azraellab.zapp.core.net.LinkProbe
 import xyz.azraellab.zapp.core.net.LinkTarget
 import xyz.azraellab.zapp.core.netcheck.NetCheckResult
 import xyz.azraellab.zapp.core.netcheck.NetCheckService
+import xyz.azraellab.zapp.core.traffic.TrafficDay
+import xyz.azraellab.zapp.core.traffic.TrafficHistory
 import xyz.azraellab.zapp.core.net.fetchClashNodeProbe
 import xyz.azraellab.zapp.core.net.fetchClashProbe
 import xyz.azraellab.zapp.core.net.fetchClashRoster
@@ -150,6 +152,9 @@ class AppState(
 
         /** Период живой таблицы соединений: диагностический снимок, не график. */
         const val CONNECTIONS_POLL_MS: Long = 2_000L
+
+        /** Сколько дней истории трафика держим в конфиге. */
+        const val TRAFFIC_KEEP_DAYS: Int = 30
 
         /** Метки уведомлений: одна метка = одна строка в шторке. */
         const val TAG_GPS: String = "gps"
@@ -359,6 +364,34 @@ class AppState(
         _netCheckResults.value = results
         _netCheckRunning.value = false
         AppLog.log("netcheck", "checked ${results.size} nodes, best=${results.size}")
+    }
+
+    private var trafficDays = TrafficHistory()
+
+    private val _todayTraffic = MutableStateFlow(TrafficDay())
+
+    /** Трафик за сегодня; пусто, пока не накопилось. */
+    val todayTraffic: StateFlow<TrafficDay> = _todayTraffic.asStateFlow()
+
+    private val _weekTraffic = MutableStateFlow(TrafficDay())
+
+    /** Трафик за последние 7 дней. */
+    val weekTraffic: StateFlow<TrafficDay> = _weekTraffic.asStateFlow()
+
+    /** Складывает байты в историю по дням и обновляет «сегодня/неделя». */
+    private fun accumulateTraffic(atMs: Long, downBytes: Long, upBytes: Long) {
+        trafficDays.add(atMs, downBytes, upBytes)
+        _todayTraffic.value = trafficDays.today(atMs)
+        _weekTraffic.value = trafficDays.thisWeek(atMs)
+    }
+
+    /** Пишет историю в конфиг (без переприменения движков), старые дни режет. */
+    private fun saveTrafficHistory() {
+        trafficDays.prune(System.currentTimeMillis(), TRAFFIC_KEEP_DAYS)
+        val encoded = trafficDays.encode()
+        if (encoded == config.trafficHistory) return
+        config = config.copy(trafficHistory = encoded)
+        scheduleSave()
     }
 
     /** Текущая версия -- та же константа, что участвует в сравнении. */
@@ -586,6 +619,9 @@ class AppState(
                 }
                 if (sample != null) previous = sample
                 LinkSpeedBus.publish(speed)
+                // Скорость -- байт/сек; за секундный тик складываем байты
+                // в историю по дням («за сегодня/за неделю»).
+                if (speed != null) accumulateTraffic(mark, speed.downBps / 8, speed.upBps / 8)
                 // Первые тики и каждое десятое -- чтобы видеть и сам
                 // факт работы, и не заливать журнал письмами в секунду.
                 if (ticks < 3 || ticks % 10 == 0) {
@@ -607,6 +643,8 @@ class AppState(
         linkJob?.cancel()
         linkJob = null
         LinkSpeedBus.publish(null)
+        // Сессия закончилась -- фиксируем накопленную историю по дням.
+        saveTrafficHistory()
     }
 
     // --- Пинг активного подключения для плашки ---
@@ -1016,6 +1054,9 @@ class AppState(
         AppLog.log("app", "start v${APP_VERSION}")
         presets = runCatching { store.readPresets() }.getOrDefault(emptyList())
         meter = TrafficMeter(config.traffic)
+        trafficDays = TrafficHistory.decode(config.trafficHistory)
+        _todayTraffic.value = trafficDays.today(System.currentTimeMillis())
+        _weekTraffic.value = trafficDays.thisWeek(System.currentTimeMillis())
         gpsEngine.applyConfig(config.gps)
         tunnel.applyConfig(config.vpn)
         tunnel.applyPerApp(config.perApp)

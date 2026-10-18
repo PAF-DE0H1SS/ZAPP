@@ -228,6 +228,8 @@ enum class Str {
     TRAFFIC_PEAK,
     TRAFFIC_AVERAGE,
     TRAFFIC_ACTIVE_TIME,
+    TRAFFIC_TODAY,
+    TRAFFIC_WEEK,
     TRAFFIC_INTERFACES,
     TRAFFIC_APPS,
     TRAFFIC_HISTORY,
@@ -856,6 +858,8 @@ enum class Str {
         TRAFFIC_PEAK -> pick(lang, "Peak", "Пик", "峰值")
         TRAFFIC_AVERAGE -> pick(lang, "Average", "Средняя", "平均")
         TRAFFIC_ACTIVE_TIME -> pick(lang, "Active time", "Активное время", "活跃时长")
+        TRAFFIC_TODAY -> pick(lang, "Today", "За сегодня", "今日")
+        TRAFFIC_WEEK -> pick(lang, "This week", "За неделю", "本周")
         TRAFFIC_INTERFACES -> pick(lang, "Interfaces", "Интерфейсы", "接口")
         TRAFFIC_APPS -> pick(lang, "Applications", "Приложения", "应用")
         TRAFFIC_HISTORY -> pick(lang, "History", "История", "历史")

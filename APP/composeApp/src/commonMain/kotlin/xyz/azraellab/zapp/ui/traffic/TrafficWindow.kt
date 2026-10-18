@@ -43,6 +43,7 @@ import xyz.azraellab.zapp.core.TrafficConfig
 import xyz.azraellab.zapp.core.TrafficFormat
 import xyz.azraellab.zapp.core.TrafficPoint
 import xyz.azraellab.zapp.core.TrafficSummary
+import xyz.azraellab.zapp.core.traffic.TrafficDay
 import xyz.azraellab.zapp.core.connections.ConnectionsFilter
 import xyz.azraellab.zapp.core.connections.ConnNote
 import xyz.azraellab.zapp.ui.theme.AppIcons
@@ -69,6 +70,8 @@ import xyz.azraellab.zapp.ui.tr
 fun TrafficWindow(state: AppState, onBack: () -> Unit) {
     val history by state.trafficHistory.collectAsState()
     val summary by state.trafficSummaryFlow.collectAsState()
+    val today by state.todayTraffic.collectAsState()
+    val week by state.weekTraffic.collectAsState()
     val config = state.config.traffic
 
     LaunchedEffect(Unit) { state.ensureTrafficPolling() }
@@ -96,7 +99,7 @@ fun TrafficWindow(state: AppState, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(AzraelSpace.cardGap)
         ) {
             SpeedCard(history = history)
-            SummaryCard(summary = summary, config = config)
+            SummaryCard(summary = summary, config = config, today = today, week = week)
             ConnectionsCard(state = state)
         }
     }
@@ -131,9 +134,14 @@ private fun SpeedCard(history: List<TrafficPoint>) {
     }
 }
 
-/** Сводка за сессию. */
+/** Сводка за сессию и история по дням. */
 @Composable
-private fun SummaryCard(summary: TrafficSummary, config: TrafficConfig) {
+private fun SummaryCard(
+    summary: TrafficSummary,
+    config: TrafficConfig,
+    today: TrafficDay,
+    week: TrafficDay
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -147,6 +155,8 @@ private fun SummaryCard(summary: TrafficSummary, config: TrafficConfig) {
             SummaryRow(tr(Str.TRAFFIC_TOTAL), TrafficFormat.bytes(summary.totalBytes, config))
             SummaryRow(tr(Str.TRAFFIC_RX), TrafficFormat.bytes(summary.rxBytes, config))
             SummaryRow(tr(Str.TRAFFIC_TX), TrafficFormat.bytes(summary.txBytes, config))
+            SummaryRow(tr(Str.TRAFFIC_TODAY), TrafficFormat.bytes(today.totalBytes, config))
+            SummaryRow(tr(Str.TRAFFIC_WEEK), TrafficFormat.bytes(week.totalBytes, config))
             SummaryRow(tr(Str.TRAFFIC_PEAK), TrafficFormat.speed(summary.peakBitsPerSecond, config))
             SummaryRow(tr(Str.TRAFFIC_AVERAGE), TrafficFormat.speed(summary.averageBitsPerSecond, config))
             SummaryRow(tr(Str.TRAFFIC_SPEED), TrafficFormat.speed(summary.currentBitsPerSecond, config))

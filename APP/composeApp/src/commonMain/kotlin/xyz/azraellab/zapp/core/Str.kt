@@ -323,6 +323,7 @@ enum class Str {
     NET_CHECK_RUNNING,
     NET_CHECK_EMPTY,
     NET_CHECK_BEST,
+    WIDGET_OFF,
     LOG_ERRORS_FILE_HINT,
 
     /** Приветствие и подсказки. */
@@ -997,6 +998,7 @@ enum class Str {
         NET_CHECK_RUNNING -> pick(lang, "Checking…", "Проверка…", "检查中…")
         NET_CHECK_EMPTY -> pick(lang, "Not checked yet", "Ещё не проверялось", "尚未检查")
         NET_CHECK_BEST -> pick(lang, "Fastest", "Самый быстрый", "最快")
+        WIDGET_OFF -> pick(lang, "Off", "Отключено", "已断开")
         LOG_ERRORS_FILE_HINT -> pick(
             lang,
             "Saved to file zapp-errors.log",

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Виджет VPN: заголовок, статус подключения и кнопка переключения. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="@drawable/widget_bg">
+
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="ZAPP"
+        android:textStyle="bold"
+        android:textSize="13sp"
+        android:textColor="@android:color/white" />
+
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:textSize="11sp"
+        android:textColor="#CCFFFFFF" />
+
+    <TextView
+        android:id="@+id/widget_toggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:minWidth="40dp"
+        android:minHeight="32dp"
+        android:text="⏻"
+        android:textSize="20sp"
+        android:textColor="@android:color/white"
+        android:background="@drawable/widget_button_bg" />
+</LinearLayout>

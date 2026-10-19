@@ -75,6 +75,7 @@ import xyz.azraellab.zapp.core.net.LinkProbe
 import xyz.azraellab.zapp.core.net.LinkTarget
 import xyz.azraellab.zapp.core.netcheck.NetCheckResult
 import xyz.azraellab.zapp.core.netcheck.NetCheckService
+import xyz.azraellab.zapp.core.sleep.SleepWatch
 import xyz.azraellab.zapp.core.traffic.ClashBridge
 import xyz.azraellab.zapp.core.traffic.TrafficDay
 import xyz.azraellab.zapp.core.traffic.TrafficHistory
@@ -439,6 +440,13 @@ class AppState(
      * sourceRefreshLoop и сбросил бы живые счётчики трафика.
      */
     private var loaded = false
+
+    /**
+     * Засып погасила туннель по галке: пробуждение решает, поднимать
+     * ли обратно. Сбрасывается и без [VpnConfig.wakeReconnect] --
+     * остановленное по сну не должно пережить следующие пробуждения.
+     */
+    private var sleepArmed = false
 
     /**
      * Конфиг прочитан и состояние готово к отрисовке.
@@ -1081,6 +1089,27 @@ class AppState(
         tunnel.applyConfig(config.vpn)
         tunnel.applyPerApp(config.perApp)
 
+        // Сон и пробуждение экрана: наблюдатель один на жизнь процесса,
+        // галки читаются из живого конфига на каждом событии -- правка
+        // настроек не требует перерегистрации.
+        SleepWatch.start(
+            onSleep = {
+                if (config.vpn.sleepDisconnect && tunnel.state.value == TunnelState.CONNECTED) {
+                    AppLog.log("vpn", "screen off -- disconnecting by setting")
+                    sleepArmed = true
+                    disconnectVpn()
+                }
+            },
+            onWake = {
+                val armed = sleepArmed
+                sleepArmed = false
+                if (armed && config.vpn.wakeReconnect) {
+                    AppLog.log("vpn", "screen on -- reconnecting by setting")
+                    connectVpn()
+                }
+            }
+        )
+
         // Разведка, разрешения и обновления -- всё фоновое и независимое:
         // старт не должен ждать сеть или ответ `su`.
         permissions.refresh()
@@ -1173,18 +1202,25 @@ class AppState(
         saveJob?.cancel()
         saveJob = scope.launch {
             delay(SAVE_DEBOUNCE_MS)
-            withContext(Dispatchers.IO) {
-                runCatching { store.writeConfig(config) }
-            }
+            withContext(Dispatchers.IO) { persistConfig() }
         }
     }
 
     /** Немедленное сохранение: нужно перед выходом из приложения. */
     suspend fun flush() {
         saveJob?.cancel()
-        withContext(Dispatchers.IO) {
-            runCatching { store.writeConfig(config) }
-        }
+        withContext(Dispatchers.IO) { persistConfig() }
+    }
+
+    /**
+     * Запись конфига и синхронизация реестра автозапуска.
+     *
+     * Обе точки записи сходятся здесь: реестр меняется ровно тогда,
+     * когда меняются намерения в конфиге, и не расходится с ним.
+     */
+    private fun persistConfig() {
+        runCatching { store.writeConfig(config) }
+        runCatching { BootSync.onConfigSaved(config) }
     }
 
     // --- Пресеты ---

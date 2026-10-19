@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AndroidCtx
 import xyz.azraellab.zapp.core.GpsConfig
 import xyz.azraellab.zapp.core.GpsTarget
+import xyz.azraellab.zapp.core.SessionGeneration
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.geo.GeoPoint
 import xyz.azraellab.zapp.core.geo.geolocate
@@ -45,6 +46,15 @@ private class AndroidGpsEngine : BaseGpsEngine() {
     private var loopJob: Job? = null
     private var locationManager: LocationManager? = null
 
+    /**
+     * Поколение жизни сессии: хвосты прошлого старта узнают себя.
+     *
+     * Геолокация -- сетевой запрос без отмены на I/O: стоп и новый
+     * старт успевают пройти, пока запрос в пути, и его результат
+     * (`ACTIVE`, поднятая служба) дописал бы уже в чужую сессию.
+     */
+    private val generation = SessionGeneration()
+
     /** Последний конфиг: движок читает его на каждом такте. */
     private var config: GpsConfig? = null
 
@@ -60,6 +70,8 @@ private class AndroidGpsEngine : BaseGpsEngine() {
     override fun start(config: GpsConfig, vpnGateway: String) {
         // Перезапуск: старый цикл снимается молча, статус задаст новый.
         stopLoop()
+        // Старое поколение устарело прямо сейчас, до первого такта.
+        val gen = generation.bump()
         this.config = config
         setState(GpsState.STARTING)
         log(GpsEvent(Str.GPS_LOG_STARTING, config.mode))
@@ -70,7 +82,11 @@ private class AndroidGpsEngine : BaseGpsEngine() {
             // и роняло приложение. Здесь оно становится строкой в журнале и
             // состоянием ERROR: причина обязана быть видна, а не гадать.
             try {
-                val target = resolveTarget(config, vpnGateway) ?: run {
+                val target = resolveTarget(config, vpnGateway)
+                // Отложенная геолокация вернулась уже в новом старте:
+                // писать в состояние отсюда нельзя, молчим.
+                if (!generation.isCurrent(gen)) return@launch
+                if (target == null) {
                     setState(GpsState.ERROR)
                     return@launch
                 }
@@ -93,7 +109,10 @@ private class AndroidGpsEngine : BaseGpsEngine() {
                 // Остановка отменила цикл -- это не сбой.
                 throw e
             } catch (e: Exception) {
-                fail(GpsEvent(Str.GPS_LOG_START_FAILED, e.message ?: e::class.simpleName.orEmpty()))
+                // Ошибка чужого поколения -- не наша, статус уже задал новый старт.
+                if (generation.isCurrent(gen)) {
+                    fail(GpsEvent(Str.GPS_LOG_START_FAILED, e.message ?: e::class.simpleName.orEmpty()))
+                }
             }
         }
     }
@@ -360,6 +379,9 @@ private class AndroidGpsEngine : BaseGpsEngine() {
     }
 
     private fun stopInternal(notifyStopped: Boolean) {
+        // Стоп обрывает хвосты этой же сессии: геолокация, вернувшаяся
+        // после снятия провайдера, не допишет ACTIVE в остановленное.
+        generation.bump()
         stopLoop()
         serviceStop()
         val manager = locationManager

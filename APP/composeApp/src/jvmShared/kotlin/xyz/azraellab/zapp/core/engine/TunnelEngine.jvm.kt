@@ -7,12 +7,15 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import xyz.azraellab.zapp.core.AppLang
+import xyz.azraellab.zapp.core.SessionBarrier
 import xyz.azraellab.zapp.core.VpnConfig
 import xyz.azraellab.zapp.core.VpnProfile
 import xyz.azraellab.zapp.core.TorBridges
@@ -26,6 +29,7 @@ import xyz.azraellab.zapp.core.daemon.createDaemonEngine
 import xyz.azraellab.zapp.core.log.errorEvent
 import xyz.azraellab.zapp.core.log.stripAnsi
 import xyz.azraellab.zapp.core.net.DnsFailover
+import xyz.azraellab.zapp.core.net.NetworkBus
 import xyz.azraellab.zapp.core.net.ProxyUri
 import xyz.azraellab.zapp.core.net.SingboxConfig
 import xyz.azraellab.zapp.core.net.WireGuardIni
@@ -131,6 +135,16 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     @Volatile
     private var connectJob: Job? = null
 
+    /**
+     * Рестарт-барьер: сессии выстраиваются в очередь через join.
+     *
+     * СТОП и СТАРТ приходят из UI вперемешку: уборка одной попытки
+     * должна кончиться до старта следующей, иначе два box на одном
+     * tun держат один fd, а отменённая попытка доспавнит демон уже
+     * поверх новой. Вместо локов -- join предшественника.
+     */
+    private val sessions = SessionBarrier()
+
     override val supported: Boolean = true
 
     private val reapJob: Job
@@ -193,13 +207,18 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
     }
 
     override fun connect() {
-        val job = scope.launch {
+        scope.launch {
             // Двойной тап или VPN+Tor почти одновременно: два
             // performConnect бились бы за порт 9050 и за демон TUNNEL,
             // второй падал с «Address already in use» (и портит состояние
             // первому). Одна попытка -- одна, пока не закончится.
             if (state.value == TunnelState.CONNECTING) return@launch
             if (!inFlight.compareAndSet(false, true)) return@launch
+            // СТОП видит только реально бегущую попытку: дропнутый
+            // дубль не должен затирать чужой connectJob.
+            connectJob = coroutineContext.job
+            // Барьер: новая сессия ждёт уборки предшественника.
+            sessions.enter(coroutineContext.job)
             stopping = false
             // Обычное подключение всегда выигрывает у DPI-режима: юзер
             // явно выбрал профиль, пассивной сессии больше нет места.
@@ -217,15 +236,16 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
                 inFlight.set(false)
             }
         }
-        connectJob = job
     }
 
     override fun connectDpi() {
-        val job = scope.launch {
+        scope.launch {
             if (state.value == TunnelState.CONNECTING || state.value == TunnelState.CONNECTED) {
                 return@launch
             }
             if (!inFlight.compareAndSet(false, true)) return@launch
+            connectJob = coroutineContext.job
+            sessions.enter(coroutineContext.job)
             stopping = false
             dpiMode = true
             try {
@@ -234,13 +254,14 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
                 inFlight.set(false)
             }
         }
-        connectJob = job
     }
 
     override fun refreshDpi() {
-        val job = scope.launch {
+        scope.launch {
             if (state.value != TunnelState.CONNECTED) return@launch
             if (!inFlight.compareAndSet(false, true)) return@launch
+            connectJob = coroutineContext.job
+            sessions.enter(coroutineContext.job)
             stopping = false
             try {
                 log("dpi rules changed -- restarting session")
@@ -250,7 +271,6 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
                 inFlight.set(false)
             }
         }
-        connectJob = job
     }
 
     override fun disconnect() {
@@ -260,6 +280,11 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
             // Отмена видна только на ближайшей suspension-точке, поэтому
             // в точках спавна стоит проверка stopping.
             connectJob?.cancel()
+            // Барьер и второй раз, уже в teardown: уборка начинается,
+            // только когда отменённая попытка докрутила свои finally --
+            // иначе её спавн гонялся бы с нашими снятиями ресурсов.
+            sessions.enter(coroutineContext.job)
+            connectJob?.cancelAndJoin()
             performDisconnect(userInitiated = true)
         }
     }
@@ -595,8 +620,13 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
         binary = coreBoxPath() ?: "box",
         args = listOf("run", "-c", "{{config}}"),
         files = mapOf("config" to built.json),
-        env = if (useTunSocket && VpnTunnel.fdSocketPath != null) {
-            buildMap {
+        // Поколение сети в окружении демона: смена аплинка двигает
+        // счётчик, и видно, под каким поколением собран конфиг -- всё,
+        // что собиралось под старую сеть, по поколению узнаёт свою
+        // устаревшость и молчит.
+        env = buildMap {
+            put("ZAPP_NET_GEN", NetworkBus.pool.generation.toString())
+            if (useTunSocket && VpnTunnel.fdSocketPath != null) {
                 put("ZAPP_TUN_SOCK", VpnTunnel.fdSocketPath!!)
                 // Go x509 ищет корни в /etc/ssl/certs, которого на
                 // Android нет: корневые лежат в
@@ -605,8 +635,6 @@ private class JvmTunnelEngine : BaseTunnelEngine() {
                 // authority».
                 put("SSL_CERT_DIR", "/system/etc/security/cacerts")
             }
-        } else {
-            emptyMap()
         }
     )
 

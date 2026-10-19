@@ -598,6 +598,8 @@ enum class Str {
     VPN_SECRET,
     VPN_TOR_SOCKS,
     VPN_AUTOSTART,
+    VPN_SLEEP_OFF,
+    VPN_WAKE_ON,
     VPN_ROUTING_HINT_DNS,
     VPN_ROUTING,
     VPN_SHOW_MORE,
@@ -1684,6 +1686,18 @@ enum class Str {
         VPN_SECRET -> pick(lang, "Secret", "Секрет", "密钥")
         VPN_TOR_SOCKS -> pick(lang, "Tor SOCKS port", "SOCKS-порт Tor", "Tor SOCKS 端口")
         VPN_AUTOSTART -> pick(lang, "Start on launch", "Старт при запуске", "启动时自动连接")
+        VPN_SLEEP_OFF -> pick(
+            lang,
+            "Disconnect when screen turns off",
+            "Отключать при выключении экрана",
+            "熄屏时断开"
+        )
+        VPN_WAKE_ON -> pick(
+            lang,
+            "Reconnect when screen turns on",
+            "Переподключать при включении экрана",
+            "亮屏时重新连接"
+        )
         VPN_ROUTING_HINT_DNS -> pick(
             lang,
             "DNS interception works with the sing-box backend; kernel WireGuard keeps the system resolver",

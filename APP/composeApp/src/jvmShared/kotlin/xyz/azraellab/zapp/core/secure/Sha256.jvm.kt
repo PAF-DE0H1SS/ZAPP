@@ -1,11 +1,17 @@
 package xyz.azraellab.zapp.core.secure
 
+import xyz.azraellab.zapp.core.native.ZappNative
 import java.io.File
 import java.security.MessageDigest
 
+/**
+ * Sha256 байтов: натив (Rust) первым, MessageDigest -- фолбэк,
+ * когда библиотека не поднялась.
+ */
 actual fun sha256Hex(bytes: ByteArray): String =
-    MessageDigest.getInstance("SHA-256").digest(bytes)
-        .joinToString("") { "%02x".format(it) }
+    ZappNative.sha256Hex(bytes)
+        ?: MessageDigest.getInstance("SHA-256").digest(bytes)
+            .joinToString("") { "%02x".format(it) }
 
 /**
  * Контрольные суммы скачанных файлов.
@@ -17,19 +23,27 @@ actual fun sha256Hex(bytes: ByteArray): String =
  */
 object Sha256 {
 
-    /** sha256 файла мелкими шестиричными; null -- не прочитали. */
-    fun fileHex(file: File): String? = runCatching {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buffer = ByteArray(1 shl 16)
-            while (true) {
-                val read = input.read(buffer)
-                if (read < 0) break
-                digest.update(buffer, 0, read)
+    /**
+     * sha256 файла мелкими шестиричными; null -- не прочитали.
+     *
+     * Натив (Rust, потоковое чтение) первым; потоковый MessageDigest
+     * -- фолбэк без ядра и на случай, если натив файл не прочёл.
+     */
+    fun fileHex(file: File): String? {
+        ZappNative.sha256FileHex(file.absolutePath)?.let { return it }
+        return runCatching {
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(1 shl 16)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
             }
-        }
-        digest.digest().joinToString("") { "%02x".format(it) }
-    }.getOrNull()
+            digest.digest().joinToString("") { "%02x".format(it) }
+        }.getOrNull()
+    }
 
     /** Совпадает ли sha256 файла с ожиданием; см. [normalizeExpected]. */
     fun matches(file: File, expected: String): Boolean {

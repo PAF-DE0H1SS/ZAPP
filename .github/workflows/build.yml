@@ -22,6 +22,14 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      # QA-линтер репозитория (tools/zapp-lint): локальные файлы не в индексе,
+      # манифест согласован с классами, namespace'ы не конфликтуют, Str-ключи
+      # биективны, версии в порядке.
+      - name: Lint repo
+        run: go run ./tools/zapp-lint .
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :composeApp:desktopTest
         working-directory: APP

@@ -32,9 +32,11 @@ import xyz.azraellab.zapp.core.AppLangStore
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.LinkSpeedBus
 import xyz.azraellab.zapp.core.PingBus
+import xyz.azraellab.zapp.core.SessionGeneration
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.daemon.daemonLogcat
 import xyz.azraellab.zapp.core.log.AppLog
+import xyz.azraellab.zapp.core.net.NetworkBus
 import xyz.azraellab.zapp.core.toDisplayString
 import java.io.File
 import java.net.Inet6Address
@@ -62,6 +64,13 @@ class ZappVpnService : VpnService() {
 
     /** Жизнь тикера скорости: свой scope, чтобы не трогать корутины ядра. */
     private val speedScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Поколение сессии туннеля: fd-отправитель принадлежит своему
+     * переоткрытию. Старый узнаёт по поколению, что туннель уже
+     * сменили, и не докинет мёртвый дескриптор новому ядру.
+     */
+    private val sessionGen = SessionGeneration()
     private var speedJob: Job? = null
 
     /**
@@ -145,7 +154,7 @@ class ZappVpnService : VpnService() {
             pfd
         }
         tunDup = dup
-        startFdSender(dup)
+        startFdSender(dup, sessionGen.current())
         VpnTunnel.deliver(dup.fd)
         return START_NOT_STICKY
     }
@@ -209,17 +218,22 @@ class ZappVpnService : VpnService() {
         }
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                NetworkBus.pool.onCurrent(network.toString())
                 underlying = network
                 tellUnderlying(arrayOf(network))
                 refreshBypassLater()
             }
 
             override fun onLost(network: Network) {
+                // Пул узнаёт о любой пропаже: подложка -- не единственная
+                // ячейка, из которой выбирается следующий аплинк.
+                val next = NetworkBus.pool.onLost(network.toString())
                 // Пропала не та сеть, что под туннелем -- трогать нечего.
                 if (network != underlying) return
                 underlying = null
                 tellUnderlying(null)
                 refreshBypassLater()
+                daemonLogcat(TAG, "underlying network lost -- next uplink: ${next ?: "none"}")
             }
         }
         // NOT_VPN -- реальная сеть под туннелем; у самого VPN этого
@@ -460,7 +474,7 @@ class ZappVpnService : VpnService() {
      * Сокет файловый (в приватном каталоге приложения), а не abstract:
      * abstract-namespace доступен любому приложению, и fd туннеля утёк бы.
      */
-    private fun startFdSender(dup: ParcelFileDescriptor) {
+    private fun startFdSender(dup: ParcelFileDescriptor, gen: Int) {
         val path = VpnTunnel.fdSocketPath ?: return
         runCatching { File(path).delete() }
 
@@ -492,6 +506,12 @@ class ZappVpnService : VpnService() {
             try {
                 while (true) {
                     val client = server.accept() ?: break
+                    // Чужое поколение: туннель уже переоткрыли,
+                    // отправителю из прошлого пора выходить.
+                    if (!sessionGen.isCurrent(gen)) {
+                        runCatching { client.close() }
+                        break
+                    }
                     try {
                         client.setFileDescriptorsForSend(arrayOf(dup.fileDescriptor))
                         client.outputStream.write(0)
@@ -510,6 +530,10 @@ class ZappVpnService : VpnService() {
     }
 
     private fun closeTunnel() {
+        // Сокеты и fd уходят, хвост отправителя -- вместе с ними:
+        // поколение двигается до закрытий, чтобы accept-цикл успел
+        // увидеть чужость ещё до следующей отправки.
+        sessionGen.bump()
         runCatching { fdServer?.close() }
         fdServer = null
         runCatching { fdOwner?.close() }

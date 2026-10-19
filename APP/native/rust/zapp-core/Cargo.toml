@@ -1,0 +1,17 @@
+[package]
+name = "zapp-core"
+version = "0.1.0"
+edition = "2021"
+
+# Статическая библиотека: вшивается и в Android .so (сlink C++-моста),
+# и в десктопный. Без внешних крейтов -- сборка идёт офлайн, версии
+# фиксируются только здесь.
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[profile.release]
+# Паника за границей FFI и так убивает процесс; unwind-данные в
+# статике только мешают линковке с C++.
+panic = "abort"
+opt-level = 2
+strip = true

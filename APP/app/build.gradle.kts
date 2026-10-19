@@ -19,7 +19,7 @@ android {
         applicationId = "xyz.azraellab.zapp"
         minSdk = 33
         targetSdk = 36
-        versionCode = 59
+        versionCode = 60
         versionName = zappVersion
 
         // STL не отключаем. `ANDROID_STL=none` убирает libc++ из sysroot, и
@@ -185,4 +185,89 @@ dependencies {
     implementation(project(":composeApp"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
+}
+
+// --- Rust-ядро (native/rust/zapp-core) --------------------------------
+//
+// Статика zapp-core для всех четырёх ABI: rustup-cargo + линкер NDK.
+// Задача обязана пройти ДО конфигурации CMake (configureCMake* и
+// externalNativeBuild* висят на ней ниже) -- CMakeLists.txt линкует
+// build/rust/<трiple>/libzapp_core.a в ту же .so, что и C++-мост.
+val rustManifest = file("../native/rust/zapp-core/Cargo.toml")
+val cargoBuildAndroidNative = tasks.register("cargoBuildAndroidNative") {
+    inputs.dir(file("../native/rust/zapp-core/src"))
+    inputs.file(rustManifest)
+    inputs.files(
+        fileTree(file("../native/rust/zapp-core")) {
+            include("**/*.toml", "Cargo.lock")
+        }
+    )
+    outputs.dir(layout.buildDirectory.dir("rust"))
+
+    doLast {
+        val cargoDir = File(System.getProperty("user.home"), ".cargo/bin")
+        val cargo = File(cargoDir, "cargo")
+            .takeIf { it.exists() }
+            ?: error("rustup не установлен: нет ${'$'}HOME/.cargo/bin/cargo")
+        // CI ставит rustup без android-таргетов: добавляем недостающие,
+        // установленные не трогаем (иначе лишний сетевой чек).
+        val rustup = File(cargoDir, "rustup").takeIf { it.exists() }
+        if (rustup != null) {
+            val wanted = listOf(
+                "aarch64-linux-android", "armv7-linux-androideabi",
+                "i686-linux-android", "x86_64-linux-android"
+            )
+            val probe = ProcessBuilder(rustup.absolutePath, "target", "list", "--installed")
+                .redirectErrorStream(true).start()
+            val installed = probe.inputStream.bufferedReader().readLines().toSet()
+            probe.waitFor()
+            val missing = wanted.filterNot { it in installed }
+            if (missing.isNotEmpty()) {
+                val add = ProcessBuilder(rustup.absolutePath, "target", "add", *missing.toTypedArray())
+                    .redirectErrorStream(true).start()
+                val addLog = add.inputStream.bufferedReader().readText()
+                check(add.waitFor() == 0) { "rustup target add провалился:\n$addLog" }
+            }
+        }
+        val sdk = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+            ?: error("ANDROID_HOME не задан")
+        val ndkDir = File(sdk, "ndk").listFiles()
+            ?.filter { File(it, "source.properties").exists() }
+            ?.maxByOrNull { it.name }
+            ?: error("NDK не найден в $sdk/ndk")
+        val ndkBin = File(ndkDir, "toolchains/llvm/prebuilt/linux-x86_64/bin")
+        val targets = mapOf(
+            "aarch64-linux-android" to "aarch64-linux-android33-clang",
+            "armv7-linux-androideabi" to "armv7a-linux-androideabi33-clang",
+            "i686-linux-android" to "i686-linux-android33-clang",
+            "x86_64-linux-android" to "x86_64-linux-android33-clang"
+        )
+        val outRoot = layout.buildDirectory.dir("rust").get().asFile
+        targets.forEach { (triple, compiler) ->
+            val builder = ProcessBuilder(
+                cargo.absolutePath, "build", "--release",
+                "--target", triple,
+                "--manifest-path", rustManifest.absolutePath
+            )
+            builder.directory(rustManifest.parentFile)
+            builder.redirectErrorStream(true)
+            // Линкер -- до старта: cargo читает env в момент запуска.
+            val linkerName = "CARGO_TARGET_" + triple.uppercase().replace('-', '_') + "_LINKER"
+            builder.environment().put(linkerName, File(ndkBin, compiler).absolutePath)
+            val proc = builder.start()
+            val log = proc.inputStream.bufferedReader().readText()
+            check(proc.waitFor() == 0) { "cargo ($triple) провалился:\n$log" }
+            val archive = File(rustManifest.parentFile, "target/$triple/release/libzapp_core.a")
+            check(archive.exists()) { "нет ${'$'}{archive.absolutePath} после сборки" }
+            val dst = File(outRoot, triple).apply { mkdirs() }
+            archive.copyTo(File(dst, "libzapp_core.a"), overwrite = true)
+        }
+    }
+}
+
+// CMake конфигурируется и линкуется только после появления статики.
+tasks.configureEach {
+    if (name.startsWith("configureCMake") || name.startsWith("externalNativeBuild")) {
+        dependsOn(cargoBuildAndroidNative)
+    }
 }

@@ -1180,6 +1180,30 @@ private fun VpnBehaviorGroup(state: AppState) {
                 },
                 path = "settings.vpn.autostart"
             )
+            ZappSettingRow(
+                title = tr(Str.VPN_SLEEP_OFF),
+                checked = vpn.sleepDisconnect,
+                onCheckedChange = { on ->
+                    state.mutate {
+                        it.copy(vpn = it.vpn.copy(
+                            sleepDisconnect = on,
+                            // Без «гасить при засыпании» переподключение
+                            // не срабатывает: поднимать нечего.
+                            wakeReconnect = if (on) it.vpn.wakeReconnect else false
+                        ))
+                    }
+                },
+                path = "settings.vpn.sleep_disconnect"
+            )
+            ZappSettingRow(
+                title = tr(Str.VPN_WAKE_ON),
+                checked = vpn.wakeReconnect,
+                enabled = vpn.sleepDisconnect,
+                onCheckedChange = { on ->
+                    state.mutate { it.copy(vpn = it.vpn.copy(wakeReconnect = on)) }
+                },
+                path = "settings.vpn.wake_reconnect"
+            )
         }
     }
 }

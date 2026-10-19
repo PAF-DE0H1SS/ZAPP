@@ -199,7 +199,7 @@ private class AndroidGpsEngine : BaseGpsEngine() {
     }
 
     /** Кладёт точку в провайдер. false, если система её не приняла. */
-    private fun publish(fix: GpsFix, cfg: GpsConfig): Boolean {
+    private fun publish(fix: GpsFix, cfg: GpsConfig, speedMps: Double): Boolean {
         val manager = locationManager ?: return false
         return runCatching {
             val location = Location(LocationManager.GPS_PROVIDER).apply {
@@ -207,7 +207,7 @@ private class AndroidGpsEngine : BaseGpsEngine() {
                 longitude = fix.longitude
                 altitude = cfg.altitudeMeters
                 accuracy = fix.accuracyMeters
-                speed = cfg.speedMps.toFloat()
+                speed = speedMps.toFloat()
                 bearing = 0f
                 time = System.currentTimeMillis()
                 elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
@@ -222,32 +222,47 @@ private class AndroidGpsEngine : BaseGpsEngine() {
         // Маршрут держит свой прогресс вне конфига: перезапуск маршрута
         // -- событие, а не следствие смены точности в настройках.
         var walker: RouteProgress? = (target as? ResolvedTarget.Route)?.let {
-            RouteProgress(it.points, config?.routeLoop == true, config?.routeDwellSeconds ?: 0)
+            RouteProgress(
+                it.points,
+                config?.routeLoop == true,
+                config?.routeDwellSeconds ?: 0,
+                RubberBand.ACCEL_METERS,
+                RubberBand.DECEL_METERS
+            )
         }
         var baseLatitude = (target as? ResolvedTarget.Fixed)?.latitude
         var baseLongitude = (target as? ResolvedTarget.Fixed)?.longitude
         // Джойстик: своя стартовая точка, которая едет по курсу.
         var joyLatitude = (target as? ResolvedTarget.Joystick)?.latitude
         var joyLongitude = (target as? ResolvedTarget.Joystick)?.longitude
+        // Дрейф копится здесь: общий для режимов, живёт до остановки.
+        val drift = DriftAccumulator()
 
         while (isActive) {
             val cfg = config ?: return
 
+            // Джиттер скорости на такт: ±speedJitterPercent вокруг
+            // значения конфига; ноль в конфиге -- точная скорость.
+            val speedNow = RubberBand.jitterSpeed(cfg.speedMps, cfg.speedJitterPercent)
+            drift.tick(cfg.driftMetersPerSecond, TICK_SECONDS)
+
             val point: RoutePointCoords = when {
                 walker != null -> {
-                    val p = walker.step(TICK_SECONDS, cfg.speedMps)
+                    val p = walker.step(TICK_SECONDS, speedNow)
                     if (p == null) {
                         log(GpsEvent(Str.GPS_LOG_ROUTE_DONE))
                         return
                     }
-                    RoutePointCoords(p.latitude, p.longitude, null)
+                    // Джиттер позиции действует и в маршруте: точка едет
+                    // не по линейке, а с тем же разбросом, что у точки.
+                    RoutePointCoords(p.latitude, p.longitude, jitterMeters(cfg.positionJitterMeters))
                 }
                 joyLatitude != null && joyLongitude != null -> {
                     // Курс и скорость читаются на каждом такте: ручной
                     // оверлей меняет их на лету, цикл пересобирать не нужно.
                     val moved = advance(
                         joyLatitude!!, joyLongitude!!,
-                        cfg.headingDegrees, cfg.speedMps * TICK_SECONDS
+                        cfg.headingDegrees, speedNow * TICK_SECONDS
                     )
                     joyLatitude = moved.first
                     joyLongitude = moved.second
@@ -262,14 +277,22 @@ private class AndroidGpsEngine : BaseGpsEngine() {
             }
 
             val jittered = applyJitter(point.latitude, point.longitude, point.jitterMeters ?: 0.0)
+            // Дрейф: накопленный сдвиг по курсу поверх координаты -- в
+            // том числе неподвижной точки: статик без дрейфа не бывает
+            // настоящей.
+            val positioned = if (drift.meters != 0.0) {
+                advance(jittered.first, jittered.second, cfg.headingDegrees, drift.meters)
+            } else {
+                jittered
+            }
             val fix = GpsFix(
-                latitude = jittered.first,
-                longitude = jittered.second,
+                latitude = positioned.first,
+                longitude = positioned.second,
                 accuracyMeters = cfg.accuracyMeters.coerceAtLeast(1.0).toFloat(),
                 place = (target as? ResolvedTarget.Fixed)?.place ?: ""
             )
 
-            if (!publish(fix, cfg)) {
+            if (!publish(fix, cfg, speedNow)) {
                 // Система не приняла точку: обычно это снятое разрешение
                 // на имитацию. Причина видна в журнале, состояние -- ошибка.
                 log(GpsEvent(Str.GPS_LOG_PROVIDER_ERROR))
@@ -279,7 +302,7 @@ private class AndroidGpsEngine : BaseGpsEngine() {
             setFix(fix)
             // Строка в шторке: координаты и скорость. Обновление
             // раз в секунду, тот же id, без дублей в шторке.
-            serviceUpdate(fixLine(fix, cfg))
+            serviceUpdate(fixLine(fix, speedNow))
             delay(TICK_MS)
         }
     }
@@ -290,11 +313,10 @@ private class AndroidGpsEngine : BaseGpsEngine() {
      * Скорость добавляется только когда она есть: точка без движения
      * подписана координатами, и приписка «0 m/s» ничего не сообщает.
      */
-    private fun fixLine(fix: GpsFix, cfg: GpsConfig): String {
+    private fun fixLine(fix: GpsFix, speedMps: Double): String {
         val base = formatPoint(fix.latitude, fix.longitude, fix.place)
-        val speed = cfg.speedMps
-        return if (speed > 0.0) {
-            "$base · " + (Math.round(speed * 10.0) / 10.0) + " m/s"
+        return if (speedMps > 0.0) {
+            "$base · " + (Math.round(speedMps * 10.0) / 10.0) + " m/s"
         } else {
             base
         }
@@ -304,14 +326,14 @@ private class AndroidGpsEngine : BaseGpsEngine() {
     private fun targetText(target: ResolvedTarget, cfg: GpsConfig): String = when (target) {
         is ResolvedTarget.Fixed -> fixLine(
             GpsFix(target.latitude, target.longitude, cfg.accuracyMeters.toFloat(), target.place),
-            cfg
+            cfg.speedMps
         )
         is ResolvedTarget.Joystick -> fixLine(
             GpsFix(target.latitude, target.longitude, cfg.accuracyMeters.toFloat()),
-            cfg
+            cfg.speedMps
         )
         is ResolvedTarget.Route -> target.points.firstOrNull()?.let {
-            fixLine(GpsFix(it.latitude, it.longitude, cfg.accuracyMeters.toFloat()), cfg)
+            fixLine(GpsFix(it.latitude, it.longitude, cfg.accuracyMeters.toFloat()), cfg.speedMps)
         }.orEmpty()
     }
 

@@ -4,7 +4,10 @@ import xyz.azraellab.zapp.core.GpsConfig
 import xyz.azraellab.zapp.core.GpsMode
 import xyz.azraellab.zapp.core.GpsTarget
 import xyz.azraellab.zapp.core.RoutePoint
+import xyz.azraellab.zapp.core.gps.DriftAccumulator
+import xyz.azraellab.zapp.core.gps.RouteProjection
 import xyz.azraellab.zapp.core.gps.RouteProgress
+import xyz.azraellab.zapp.core.gps.RubberBand
 
 /**
  * Геолокация: режимы, цель, расстояния, проигрывание маршрута.
@@ -204,5 +207,118 @@ internal fun gpsTests(out: MutableList<DevTest>) {
         // 1 м за шаг из ~111195 м: почти не сдвинулись, но сдвинулись.
         checkTrue(point.longitude > 0.0, "маленький шаг: ${point.longitude}")
         checkTrue(point.longitude < 0.001, "быстрая общая скорость проигнорирована")
+    }
+
+    // --- Анти rubber-banding: джиттер, дрейф, профиль скорости ---
+
+    out += DevTest("gps/jitter-bounds", DevCategory.GPS, "Джиттер скорости держит ±процент") {
+        // 100 засевок: любой результат внутри ±20 %, среднее рядом с базой.
+        val random = kotlin.random.Random(7)
+        val values = (1..100).map { RubberBand.jitterSpeed(10.0, 20, random) }
+        checkTrue(values.all { it in 8.0..12.0 }, "границы: min=${values.min()} max=${values.max()}")
+        val avg = values.average()
+        checkTrue(avg in 9.5..10.5, "среднее ~ база: $avg")
+    }
+
+    out += DevTest("gps/jitter-zero-is-exact", DevCategory.GPS, "Нулевой разброс -- точная скорость") {
+        checkEq(10.0, RubberBand.jitterSpeed(10.0, 0), "0 %")
+        checkEq(10.0, RubberBand.jitterSpeed(10.0, -5), "минус -- тоже точная")
+        checkEq(0.0, RubberBand.jitterSpeed(0.0, 50), "ноль не двигается")
+    }
+
+    out += DevTest("gps/drift-accumulates", DevCategory.GPS, "Дрейф копится по тактам") {
+        val drift = DriftAccumulator()
+        checkEq(0.0, drift.meters, "чистый старт")
+        drift.tick(0.5, 1.0)
+        drift.tick(0.5, 1.0)
+        checkEq(1.0, drift.meters, "два такта по 0.5 м/с")
+        drift.tick(2.0, 0.0)   // нулевой шаг не копит
+        drift.tick(0.0, 5.0)   // нулевой дрейф не копит
+        checkEq(1.0, drift.meters, "нулевые такты не двигают")
+        drift.reset()
+        checkEq(0.0, drift.meters, "сброс")
+    }
+
+    out += DevTest("gps/profile-ramps", DevCategory.GPS, "Профиль: разгон с нуля, торможение к концу") {
+        // 100-метровый маршрут, разгон/торможение по 25 м.
+        val up = RubberBand.speedProfile(0.0, 100.0, 25.0, 25.0)
+        checkEq(RubberBand.MIN_FACTOR, up, "старт не зависает на нуле")
+        checkTrue(RubberBand.speedProfile(12.5, 100.0, 25.0, 25.0) in 0.1..0.999, "середина разгона")
+        checkEq(1.0, RubberBand.speedProfile(50.0, 100.0, 25.0, 25.0), "середина -- полная")
+        checkTrue(RubberBand.speedProfile(90.0, 100.0, 25.0, 25.0) < 1.0, "торможение")
+        checkTrue(RubberBand.speedProfile(100.0, 100.0, 25.0, 25.0) >= 0.1, "прибытие не ноль")
+    }
+
+    out += DevTest("gps/profile-off-and-short", DevCategory.GPS, "Профиль выключается и не душит короткий маршрут") {
+        // Нулевые accel/decel -- профиль отключён, старое поведение.
+        checkEq(1.0, RubberBand.speedProfile(0.0, 100.0, 0.0, 0.0), "выключен")
+        checkEq(1.0, RubberBand.speedProfile(0.0, 0.0, 25.0, 25.0), "ноль длины")
+        // Короткий маршрут: разгон ограничен четвертью длины, в середине -- полная.
+        checkEq(1.0, RubberBand.speedProfile(5.0, 10.0, 25.0, 25.0), "короткий в середине")
+    }
+
+    out += DevTest("gps/route-profile-slows-start", DevCategory.GPS, "Маршрут стартует медленнее и доходит") {
+        val points = listOf(RoutePoint(0.0, 0.0), RoutePoint(0.001, 0.0))
+        val withProfile = RouteProgress(points, false, 0, accelMeters = 25.0, decelMeters = 25.0)
+        val plain = RouteProgress(points, false, 0)
+        val a = requireNotNull(withProfile.step(1.0, 10.0)) { "шаг с профилем" }
+        val b = requireNotNull(plain.step(1.0, 10.0)) { "шаг без профиля" }
+        checkTrue(a.latitude < b.latitude, "старт медленнее: ${a.latitude} < ${b.latitude}")
+        // Маршрут всё равно доходит: пол не даёт старту зависнуть.
+        var done = false
+        repeat(40) { if (withProfile.step(1.0, 10.0) == null) done = true }
+        checkTrue(done, "маршрут пройден до конца")
+    }
+
+    // --- Мини-карта: проекция маршрута на плоскость ---
+
+    out += DevTest("gps/projection-bounds", DevCategory.GPS, "Все точки маршрута внутри холста") {
+        val route = listOf(
+            RoutePoint(55.75, 37.61),
+            RoutePoint(55.76, 37.63),
+            RoutePoint(55.74, 37.60)
+        )
+        val projection = RouteProjection.transform(route, 300f, 140f, 10f)
+        projection.project(route).forEach { (x, y) ->
+            checkTrue(x in 10f..290f, "x в холсте: $x")
+            checkTrue(y in 10f..130f, "y в холсте: $y")
+        }
+    }
+
+    out += DevTest("gps/projection-degenerate", DevCategory.GPS, "Вырожденные маршруты -- в центр") {
+        // Одна точка -- центр холста.
+        val single = RouteProjection.transform(listOf(RoutePoint(55.75, 37.61)), 300f, 140f, 10f)
+        val (sx, sy) = single.xy(55.75, 37.61)
+        checkEq(150f, sx, "центр по x")
+        checkEq(70f, sy, "центр по y")
+        // Вертикальная линия: x по центру, y тянется на весь холст.
+        val vertical = RouteProjection.transform(
+            listOf(RoutePoint(55.75, 37.61), RoutePoint(55.76, 37.61)), 300f, 140f, 10f
+        )
+        val (vx1, vy1) = vertical.xy(55.75, 37.61)
+        val (vx2, vy2) = vertical.xy(55.76, 37.61)
+        checkEq(vx1, vx2, "одна ось")
+        checkTrue(kotlin.math.abs(vy2 - vy1) > 100f, "растянулась по высоте")
+        // Пустой список не падает.
+        val empty = RouteProjection.transform(emptyList(), 300f, 140f, 10f)
+        checkEq(150f, empty.xy(0.0, 0.0).first, "пусто -- центр")
+    }
+
+    out += DevTest("gps/projection-preserves-ratio", DevCategory.GPS, "Пропорции сохраняются: градусы на широте 60 честно делятся") {
+        // На широте 60 косинус = 0.5: градус долготы -- вдвое короче градуса
+        // широты. Проекция обязана это учесть: 2° долготы при широте 60
+        // равно 1° широты, и на холсте фигура выходит с равными сторонами.
+        // (1° x 1° при широте 60 -- честный прямоугольник 1:2, не квадрат.)
+        val route = listOf(
+            RoutePoint(59.5, 30.0),
+            RoutePoint(60.5, 30.0),
+            RoutePoint(60.5, 32.0),
+            RoutePoint(59.5, 32.0)
+        )
+        val projection = RouteProjection.transform(route, 400f, 400f, 0f)
+        val pts = projection.project(route)
+        val dx = kotlin.math.abs(pts[2].first - pts[1].first)
+        val dy = kotlin.math.abs(pts[2].second - pts[3].second)
+        checkTrue(kotlin.math.abs(dx - dy) < 0.01f, "стороны равны: $dx vs $dy")
     }
 }

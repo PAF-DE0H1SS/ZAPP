@@ -159,7 +159,9 @@ abstract class BaseGpsEngine : GpsEngine {
 class RouteProgress(
     points: List<RoutePoint>,
     private val loop: Boolean,
-    private val routeDwellSeconds: Int
+    private val routeDwellSeconds: Int,
+    private val accelMeters: Double = 0.0,
+    private val decelMeters: Double = 0.0
 ) {
     /** Копия: внешние правки списка не должны двигать проигрывание. */
     private val points: List<RoutePoint> = points.toList()
@@ -175,6 +177,12 @@ class RouteProgress(
     /** Пройдено метров в текущем сегменте. */
     private var traveledMeters = 0.0
 
+    /** Длина маршрута одним проходом -- база для профиля скорости. */
+    private val totalMeters: Double
+
+    /** Сколько метров пройдено всего: по этому счёту считается разгон и торможение. */
+    private var passedMeters = 0.0
+
     /** Текущая позиция: точка маршрута или интерполяция между ними. */
     var current: RoutePoint? = points.firstOrNull()
         private set
@@ -189,6 +197,16 @@ class RouteProgress(
                 ?.toDouble()
                 ?: routeDwellSeconds.coerceAtLeast(0).toDouble()
         }
+        // Длина одним проходом; для кольца -- со смыкающим сегментом,
+        // иначе профиль торможения упирался бы в неполный путь.
+        var total = 0.0
+        for (i in 0 until points.indices.last) {
+            total += points[i].distanceTo(points[i + 1])
+        }
+        if (loop && points.size > 1) {
+            total += points.last().distanceTo(points.first())
+        }
+        totalMeters = total
     }
 
     /**
@@ -225,9 +243,14 @@ class RouteProgress(
             }
 
             val to = if (nextIndex >= pts.size) pts[0] else pts[nextIndex]
-            val speed = (from.speedMps ?: defaultSpeedMps).coerceAtLeast(MIN_SPEED_MPS)
+            // Профиль скорости: разгон с начала маршрута и торможение к
+            // концу (в кольце -- к точке смыкания). Нулевые accel/decel
+            // профиль отключают: старое поведение сохраняется.
+            val base = (from.speedMps ?: defaultSpeedMps).coerceAtLeast(MIN_SPEED_MPS)
+            val speed = base * RubberBand.speedProfile(profileOffset(), totalMeters, accelMeters, decelMeters)
             val segment = from.distanceTo(to).coerceAtLeast(1.0)
             traveledMeters += speed * dtSeconds
+            passedMeters += speed * dtSeconds
 
             if (traveledMeters < segment) {
                 // Сегмент не пройден: линейная интерполяция -- на секундных
@@ -255,6 +278,10 @@ class RouteProgress(
         }
         return current
     }
+
+    /** Позиция для профиля скорости: в кольце -- по модулю длины, иначе общий счёт. */
+    private fun profileOffset(): Double =
+        if (loop && totalMeters > 0.0) passedMeters % totalMeters else passedMeters
 
     private companion object {
         /** Защита от бесконечного цикла: за один шаг и так не больше ~10 сегментов. */

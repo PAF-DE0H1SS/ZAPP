@@ -1,6 +1,12 @@
 package xyz.azraellab.zapp.ui.pages
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -11,9 +17,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.atan2
 import xyz.azraellab.zapp.core.AppLang
@@ -41,9 +51,11 @@ import xyz.azraellab.zapp.core.geo.photonSearch
 import xyz.azraellab.zapp.core.gps.GpsState
 import xyz.azraellab.zapp.core.gps.RouteEta
 import xyz.azraellab.zapp.core.log.isError
+import xyz.azraellab.zapp.core.log.platformNowMs
 import xyz.azraellab.zapp.ui.AppLangState
 import xyz.azraellab.zapp.ui.components.ComponentColors.ButtonRole
 import xyz.azraellab.zapp.ui.components.Choice
+import xyz.azraellab.zapp.ui.components.RouteMiniMap
 import xyz.azraellab.zapp.ui.components.ZappButton
 import xyz.azraellab.zapp.ui.components.ZappButtonRow
 import xyz.azraellab.zapp.ui.components.ZappCard
@@ -79,6 +91,34 @@ fun GpsPage(state: AppState) {
     val gpsFix by state.gpsEngine.fix.collectAsState()
     val gpsLog by state.gpsEngine.log.collectAsState()
 
+    // Таймер сессии: отсчёт от первой активации до остановки подмены.
+    // Эффект перезапускается на каждой смене состояния: переход
+    // STARTING -> ACTIVE отсчёт не обрывает, выключение -- сбрасывает.
+    var sessionStart by remember { mutableStateOf(0L) }
+    var sessionNow by remember { mutableStateOf(0L) }
+    LaunchedEffect(gpsState) {
+        val active = gpsState == GpsState.ACTIVE || gpsState == GpsState.STARTING
+        if (active) {
+            if (sessionStart == 0L) {
+                sessionStart = platformNowMs()
+                sessionNow = sessionStart
+            }
+            while (true) {
+                delay(1000)
+                sessionNow = platformNowMs()
+            }
+        } else {
+            sessionStart = 0L
+            sessionNow = 0L
+        }
+    }
+    val sessionLabel = if (sessionStart != 0L && sessionNow >= sessionStart) {
+        val seconds = (sessionNow - sessionStart) / 1000
+        String.format(Locale.US, "%02d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
+    } else {
+        null
+    }
+
     PageScaffold(title = tr(Str.TAB_GPS)) {
         if (!state.caps.gpsSpoofingSupported) {
             ZappCard {
@@ -98,15 +138,31 @@ fun GpsPage(state: AppState) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = tr(state.gpsStateLabel()),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = when (gpsState) {
-                            GpsState.ACTIVE -> MaterialTheme.colorScheme.primary
-                            GpsState.ERROR -> MaterialTheme.colorScheme.error
-                            else -> MaterialTheme.colorScheme.onSurface
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(AzraelSpace.xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        GpsStatusDot(gpsState)
+                        Text(
+                            text = tr(state.gpsStateLabel()),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = when (gpsState) {
+                                GpsState.ACTIVE -> MaterialTheme.colorScheme.primary
+                                GpsState.ERROR -> MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                        // Таймер сессии: сколько подмена работает подряд.
+                        // Слева от него -- пульсирующая точка: работает не
+                        // только строка, но и сама подмена.
+                        sessionLabel?.let { label ->
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                    )
+                    }
                     gpsFix?.let { fix ->
                         Text(
                             text = formatFix(fix.latitude, fix.longitude, fix.place),
@@ -326,6 +382,17 @@ fun GpsPage(state: AppState) {
                         path = "gps.route_loop"
                     )
                     RouteBuilder(state)
+                    // Мини-карта: схема маршрута прямо в карточке -- видно,
+                    // где точка сейчас и сколько осталось. Рисуется только
+                    // когда есть что рисовать.
+                    val routePoints = remember(config.route) { GpsRouteCodec.parse(config.route) }
+                    if (routePoints.size >= 2) {
+                        RouteMiniMap(
+                            route = routePoints,
+                            current = gpsFix,
+                            modifier = Modifier.padding(top = AzraelSpace.sm)
+                        )
+                    }
                 }
             }
         }
@@ -733,6 +800,36 @@ private fun AppState.gpsStateLabel(): Str = when (gpsEngine.state.collectAsState
     GpsState.STARTING -> Str.GPS_STATE_STARTING
     GpsState.ACTIVE -> Str.GPS_STATE_ACTIVE
     GpsState.ERROR -> Str.GPS_STATE_ERROR
+}
+
+/**
+ * Точка состояния в статусной строке.
+ *
+ * Активная подмена пульсирует (живой сигнал), ошибка -- горит
+ * ровно, выключено -- нейтральный кружок без анимации.
+ */
+@Composable
+private fun GpsStatusDot(state: GpsState) {
+    val color = when (state) {
+        GpsState.ACTIVE, GpsState.STARTING -> MaterialTheme.colorScheme.primary
+        GpsState.ERROR -> MaterialTheme.colorScheme.error
+        GpsState.OFF -> MaterialTheme.colorScheme.outline
+    }
+    val pulse = if (state == GpsState.ACTIVE || state == GpsState.STARTING) {
+        rememberInfiniteTransition(label = "gpsDot").animateFloat(
+            initialValue = 0.45f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+            label = "gpsDotAlpha"
+        ).value
+    } else {
+        1f
+    }
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .background(color.copy(alpha = pulse), CircleShape)
+    )
 }
 
 /** "55.75580, 37.61730 (Москва, Россия)" -- координаты с подписью места. */

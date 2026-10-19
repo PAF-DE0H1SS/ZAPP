@@ -27,9 +27,11 @@ jobs:
           go-version: stable
       # QA-линтер репозитория (tools/zapp-lint): локальные файлы не в индексе,
       # манифест согласован с классами, namespace'ы не конфликтуют, Str-ключи
-      # биективны, версии в порядке.
+      # биективны, версии в порядке. Запуск из каталога модуля (корень репо --
+      # не Go-модуль), корень передаём абсолютным путём.
       - name: Lint repo
-        run: go run ./tools/zapp-lint .
+        working-directory: tools/zapp-lint
+        run: go run . "${{ github.workspace }}"
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :composeApp:desktopTest
         working-directory: APP

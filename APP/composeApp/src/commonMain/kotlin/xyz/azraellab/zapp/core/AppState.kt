@@ -1432,8 +1432,15 @@ class AppState(
 
     /** Скачивает пресет записи каталога и применяет его. */
     suspend fun installCatalogEntry(entry: CatalogEntry): PresetMessage {
-        val preset = runCatching { CatalogService.fetchPreset(entry.presetUrl) }.getOrNull()
+        val preset = runCatching {
+            CatalogService.fetchPreset(entry.presetUrl, entry.sha256)
+        }.getOrNull()
         if (preset == null) {
+            // Отклонён по контрольной сумме или битый: в журнале причина
+            // видна, иначе «не установился» выглядело бы как сбой сети.
+            if (entry.sha256.isNotBlank()) {
+                AppLog.log("catalog", "preset rejected: sha256 or parse failed")
+            }
             lastMessage = PresetMessage.badFile
             return PresetMessage.badFile
         }
@@ -2026,6 +2033,12 @@ class AppState(
      * проверки дали бы гонку состояний без единого выигрыша.
      */
     fun checkForUpdates() {
+        // Чужая подпись -- наши фиды и бинарники в руках фарм-сборки не
+        // должны оказаться: проверка и загрузка молча выключены.
+        if (!isOfficialBuild()) {
+            AppLog.log("update", "check skipped: unofficial build signature")
+            return
+        }
         if (_updateState.value == UpdateState.CHECKING) return
         _updateState.value = UpdateState.CHECKING
         scope.launch {

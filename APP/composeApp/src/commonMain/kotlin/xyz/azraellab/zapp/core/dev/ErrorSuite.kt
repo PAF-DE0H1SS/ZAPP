@@ -4,6 +4,7 @@ import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.daemon.DaemonEvent
 import xyz.azraellab.zapp.core.gps.GpsEvent
 import xyz.azraellab.zapp.core.log.ErrorLog
+import xyz.azraellab.zapp.core.log.adviceFor
 import xyz.azraellab.zapp.core.log.bootstrapProgress
 import xyz.azraellab.zapp.core.log.bootstrapStageKey
 import xyz.azraellab.zapp.core.log.capLines
@@ -343,5 +344,13 @@ internal fun errorTextTests(out: MutableList<DevTest>) {
         checkContains(chain, "level3", "граница глубины -- четвёртое звено")
         checkNotContains(chain, "level2", "пятое звено отброшено")
         checkEq("", IllegalStateException().causeChain(), "без сообщений -- пустая строка")
+    }
+
+    out += DevTest("log/error-advice", DevCategory.UI, "Рекомендация по тексту ошибки") {
+        checkEq(Str.ERR_ADV_PORT, adviceFor("bind: address already in use")?.key, "занятый порт")
+        checkEq(Str.ERR_ADV_TIMEOUT, adviceFor("i/o timeout")?.key, "таймаут")
+        checkTrue(adviceFor("i/o timeout")!!.transient, "таймаут повторяем")
+        checkTrue(!adviceFor("address already in use")!!.transient, "порт не повторяем")
+        checkEq(null, adviceFor("обычная строка"), "незнакомое -- без рекомендации")
     }
 }

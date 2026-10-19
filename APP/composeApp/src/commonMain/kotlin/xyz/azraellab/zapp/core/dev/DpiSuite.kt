@@ -226,6 +226,26 @@ internal fun dpiTests(out: MutableList<DevTest>) {
         checkTrue(ByeDpiConfig(extraArgs = "   ").extraList().isEmpty(), "пробелы -- не аргументы")
     }
 
+    out += DevTest("dpi/byedpi-extra-quotes", DevCategory.DPI, "Кавычки и плейсхолдер в хвосте") {
+        val config = ByeDpiConfig(extraArgs = """--file="my list.txt" --ttl 5""")
+        checkEq(
+            listOf("--file=my list.txt", "--ttl", "5"),
+            config.extraList(),
+            "кавычки склеивают аргумент"
+        )
+        checkTrue(
+            config.toArgs().contains("--file=my list.txt"),
+            "аргумент с пробелом дошёл целым"
+        )
+        val hosts = ByeDpiConfig(extraArgs = "\$HOSTS --ttl 5").toArgs(listOf("a.com", "b.com"))
+        checkTrue(
+            hosts.containsAll(listOf("a.com", "b.com")),
+            "плейсхолдер развернулся в домены"
+        )
+        val empty = ByeDpiConfig(extraArgs = "\$HOSTS").toArgs(emptyList())
+        checkTrue(empty.none { it.contains("\$HOSTS") }, "пустой список -- нет и плейсхолдера")
+    }
+
     out += DevTest("dpi/backend-of", DevCategory.DPI, "Выбор механизма: коды и дефолт") {
         DpiBackend.entries.forEach { backend ->
             checkEq(backend, DpiBackend.of(backend.code), backend.code)

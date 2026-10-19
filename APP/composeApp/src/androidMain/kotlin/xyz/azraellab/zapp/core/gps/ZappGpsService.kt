@@ -10,11 +10,13 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.app.ForegroundServiceStartNotAllowedException
 import androidx.core.content.ContextCompat
 import xyz.azraellab.zapp.core.AppLang
 import xyz.azraellab.zapp.core.AppLangStore
 import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.Str
+import xyz.azraellab.zapp.core.log.AppLog
 
 /**
  * Foreground-сервис подмены координат.
@@ -82,14 +84,23 @@ class ZappGpsService : Service() {
             manager.createNotificationChannel(channel)
         }
 
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                NOTIFICATION_ID,
-                buildNotification(text),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, buildNotification(text))
+        // Паттерн VPNHotspot (ServiceNotification): Android 12+ может
+        // запретить foreground-старт из фона. Обновление уведомления --
+        // молча (notify и так в runCatching), а вот отказ стартовать
+        // глушить нельзя: подмена продолжает жить в процессе, но служба
+        // умрёт, и причина обязана быть видна в журнале.
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(text),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification(text))
+            }
+        } catch (e: ForegroundServiceStartNotAllowedException) {
+            AppLog.log("gps", "foreground refused: ${e::class.simpleName}")
         }
     }
 

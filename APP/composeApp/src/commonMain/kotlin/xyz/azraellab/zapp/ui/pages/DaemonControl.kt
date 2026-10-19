@@ -21,6 +21,7 @@ import xyz.azraellab.zapp.core.AppState
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.daemon.DaemonEngine
 import xyz.azraellab.zapp.core.daemon.DaemonState
+import xyz.azraellab.zapp.core.log.adviceFor
 import xyz.azraellab.zapp.core.log.isError
 import xyz.azraellab.zapp.core.log.stripAnsi
 import xyz.azraellab.zapp.core.probe.ProbeProgress
@@ -62,6 +63,9 @@ fun DaemonControlCard(
     } else {
         null
     }
+    // Причина сама по себе не говорит, что делать: рекомендация идёт следом,
+    // одной строкой из общей таблицы (core.log.ErrorAdvice).
+    val advice = reason?.let { adviceFor(it) }
 
     ZappCard {
         Row(
@@ -85,6 +89,13 @@ fun DaemonControlCard(
                         text = reason,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
+                    )
+                }
+                if (advice != null) {
+                    Text(
+                        text = tr(advice.key),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

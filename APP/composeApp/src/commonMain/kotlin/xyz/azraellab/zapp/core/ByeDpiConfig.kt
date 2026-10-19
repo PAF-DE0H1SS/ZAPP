@@ -1,6 +1,7 @@
 package xyz.azraellab.zapp.core
 
 import kotlinx.serialization.Serializable
+import xyz.azraellab.zapp.core.daemon.ArgTokenizer
 import xyz.azraellab.zapp.core.daemon.DpiOverlay
 
 /**
@@ -95,9 +96,8 @@ data class ByeDpiConfig(
     /** Свои аргументы хвостом, например `--ttl 5 --timeout 3`. */
     val extraArgs: String = ""
 ) {
-    /** Хвост отдельными аргументами; пустые куски отбрасываются. */
-    fun extraList(): List<String> =
-        extraArgs.split(Regex("\\s+")).filter { it.isNotEmpty() }
+    /** Хвост отдельными аргументами; кавычки снимаются, пустые -- прочь. */
+    fun extraList(): List<String> = ArgTokenizer.tokenize(extraArgs)
 
     /**
      * Полная аргументная строка бинаря (сам бинарь не входит).
@@ -117,7 +117,8 @@ data class ByeDpiConfig(
             add("-H")
             add(":" + hosts.joinToString(" "))
         }
-        addAll(extraList())
+        // `$HOSTS` в хвосте пользователя -- список доменов (ArgTokenizer).
+        addAll(ArgTokenizer.expandHosts(extraList(), hosts))
     }
 
     /** Человекочитаемая строка для карточки «Команда». */

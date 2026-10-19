@@ -513,6 +513,17 @@ enum class Str {
     UPD_CHANGELOG,
     UPD_PROGRESS,
 
+    /** Рекомендация «что делай» по тексту ошибки (core.log.ErrorAdvice). */
+    ERR_ADV_TIMEOUT,
+    ERR_ADV_REFUSED,
+    ERR_ADV_PORT,
+    ERR_ADV_NET,
+    ERR_ADV_PERM,
+    ERR_ADV_NOFILE,
+    ERR_ADV_ARGS,
+    ERR_ADV_TLS,
+    ERR_ADV_DNS,
+
     /** Строка состояния под навигацией. */
     STATUS_PERMS_NEEDED,
     STATUS_DPI,
@@ -1521,6 +1532,51 @@ enum class Str {
         UPD_COMPARE_TAG -> pick(lang, "By tag change", "По смене тега", "按标签变化")
         UPD_CHANGELOG -> pick(lang, "What changed", "Что изменилось", "更新内容")
         UPD_PROGRESS -> pick(lang, "Downloading", "Загрузка", "下载中")
+        ERR_ADV_TIMEOUT -> pick(
+            lang, "Node not responding — try another node or raise the timeout",
+            "Узел не отвечает — попробуйте другой узел или увеличьте таймаут",
+            "节点无响应——请尝试其他节点或增大超时"
+        )
+        ERR_ADV_REFUSED -> pick(
+            lang, "Connection refused — the node or port is down, try another one",
+            "Соединение отклонено — узел или порт недоступен, попробуйте другой",
+            "连接被拒绝——节点或端口不可用，请尝试其他节点"
+        )
+        ERR_ADV_PORT -> pick(
+            lang, "Port busy — free the port or change it in settings",
+            "Порт занят — освободите порт или смените его в настройках",
+            "端口被占用——请释放端口或在设置中更换"
+        )
+        ERR_ADV_NET -> pick(
+            lang, "Network unreachable — check the internet connection",
+            "Сеть недоступна — проверьте подключение к интернету",
+            "网络不可达——请检查网络连接"
+        )
+        ERR_ADV_PERM -> pick(
+            lang, "Permission denied — check app permissions or developer options",
+            "Нет доступа — проверьте разрешения приложения или настройки разработчика",
+            "权限不足——请检查应用权限或开发者选项"
+        )
+        ERR_ADV_NOFILE -> pick(
+            lang, "File not found — reinstall the component",
+            "Файл не найден — переустановите компонент",
+            "文件未找到——请重新安装组件"
+        )
+        ERR_ADV_ARGS -> pick(
+            lang, "Invalid argument — check the custom arguments",
+            "Некорректный аргумент — проверьте свои аргументы",
+            "参数无效——请检查自定义参数"
+        )
+        ERR_ADV_TLS -> pick(
+            lang, "TLS handshake failed — try another node",
+            "TLS-отказ узла — попробуйте другой узел",
+            "TLS 握手失败——请尝试其他节点"
+        )
+        ERR_ADV_DNS -> pick(
+            lang, "DNS did not resolve — change the DNS servers",
+            "DNS не разрешил имя — смените DNS-серверы",
+            "DNS 解析失败——请更换 DNS 服务器"
+        )
         STATUS_PERMS_NEEDED -> pick(lang, "Permissions needed", "Нужны разрешения", "需要权限")
         STATUS_DPI -> pick(lang, "DPI", "DPI", "DPI")
         STATUS_RELAY -> pick(lang, "Relay", "Релей", "中继")

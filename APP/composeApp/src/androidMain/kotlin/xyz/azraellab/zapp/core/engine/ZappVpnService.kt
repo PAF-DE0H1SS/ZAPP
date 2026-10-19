@@ -17,6 +17,7 @@ import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
+import android.app.ForegroundServiceStartNotAllowedException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,6 +34,7 @@ import xyz.azraellab.zapp.core.LinkSpeedBus
 import xyz.azraellab.zapp.core.PingBus
 import xyz.azraellab.zapp.core.Str
 import xyz.azraellab.zapp.core.daemon.daemonLogcat
+import xyz.azraellab.zapp.core.log.AppLog
 import xyz.azraellab.zapp.core.toDisplayString
 import java.io.File
 import java.net.Inet6Address
@@ -386,14 +388,20 @@ class ZappVpnService : VpnService() {
         val lang = AppLang.of(runCatching { AppLangStore.read() }.getOrNull())
             ?: AppLang.EN
 
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                NOTIFICATION_ID,
-                buildNotification(Str.NOTIFY_VPN_ON.of(lang)),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, buildNotification(Str.NOTIFY_VPN_ON.of(lang)))
+        // Как в ZappGpsService: отказ foreground-старту (Android 12+)
+        // виден в журнале, а не тонет в молчаливом runCatching.
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(Str.NOTIFY_VPN_ON.of(lang)),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification(Str.NOTIFY_VPN_ON.of(lang)))
+            }
+        } catch (e: ForegroundServiceStartNotAllowedException) {
+            AppLog.log("vpn", "foreground refused: ${e::class.simpleName}")
         }
         // Дальше уведомление ведёт подписка на скорость: она и обновляет
         // плашку, и возвращает базовый текст при отключении.
